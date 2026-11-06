@@ -91,7 +91,7 @@ export default class OfficeTabs extends View {
       ? Math.max(10, (root.traffic_lights[0] + 64) / settings().zoom - (sidebar?.hidden ? 0 : sidebar?.size?.px ?? 0))
       : 10;
     const panel = find(root, "panel"), body = find(root, "panel-body");
-    const enabled = [...(shared("workspace.panels") ?? ["files", "changes"]), "inbox"];
+    const enabled = [...(shared("workspace.panels") ?? ["files", "changes"]), "inbox", "graph"];
     this.syncPanel(space, panel, body, enabled);
     const panelButton = (id, label, icon) => {
       const on = panel && !panel.hidden && body?.active === id;
@@ -101,7 +101,7 @@ export default class OfficeTabs extends View {
         .on_click(() => {
           if (on) run("layout.hide", { id: "panel" });
           else { run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
-        }).child(image(icon).size(20).flex_none()).child(label);
+        }).child((icon.endsWith(".svg") ? svg(icon).size(20).text_color(on ? t.foreground : t.muted) : image(icon).size(20)).flex_none()).child(label);
     };
     return h_flex().size_full().min_w(0).px(10).pl(lightsPadding).gap(3).items_center().bg(t.chrome).border_b(1).border_color(t.border)
       .on_mouse_up("left", () => { this.pressed = null; })
@@ -111,6 +111,7 @@ export default class OfficeTabs extends View {
       .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", "mods/office-tabs/art/files.png")))
       .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/office-tabs/art/changes.png")))
       .child(panelButton("inbox", "Inbox", "mods/office-tabs/art/inbox.png"))
+      .child(panelButton("graph", "Git", "mods/git-graph/icons/graph.svg"))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg("mods/office-tabs/win-min.svg").size(16) : "−", () => run("window.minimize")))
         .child(button("maximize", w.platform === "windows" ? svg(`mods/office-tabs/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))
         .child(button("close-window", w.platform === "windows" ? svg("mods/office-tabs/win-close.svg").size(16) : svg("mods/pane/close.svg").size(13), () => run("window.close"))));
