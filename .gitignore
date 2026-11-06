@@ -1,0 +1,6 @@
+.DS_Store
+.env*
+*.pem
+*.key
+gpui-kit.d.ts
+jsconfig.json

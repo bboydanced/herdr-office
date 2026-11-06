@@ -1,0 +1,10 @@
+{
+  "Claude Code": "manager",
+  "Codex": "developer",
+  "Frontend": "designer",
+  "Backend": "developer",
+  "Docs": "writer",
+  "Tests": "tester",
+  "Review": "analyst",
+  "Deploy": "support"
+}
