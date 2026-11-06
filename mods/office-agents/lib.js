@@ -139,7 +139,7 @@ export function deskJobs(plan, jobs, names) {
 // programs put in front of it, else the fallback (the program's name).
 export function deskLabel(title, fallback) {
   const clean = (v) => typeof v === "string"
-    ? v.replace(/[\u0000-\u001f\u007f-\u009f  ‪-‮⁦-⁩]/g, "")
+    ? v.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029‪-‮⁦-⁩]/g, "")
       .replace(/^[^\p{L}\p{N}]+/u, "").replace(/\s+/g, " ").trim().slice(0, 60)
     : "";
   return clean(title) || clean(fallback);
