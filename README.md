@@ -1,8 +1,10 @@
 # Office
 
-An office-toned Herdr layout. Each agent is a staff member at a desk with a
-portrait, HP/SP bars and a state animation; each machine is an office building;
-every tab carries its colleague's face.
+An office-toned Herdr layout. Every space is a project, every agent a member of
+staff at their own desk in one shared office: you see who is typing, who needs
+you and who dozed off, and one click takes you to their terminal.
+
+![Office](preview.png)
 
 Derived from [herdr-traveler](https://github.com/franky5440-afk/herdr-traveler)
 (Apache 2.0, Copyright 2026 Frank Lin): same node tree and same mod structure,
@@ -22,14 +24,17 @@ herdr-app do layout.switch '{"name":"office"}'
 `herdr-app check` must pass for every mod before you switch. Never overwrite your
 own files — rename first if you already have a mod or theme called `office-*`.
 
-Updating overwrites `mods/office-agents/jobs.json` and
-`mods/office-spaces/places.json`. Back both up first and put them back, or
-update without them:
+Updating overwrites `mods/office-agents/jobs.json`. Back it up first and put it
+back, or update without it:
 
 ```sh
 H=~/.config/herdr-app
-rsync -a --exclude jobs.json --exclude places.json mods/ "$H/mods/"
+rsync -a --exclude jobs.json mods/ "$H/mods/"
 ```
+
+An earlier version shipped `mods/office-agents/sprites/`,
+`mods/office-spaces/art/` and `mods/office-spaces/places.json`; nothing reads
+them any more, so delete them from `$H/mods` after updating.
 
 Uninstall:
 
@@ -51,67 +56,66 @@ first. Herdr keeps the mod names in its own `seen.json`, which is harmless.
 - **Theme `office-night`:** ink blue background `#101820`, panel `#1b252f`,
   amber accent `#e0a44a`, paper text `#e6dfd2`, muted steel `#5f8fa8`. Square
   corners with thin amber frames.
-- **Terminals** sit on a dark office floor: the pane `background` is
+- **Terminals** sit on dark office carpet: the pane `background` is
   `mods/office-chrome/floor.png` (`cover`), root `terminal_opacity` is `0.62`.
-- **Sidebar, 268 px,** a night view of office windows behind translucent panels.
-- **Spaces, top half:** a 76 px row per space with a 72 px building icon
-  (`hq`, `branch`, `studio`, `lab`), the name, and up to three git lines:
-  uncommitted files (`ansi3`), unpushed commits (`ansi2`), repos without a
-  remote (`ansi1`).
-- **Agents, bottom half:** a framed card per agent with a 72x96 animated sprite,
-  tab name, status word, session name, program tag (`Claude` amber,
-  `Codex`/`OpenCode` purple) then `model · effort`, then HP and SP bars.
+- **Sidebar, 300 px**, two parts (weights 0.62 and 1.38):
+  - **Spaces:** a 44 px row per space. A 28 px project folder in the space's
+    colour with its initial, the name, the branch when unusual, then one line:
+    uncommitted files (`ansi3`), unpushed commits (`ansi2`), repos without a
+    remote (`ansi1`), and a dot per agent in the space in its status colour.
+  - **Office:** a header (`N need you`, `N/M at work`, the time), the back wall
+    (night windows, clock, kanban board, door, water cooler, plant), then the
+    floor. Each **space is a rug** in its folder's colour, in the Spaces order.
+    On it each **tab is a cubicle** with its name (amber for the tab you are
+    on), and in it each **pane is a desk** in the tab's pane order: up to three
+    in a row, four as two by two. A pane with an agent has its staff member at
+    the desk; any other pane (a shell, an editor) is an empty desk with the
+    screen off. A sub-agent without a pane of its own takes an extra desk at
+    the end of its tab. Put-away tabs stay out unless someone in them needs you.
 - **Tabs, 58 px:** square 48 px tabs with a 44 px portrait, plus Files, Changes
   and Inbox buttons that open the right panel.
 
-Behaviour is unchanged from the upstream kit: `working` blue with a spinner,
-`blocked` orange with an alert mark, `done` green, `idle` dim. HP is the
-session's remaining context and SP the account's remaining 5-hour quota; without
-the status line script both show `—` and nothing is ever estimated.
+Herdr tells mods each tab's panes in order, but not where a split put them, so
+desks follow the pane order rather than the exact split.
+
+### At the desk
+
+| Status | Screen | Staff |
+|---|---|---|
+| `working` | green, code scrolling, LED green | typing, coffee steaming |
+| `blocked` | red, blinking `!` | one hand up; the label turns into a red `NEEDS YOU` tag |
+| `done` | blue with a check mark | leaning back, hands behind the head |
+| `idle` | screensaver | head down on the desk, `zZz` |
+
+Every desk is lit by its lamp and its screen. Click a staffed desk for
+`agent.focus` (its terminal, in its space and tab); click an empty one to go to
+that pane. Hover for who, what and where. `agent.next` / `agent.prev` walk the
+desks in the order they are drawn. Narrowed below 160 px, the office becomes a
+column of faces framed in their status colour.
 
 ## Customize
 
 - **Who is who:** `mods/office-agents/jobs.json` maps a tab name to a role.
   Roles: `manager`, `developer`, `designer`, `analyst`, `writer`, `tester`,
-  `support`, `intern`. Unlisted tabs get a free role, so faces repeat only past
-  eight names. Tabs and cards share this file — copy it to every machine to get
-  the same faces everywhere.
-- **Buildings:** `mods/office-spaces/places.json`, e.g. `{"My Mac": "hq"}`.
-- **Art:** placeholders are drawn by `tools/build-art.py`; prompts for real art
-  are in `docs/ART-PROMPTS.md`.
+  `support`, `intern`. A tab's first agent wears the tab's role — the face on
+  the tab — and the other agents in that tab get roles of their own, so faces
+  repeat only past eight. Copy the file to every machine to get the same faces
+  everywhere.
+- **Project colours** come from the Spaces list (`space.colors`), so the folder
+  and the rug of a space always match.
+- **Art:** drawn by `tools/build-art.py`; `tools/build-preview.py` composes the
+  mock `preview.png` and the picker thumbnail from it. Prompts for model-made
+  replacements are in `docs/ART-PROMPTS.md`.
 - **Sounds:** none included. Put MP3s in `~/.config/herdr-app/sounds/` and add
   `"sounds": { "enabled": true, "done": "sounds/done.mp3", "blocked": "sounds/blocked.mp3" }`
   to `settings.json`.
-
-## HP and SP (optional, Claude Code)
-
-```sh
-mkdir -p ~/.config/herdr-app/data/office
-cp scripts/office-statusline.mjs ~/.config/herdr-app/data/office/statusline.mjs
-```
-
-Add to `~/.claude/settings.json` (this replaces any status line you already
-have):
-
-```json
-{ "statusLine": { "type": "command", "command": "node ~/.config/herdr-app/data/office/statusline.mjs", "refreshInterval": 60 } }
-```
-
-It writes only numbers, the session name, the model and the effort. Install it
-on every machine whose agents you want numbers for.
-
-Codex and OpenCode have no status line. The upstream
-`traveler-builder-models.mjs` helper reads Codex rollout files and the OpenCode
-database (which also holds provider credentials) to recover their model name.
-That script is **not** included here — copy it from the upstream repo and read it
-first if you want model names on builder cards. Without it those cards show only
-their tag.
 
 ## What it does on your machine
 
 - `office-spaces` runs `git status`, `git rev-parse` and `hc machine ls` itself,
   in every folder that has a terminal. On connected remote machines Herdr runs
   that `git` there.
+- `office-agents` reads only its own `jobs.json`.
 - `office-inbox` runs `mkdir`, `find`, `stat` and `open`.
 - No mod opens a network connection of its own or reads credentials.
 - **Do not open a terminal inside a repo you do not trust.** `git status` can run
@@ -124,6 +128,11 @@ their tag.
 Code is Apache 2.0, see `LICENSE` and `NOTICE`. `office-spaces`, `office-tabs`
 and `office-chrome` are modified copies of Herdr's built-in `spaces`, `tabs` and
 `workspace-chrome` (Herdr 0.1.11), as are the upstream mods they derive from.
+
+The office idea — one room, a desk per agent, the screen telling its state — is
+inspired by [herdr-office-layout](https://github.com/zuccs/herdr-office-layout)
+and [Sit & Watch](https://github.com/funny-it-worked-last-time-gsv/herdr-sit-and-watch-layout)
+(both MIT). No code or art is copied from them.
 
 The images in this repo are **generated by `tools/build-art.py`** — drawn pixel
 by pixel in code, no image model — so they carry the same Apache 2.0 license as

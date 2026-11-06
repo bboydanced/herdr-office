@@ -8,16 +8,16 @@ import * as I from "./../mods/office-inbox/lib.js";
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.log("FAIL:", m); } };
 
-// roles
+// roles and pictures
 ok(A.JOBS.length === 8, "eight roles");
 for (const r of A.JOBS) {
   ok(A.portraitPath(r) === `mods/office-agents/art/${r}.png`, `portrait ${r}`);
-  for (const s of ["working","blocked","rest"]) ok(A.spritePath(r, s) === `mods/office-agents/sprites/${r}-${s}.gif`, `sprite ${r}-${s}`);
+  for (const s of ["working","blocked","done","idle"]) ok(A.deskPath(r, s) === `mods/office-agents/desks/${r}-${s}.gif`, `desk ${r}-${s}`);
 }
-ok(A.spritePath("nope","working") === null, "unknown role -> no sprite");
+ok(A.deskPath("nope","working") === null, "unknown role -> no desk");
+ok(A.deskPath("manager", null) === "mods/office-agents/desks/manager-idle.gif", "unknown status dozes");
 ok(A.portraitPath("../etc/passwd") === null, "traversal rejected");
-ok(A.spritePath("manager","done") === "mods/office-agents/sprites/manager-rest.gif", "done maps to rest");
-ok(A.spritePath("manager","idle") === "mods/office-agents/sprites/manager-rest.gif", "idle maps to rest");
+ok(A.EMPTY_DESK === "mods/office-agents/desks/empty.png", "empty desk");
 
 // job assignment
 const jobs = { "Claude Code": "manager", "Bad Role": "wizard" };
@@ -28,35 +28,57 @@ const assigned = A.assignJobs(["Claude Code","Frontend","Backend","Docs","Tests"
 ok(assigned.get("claude code") === "manager", "explicit job wins");
 ok(new Set([...assigned.values()]).size === 8, "no duplicate roles within eight");
 
-// cache parse
-const good = A.parseCache(JSON.stringify({updatedAt: 1000, contextRemainingPct: 42, fiveHourRemainingPct: 88, sessionName: "  my  session ", model: "Opus 5.5", effort: "high"}));
-ok(good.hp === 42 && good.sp === 88, "hp/sp parsed");
-ok(good.name === "my session", "name collapsed+trimmed");
-ok(A.modelText(good.model, good.effort) === "Opus 5.5 · high", "model line");
-ok(A.parseCache("{") === null, "bad json -> null");
-ok(A.parseCache(JSON.stringify({contextRemainingPct: 10})) === null, "missing updatedAt -> null");
-ok(A.parseCache(JSON.stringify({updatedAt: 1, contextRemainingPct: 150}))?.hp === null, "out of range pct -> null");
-ok(A.parseCache(JSON.stringify({updatedAt: 1, sessionName: "a‮b"}))?.name === "ab", "bidi stripped");
+// cubicle columns
+ok([1,2,3,4,5,6,7].map(A.deskColumns).join() === "1,2,3,2,3,3,3", "columns by desk count");
+ok(A.deskColumns(0) === 1, "no desks still one column");
 
-// gauge
-ok(A.gauge(null, 1000, 1100).text === "—", "no value dash");
-ok(A.gauge(50, null, 1100).text === "—", "no timestamp dash");
-const g = A.gauge(50, 1000, 1000 + 301);
-ok(g.text === "50%" && g.stale === true && g.pct === 50, "stale marks but keeps value");
-const fresh = A.gauge(50, 1000, 1000 + 10);
-ok(fresh.stale === false, "fresh not stale");
+// office plan: space -> tab -> pane, sub-agents at the end of their tab
+const spaces = [
+  { id: "s1", name: "web", tabs: [{ id: "t1", name: "main" }, { id: "t2", name: "review" }, { id: "t3", name: "old", settled: true, status: "idle" }] },
+  { id: "s2", name: "api", tabs: [{ id: "t4", name: "1", settled: true, status: "blocked" }] },
+  { id: "s3", name: "empty", tabs: [] },
+];
+const panes = [
+  { pane: "p1", tab: "t1" }, { pane: "p2", tab: "t1" }, { pane: "p3", tab: "t1" },
+  { pane: "p4", tab: "t2" }, { pane: "p5", tab: "t3" }, { pane: "p6", tab: "t4" },
+];
+const agents = [
+  { address: "a1", pane: "p1", tab: "t1", tab_name: "main", status: "working" },
+  { address: "a3", pane: "p3", tab: "t1", tab_name: "main", status: "blocked" },
+  { address: "a9", pane: "", tab: "t1", tab_name: "main", status: "working" },
+  { address: "a6", pane: "p6", tab: "t4", tab_name: "1", status: "blocked" },
+];
+const plan = A.officePlan(spaces, panes, agents);
+ok(plan.map((r) => r.space.id).join() === "s1,s2", "rugs in space order, empty space dropped");
+ok(plan[0].tabs.map((c) => c.tab.id).join() === "t1,t2", "settled tab hidden");
+ok(plan[1].tabs[0].tab.id === "t4", "settled tab that needs you stays");
+const main = plan[0].tabs[0].desks;
+ok(main.length === 4, "three panes plus a sub-agent");
+ok(main[0].agent.address === "a1" && main[1].agent === null && main[2].agent.address === "a3", "desks in pane order, empty pane empty");
+ok(main[3].pane === null && main[3].agent.address === "a9", "sub-agent at the end");
+ok(A.officePlan(null, null, null).length === 0, "nothing in, nothing out");
 
-// paths
-ok(A.cachePath("/home/x", "abc-1") === "/home/x/data/office/sessions/abc-1.json", "cache path");
-ok(A.cachePath("/home/x", "../evil") === null, "cache path rejects traversal");
-ok(A.cachePath("/home/x", "vps/t1") === null, "remote id has no local path");
-ok(A.remoteCachePath("vps/t1")?.path === ".config/herdr-app/data/office/sessions/t1.json", "remote cache path");
-ok(A.remoteCachePath("vps") === null, "single part -> null");
+// desk roles: first agent of a tab keeps the tab's role, the rest differ
+const roles = A.deskJobs(plan, { main: "developer" }, A.tabNames(spaces, agents));
+ok(roles.get("a1") === "developer", "first agent wears the tab's role");
+ok(roles.get("a3") !== "developer" && roles.get("a9") !== "developer" && roles.get("a3") !== roles.get("a9"), "tab mates get their own roles");
+ok(T.portraitPath(T.jobIn("main", T.assignJobs(T.tabNames(spaces, agents), { main: "developer" }))) === A.portraitPath(roles.get("a1")), "tab bar face matches first desk");
 
-// tabs lib is the same minus model helpers
+// labels, tips, colours
+ok(A.deskLabel("✳ Fix login bug", "Claude") === "Fix login bug", "spinner marks dropped");
+ok(A.deskLabel("  ", "Claude Code") === "Claude Code", "empty title -> program");
+ok(A.deskLabel("a\u202eb", null) === "ab", "bidi stripped");
+ok(A.deskTip({ job: "tester", agent: { status: "blocked", title: "e2e", program: { name: "Codex" } }, space: { name: "api" }, tab: { name: "1" } }) === "Tester · Needs you\nCodex\ne2e\napi › 1", "tip");
+ok(A.deskTip({ pane: { title: "zsh" }, space: { name: "api" }, tab: { name: "1" } }).startsWith("zsh\nNo agent here"), "empty desk tip");
+ok(A.withAlpha("#6fb6ad", "24") === "#6fb6ad24" && A.withAlpha("#e0a44a55", "88") === "#e0a44a88", "alpha");
+ok(A.withAlpha("red", "24") === "red", "non-hex untouched");
+ok(A.spaceColor({ ansi6: "#6fb6ad", accent: "#e0a44a" }, { s1: "ansi6" }, "s1") === "#6fb6ad", "space colour");
+ok(A.spaceColor({ muted: "#b0a894", accent: "#e0a44a" }, { s1: "ansi6" }, "s1") === "#b0a894", "unknown key -> muted");
+ok(A.spaceColor({ accent: "#e0a44a", __proto__: { x: 1 } }, null, "s1") === "#e0a44a", "no colours -> accent");
+
+// tabs lib: only the role helpers
 ok(T.portraitPath("manager") === A.portraitPath("manager"), "tabs lib shares portrait path");
-ok(T.parseCache(JSON.stringify({updatedAt:1, contextRemainingPct: 5})).hp === 5, "tabs cache parse");
-ok(T.modelText === undefined, "tabs lib has no modelText");
+ok(T.parseCache === undefined && T.spritePath === undefined, "tabs lib has no cache or sprite helpers");
 
 // inbox lib
 ok(I.kindOf("a.PNG") === "image", "ext case-insensitive");

@@ -1,270 +1,168 @@
-// Office agents sidebar: agents() as staff cards, HP/SP read from the status
-// line cache. Reads cache files only - runs no command, opens no connection,
-// reads no conversation or credentials. No numbers means no numbers drawn.
-import { View, div, image, svg } from "gpui-kit";
+// Office: one room for every agent. Each space is a rug in its Spaces colour and
+// order, each tab a cubicle on it, each pane a desk in the tab's pane order: an
+// agent at work, or an empty desk for a pane with no agent. Click a desk to go to
+// its terminal. Reads jobs.json only - runs no command, opens no connection.
+import { View, div, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, appHome, readTextFile, run, setAgentOrder, spaces, theme, watchFolder } from "herdr";
-import { appLabel, assignJobs, cachePath, gauge, jobIn, modelText, parseCache, portraitPath, remoteCachePath, spritePath, tabNames } from "./lib.js";
+import { agents, appHome, layout, panes, readTextFile, run, setAgentOrder, shared, spaces, theme } from "herdr";
+import { DESK_SHADOW, EMPTY_DESK, deskColumns, deskJobs, deskLabel, deskPath, deskTip, officePlan, portraitPath, spaceColor, tabNames, withAlpha } from "./lib.js";
 
-const HOME = appHome();
-const SESSIONS_DIR = `${HOME}/data/office/sessions`;
-const JOBS_FILE = `${HOME}/mods/office-agents/jobs.json`;
-const PIC = 72;
-// Full-body sprites are 36x48 pixels at 4x: 72x96 points, two pixels per point on Retina.
-const SPRITE_W = 72;
-const SPRITE_H = 96;
-const STATUS = { working: "Working", blocked: "Needs you", done: "Done", idle: "Idle" };
+const JOBS_FILE = `${appHome()}/mods/office-agents/jobs.json`;
+const WALL = "mods/office-agents/room/wall.png";
+const FLOOR = "mods/office-agents/room/floor.png";
+const CARPET = "#1e2634";
+const TAG = "#c8392f";
+// Desks are 30x28 art pixels at 2 points each; the label row sits under them.
+const DESK_W = 60;
+const DESK_H = 56;
+const LABEL_H = 12;
+const GAP = 2;
 
-// Portrait: the role's sprite when there is one, else its bust portrait, else
-// the program icon (tinted svg or plain image), else nothing.
-function portrait(a, assigned, t) {
-  const job = jobIn(a.tab_name, assigned);
-  const sprite = spritePath(job, a.status);
-  if (sprite) return image(sprite).w(SPRITE_W).h(SPRITE_H).flex_none();
-  const src = portraitPath(job);
-  if (src) return image(src).w(PIC).h(PIC).flex_none();
-  const p = a.program;
-  if (!p?.icon) return div().w(PIC).h(PIC).flex_none();
-  return p.tint
-    ? svg(p.icon).size(PIC).flex_none().text_color(t.foreground)
-    : image(p.icon).w(PIC).h(PIC).flex_none();
+function find(node, id) {
+  if (node?.id === id) return node;
+  for (const child of node?.children ?? []) {
+    const found = find(child, id);
+    if (found) return found;
+  }
+  return null;
 }
 
-// One HP/SP bar: a null pct draws no fill and shows "—"; stale numbers keep
-// their value and only gain a dim "old" marker.
-function bar(label, g, color, t) {
-  return h_flex()
-    .w_full()
-    .min_w(0)
-    .h(14)
-    .gap(6)
-    .items_center()
-    .child(div().w(20).flex_none().text_size(10).text_color(t.dim).child(label))
-    .child(
-      h_flex()
-        .flex_1()
-        .min_w(0)
-        .h(6)
-        .bg(t.raised)
-        .when(g.pct !== null, (el) => el.child(div().h_full().w(`${g.pct}%`).bg(color))),
-    )
-    .child(
-      div()
-        .flex_none()
-        .text_size(11)
-        .text_color(g.stale ? t.dim : t.foreground)
-        .child(g.stale ? `${g.text} old` : g.text),
-    );
+const clock = () => {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+
+// An empty desk: its space, its tab, then its pane.
+function goTo(space, tab, pane) {
+  if (!space.active) run("space.select", { id: space.id });
+  if (!tab.active) run("tab.select", { id: tab.id });
+  run("pane.focus", { pane: pane.pane });
 }
 
-// Tag row: a small framed label, then "model · effort" when known.
-function tag(label, model, t) {
-  const color = label.builder ? t.unknown : t.accent;
-  return h_flex()
-    .w_full()
-    .min_w(0)
-    .h(16)
-    .gap(6)
-    .items_center()
-    .child(
-      div()
-        .flex_none()
-        .px(5)
-        .border(1)
-        .border_color(color)
-        .text_size(10)
-        .text_color(color)
-        .child(label.text),
-    )
-    .when(model !== null, (el) => el.child(modelLine(model, t)));
-}
+const picture = (src) => div().absolute().top(0).left(0).child(image(src).w(DESK_W).h(DESK_H));
 
-function modelLine(model, t) {
-  return div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(model);
-}
-
-export default class OfficeAgents extends View {
+export default class Office extends View {
   init(_props, cx) {
     this.jobs = {};
-    this.cache = {};
-    this.remote = {};
-    this.tick = 0;
-    this.seen = new Set();
-    this.watching = false;
-    this.loadJobs(cx);
-    this.load(cx);
-    this.loadRemote(cx);
-    this.watch(cx);
-    // The data is numbers; once every 30 s is plenty, lets the "old" marker
-    // appear on its own, and retries the watch.
-    cx.timer.every(30000, (cx) => {
-      this.load(cx);
-      this.watch(cx);
-      // Remote reads every 60 s, matching the status line's refresh; a remote
-      // folder cannot be watched.
-      if (++this.tick % 2 === 0) this.loadRemote(cx);
-    });
-  }
-
-  // Watch the cache folder and re-read on change. An unavailable folder ends
-  // the loop; the timer above retries, so this never becomes a busy loop.
-  watch(cx) {
-    if (this.watching) return;
-    this.watching = true;
-    cx.spawn(async (cx) => {
-      let quick = 0;
-      for (;;) {
-        let changed;
-        const started = Date.now();
-        try {
-          changed = await watchFolder(SESSIONS_DIR);
-        } catch {
-          break;
-        }
-        // Returning at once with no change means the watch did not take.
-        quick = Date.now() - started < 500 && (changed ?? []).length === 0 ? quick + 1 : 0;
-        if (quick >= 3) break;
-        this.load(cx);
-      }
-      this.watching = false;
-    });
-  }
-
-  loadJobs(cx) {
+    this.time = clock();
     cx.spawn(async (cx) => {
       const text = await readTextFile(JOBS_FILE).catch(() => null);
-      let jobs = {};
       try {
         const parsed = JSON.parse(text);
-        if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) jobs = parsed;
-      } catch {
-        jobs = {};
-      }
-      this.jobs = jobs;
+        if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) this.jobs = parsed;
+      } catch {}
       cx.notify();
+    });
+    // The wall clock: redraw only when the minute turns.
+    cx.timer.every(10000, (cx) => {
+      const now = clock();
+      if (now !== this.time) { this.time = now; cx.notify(); }
     });
   }
 
-  // Each local agent reads its own cache file; remote ones come from loadRemote.
-  load(cx) {
-    const wanted = [];
-    for (const a of agents()) {
-      const path = cachePath(HOME, a.address);
-      if (path === null) continue;
-      this.seen.add(a.address);
-      wanted.push({ address: a.address, path });
-    }
-    cx.spawn(async (cx) => {
-      const next = {};
-      for (const w of wanted) {
-        const text = await readTextFile(w.path).catch(() => null);
-        next[w.address] = parseCache(text);
-      }
-      this.cache = next;
-      cx.notify();
-    });
-  }
-
-  // A remote agent reads its own machine's cache over Herdr's existing
-  // connection and runs nothing there; unreachable means "—".
-  loadRemote(cx) {
-    const wanted = [];
-    for (const a of agents()) {
-      const r = remoteCachePath(a.address);
-      if (r === null) continue;
-      this.seen.add(a.address);
-      wanted.push({ address: a.address, ...r });
-    }
-    if (wanted.length === 0) return;
-    cx.spawn(async (cx) => {
-      const next = {};
-      for (const w of wanted) {
-        const text = await readTextFile(w.path, { on: w.on }).catch(() => null);
-        next[w.address] = parseCache(text);
-      }
-      this.remote = next;
-      cx.notify();
-    });
-  }
-
-  card(a, now, t) {
-    const cache = this.cache[a.address] ?? this.remote[a.address] ?? null;
-    const hp = gauge(cache ? cache.hp : null, cache ? cache.updatedAt : null, now);
-    const sp = gauge(cache ? cache.sp : null, cache ? cache.updatedAt : null, now);
-    // blocked is unmistakable: frame and status word both use t.blocked,
-    // overriding the focused accent.
-    const frame = a.status === "blocked" ? t.blocked : a.focused ? t.accent : t.border;
-    const statusColor = a.status === "blocked" ? t.blocked : t[a.status] ?? t.dim;
-    const label = appLabel(a.app);
-    const model = modelText(cache?.model, cache?.effort);
-    return h_flex()
-      .id(`office-${a.address}`)
-      .w_full()
+  desk(row, c, d, roles, t) {
+    const { space } = row;
+    const a = d.agent;
+    const job = a ? roles.get(a.address) : null;
+    const src = (a && deskPath(job, a.status)) || EMPTY_DESK;
+    const label = a ? deskLabel(a.title, a.program?.name) : deskLabel(d.pane.title, d.pane.program?.name);
+    const focused = a ? a.focused : d.pane.focused;
+    const tag = a?.status === "blocked"
+      ? div().h(LABEL_H).px(4).flex().items_center().bg(TAG).text_size(8).font_bold().text_color("#fff0e6").child("NEEDS YOU")
+      : div().max_w(DESK_W).truncate().text_size(9.5)
+        .text_color(focused ? t.accent : a ? t.foreground : t.dim).child(label || " ");
+    return v_flex()
+      .id(`desk-${a ? a.address : d.pane.pane}`)
+      .w(DESK_W)
       .flex_none()
-      .p(8)
-      .gap(10)
       .items_center()
-      .bg(`${t.surface}c8`)
-      .border(1)
-      .border_color(frame)
       .cursor_pointer()
       .hover((s) => s.bg(t.hover))
-      .on_click(() => run("agent.focus", { terminal: a.address }))
-      .child(portrait(a, this.assigned, t))
-      .child(
-        v_flex()
-          .flex_1()
-          .min_w(0)
-          .gap(4)
-          .child(
-            h_flex()
-              .w_full()
-              .min_w(0)
-              .gap(8)
-              .items_center()
-              .child(div().flex_1().min_w(0).truncate().font_semibold().child(a.tab_name || a.address))
-              .child(div().flex_none().text_size(11).text_color(statusColor).child(STATUS[a.status] ?? a.status)),
-          )
-          // Session name (set with /rename) under the tab name; takes no row when unset.
-          .when(Boolean(cache?.name), (el) =>
-            el.child(div().w_full().min_w(0).truncate().text_size(11).text_color(t.dim).child(cache.name)),
-          )
-          // Program tag: gold for Claude, purple for builders (orange means blocked).
-          // Claude: model on the tag row. Builders: model on its own row, so long names fit.
-          .when(Boolean(label), (el) => el.child(tag(label, label.builder ? null : model, t)))
-          .when(Boolean(label?.builder) && model !== null, (el) => el.child(h_flex().w_full().min_w(0).child(modelLine(model, t))))
-          // Builders have no HP/SP source, so no empty bars.
-          .when(!label?.builder, (el) => el.child(bar("HP", hp, t.accent, t)).child(bar("SP", sp, t.solid, t))),
-      );
+      .tooltip(deskTip({ job, agent: a, pane: d.pane, space, tab: c.tab }))
+      .on_click(() => (a ? run("agent.focus", { terminal: a.address }) : goTo(space, c.tab, d.pane)))
+      .child(div().relative().w(DESK_W).h(DESK_H).child(picture(DESK_SHADOW)).child(picture(src)))
+      .child(h_flex().w(DESK_W).h(LABEL_H).justify_center().items_center().child(tag));
   }
 
-  render(cx) {
+  cubicle(row, c, roles, color, t) {
+    const cols = deskColumns(c.desks.length);
+    const width = cols * DESK_W + (cols - 1) * GAP;
+    const here = row.space.active && c.tab.active;
+    const lines = [];
+    for (let i = 0; i < c.desks.length; i += cols) lines.push(c.desks.slice(i, i + cols));
+    return v_flex()
+      .id(`cubicle-${c.tab.id}`)
+      .flex_none()
+      .px(4)
+      .pb(4)
+      .gap(GAP)
+      .bg("#080c1270")
+      .border(1)
+      .border_color(here ? t.accent : withAlpha(color, "88"))
+      .child(div().w(width).h(14).pt(1).truncate().text_size(10).text_color(here ? t.accent : t.muted).child(c.tab.name))
+      .children(lines.map((line) => h_flex().gap(GAP).children(line.map((d) => this.desk(row, c, d, roles, t)))));
+  }
+
+  rug(row, roles, colors, t) {
+    const color = spaceColor(t, colors, row.space.id);
+    return v_flex()
+      .id(`rug-${row.space.id}`)
+      .flex_none()
+      .px(6)
+      .pt(3)
+      .pb(6)
+      .gap(5)
+      .bg(withAlpha(color, "24"))
+      .border(1)
+      .border_color(withAlpha(color, "66"))
+      .child(h_flex().h(15).gap(6).items_center()
+        .child(div().size(7).flex_none().bg(color))
+        .child(div().flex_1().min_w(0).truncate().text_size(11).font_semibold().text_color(t.foreground).child(row.space.name)))
+      .child(h_flex().flex_wrap().items_start().gap(6).children(row.tabs.map((c) => this.cubicle(row, c, roles, color, t))));
+  }
+
+  // A rail too narrow for desks: one face per agent, framed in its status colour.
+  rail(plan, roles, t) {
+    const seated = plan.flatMap((row) => row.tabs.flatMap((c) => c.desks.filter((d) => d.agent).map((d) => d.agent)));
+    return v_flex().id("office-rail").size_full().min_h(0).items_center().gap(4).py(6).overflow_y_scrollbar()
+      .children(seated.map((a) => {
+        const src = portraitPath(roles.get(a.address));
+        return div().id(`face-${a.address}`).size(30).flex_none().border(2).border_color(t[a.status] ?? t.dim)
+          .cursor_pointer().tooltip(deskLabel(a.title, a.program?.name) || a.address)
+          .on_click(() => run("agent.focus", { terminal: a.address }))
+          .when(Boolean(src), (el) => el.child(image(src).size(26)));
+      }));
+  }
+
+  render() {
     const t = theme();
     const list = agents();
-    this.assigned = assignJobs(tabNames(spaces(), list), this.jobs);
-    setAgentOrder(list.map((a) => a.address));
-    // A fresh agent gets its cache read at once rather than at the next tick.
-    const fresh = list.filter((a) => !this.seen.has(a.address));
-    if (fresh.some((a) => cachePath(HOME, a.address) !== null)) this.load(cx);
-    if (fresh.some((a) => remoteCachePath(a.address) !== null)) this.loadRemote(cx);
-    const now = Math.floor(Date.now() / 1000);
+    const sp = spaces();
+    const plan = officePlan(sp, panes(), list);
+    const roles = deskJobs(plan, this.jobs, tabNames(sp, list));
+    // agent.next / agent.prev walk the desks in the order they are drawn.
+    setAgentOrder(plan.flatMap((row) => row.tabs.flatMap((c) => c.desks.filter((d) => d.agent).map((d) => d.agent.address))));
+    if ((find(layout(), "sidebar")?.size?.px ?? Infinity) < 160) return this.rail(plan, roles, t);
+
+    const colors = shared("space.colors") ?? {};
+    const busy = list.filter((a) => a.status === "working").length;
+    const waiting = list.filter((a) => a.status === "blocked").length;
     return v_flex()
-      .id("office-agents")
+      .id("office")
       .size_full()
       .min_h(0)
+      .relative()
+      .overflow_hidden()
+      .bg(CARPET)
       .text_color(t.foreground)
-      .text_size(13)
-      .child(
-        v_flex()
-          .flex_1()
-          .min_h(0)
-          .gap(6)
-          .p(6)
-          .overflow_y_scrollbar()
-          .children(list.map((a) => this.card(a, now, t)))
-          .when(list.length === 0, (el) =>
-            el.child(div().p(8).text_size(12).text_color(t.dim).child("No agents")),
-          ),
-      );
+      .child(div().absolute().top(0).left(0).child(image(FLOOR).w(300).h(800)))
+      .child(h_flex().h(28).flex_none().pl(16).pr(12).gap(6).items_center().bg(t.chrome).text_size(11.5).text_color(t.dim)
+        .child(div().flex_1().child("Office"))
+        .when(waiting > 0, (el) => el.child(div().text_color(t.blocked).child(`${waiting} need${waiting === 1 ? "s" : ""} you ·`)))
+        .child(div().text_size(11).child(`${busy}/${list.length} at work · ${this.time}`)))
+      .child(div().h(44).flex_none().overflow_hidden().child(image(WALL).w(300).h(44)))
+      .child(v_flex().id("office-floor").flex_1().min_h(0).p(8).gap(8).overflow_y_scrollbar()
+        .children(plan.map((row) => this.rug(row, roles, colors, t)))
+        .when(plan.length === 0, (el) => el.child(div().p(8).text_size(12).text_color(t.dim).child("Nobody in yet. Open a space to start."))));
   }
 }

@@ -1,20 +1,23 @@
-// Office spaces: one building per machine, worktrees under their checkout,
-// grouped by machine when more than one is known. After a space's name, the repo
-// its first terminal is in now, only where unusual: branch, ahead/behind. Agent state lives in the agents list, not here. Click to
-// switch, right-click for its menu, drag to reorder.
+// Office spaces: one project per space, drawn as a folder in the space's colour
+// (the same colour as its rug in the office below), worktrees under their
+// checkout, grouped by machine when more than one is known. After a space's name,
+// the repo its first terminal is in now, only where unusual: branch, ahead/behind;
+// under it the git summary and a dot per agent. Click to switch, right-click for
+// its menu, drag to reorder.
 
-import { View, div, svg, image } from "gpui-kit";
+import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, appHome, readTextFile } from "herdr";
+import { spaces, machines, panes, agents, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout } from "herdr";
 
-const PLACES = ["hq", "branch", "studio", "lab"];
-const PLACES_FILE = `${appHome()}/mods/office-spaces/places.json`;
-// A configured name wins; anything else picks a fixed building from its name
-// hash, so reordering never changes it.
-const placeFor = (name, places) => {
-  const place = PLACES.includes(places[name]) ? places[name] : PLACES[[...name].reduce((n, c) => n + c.codePointAt(0), 0) % PLACES.length];
-  return `mods/office-spaces/art/${place}.png`;
-};
+// A project folder in the space's colour, with the project's initial.
+function badge(name, color, t) {
+  const letter = [...name].find((c) => /[\p{L}\p{N}]/u.test(c))?.toUpperCase() ?? "~";
+  return div().relative().w(28).h(26).flex_none()
+    .child(div().absolute().top(0).left(0).w(12).h(4).bg(color))
+    .child(div().absolute().top(3).left(0).w(28).h(23).flex().items_center().justify_center().bg(color)
+      .text_size(13).font_bold().text_color(t.canvas).child(letter))
+    .child(div().absolute().top(4).left(0).w(28).h(1).bg("#ffffff46"));
+}
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -41,7 +44,7 @@ function keysOf(s, ps) {
   if (!dirs.size && s.folder) dirs.add(s.folder);
   return [...dirs].map((d) => JSON.stringify([s.machine ?? null, d]));
 }
-const rowHeight = ({ tree }) => (tree ? 28 : 76);
+const rowHeight = ({ tree }) => (tree ? 28 : 44);
 const where = (s, ps) => JSON.stringify([s.machine ?? null, place(s, ps)]);
 const base = (path) => path.replace(/\/+$/, "").split("/").pop();
 // Changes made outside Herdr (an editor's save, a commit in another app): looked
@@ -62,12 +65,8 @@ export function tone(t, status) {
 
 export default class Spaces extends View {
   init(_props, cx) {
-    this.places = {};
-    cx.spawn(async (cx) => {
-      const text = await readTextFile(PLACES_FILE).catch(() => null);
-      try { const parsed = JSON.parse(text); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) this.places = parsed; } catch {}
-      cx.notify();
-    });
+    this.colors = {};
+    this.staff = [];
     this.git = {}; // where() -> { name, branch, ahead, behind, repo, linked }, null: not a repo
     this.checked = {}; // where() -> when it was last looked at
     this.unsure = new Set(); // where()s git couldn't answer for (a machine away)
@@ -323,13 +322,22 @@ export default class Spaces extends View {
     };
   }
 
-  gitLines(sum, t) {
-    const line = (color, text) => div().truncate().text_size(11.5).text_color(color).child(text);
-    return [
-      sum.dirty > 0 && line(t.ansi3, `${sum.dirty} uncommitted file${sum.dirty === 1 ? "" : "s"}`),
-      sum.ahead > 0 && line(t.ansi2, `${sum.ahead} unpushed commit${sum.ahead === 1 ? "" : "s"}`),
-      sum.local > 0 && line(t.ansi1, `${sum.local} repo${sum.local === 1 ? "" : "s"} without a remote`),
+  // One line: what git would say, then a dot per agent in the space.
+  summary(w, sum, t) {
+    const parts = [
+      sum.dirty > 0 && [t.ansi3, `${sum.dirty} changed`],
+      sum.ahead > 0 && [t.ansi2, `${sum.ahead} unpushed`],
+      sum.local > 0 && [t.ansi1, sum.local === 1 ? "no remote" : `${sum.local} without remote`],
     ].filter(Boolean);
+    const mine = this.staff.filter((a) => a.space === w.id);
+    return h_flex().h(14).gap(4).items_center().text_size(11)
+      .child(h_flex().flex_1().min_w(0).gap(4).overflow_hidden()
+        .children(parts.flatMap(([color, text], n) => [
+          ...(n ? [div().flex_none().text_color(t.dim).child("\u00b7")] : []),
+          div().flex_none().text_color(color).child(text),
+        ])))
+      .children(mine.slice(0, 8).map((a) => div().size(5).flex_none().rounded(3).bg(t[a.status] ?? t.dim)))
+      .when(mine.length > 8, (el) => el.child(div().flex_none().text_size(10).text_color(t.dim).child(`+${mine.length - 8}`)));
   }
 
   row({ w, i, g, sum, tree }, t) {
@@ -341,7 +349,7 @@ export default class Spaces extends View {
       .h(rowHeight({ tree }))
       .flex_none()
       .justify_center()
-      .when(on, (el) => el.bg(`${t.surface}c8`).border(1).border_color(t.accent))
+      .when(on, (el) => el.bg(`${t.surface}c8`).child(div().absolute().left(0).top(0).bottom(0).w(2).bg(t.accent)))
       .when(!on, (el) => el.hover((s) => s.bg(t.hover)))
       .when(this.pressed === i && this.over !== i, (el) => el.opacity(0.5))
       .when(this.pressed !== null && this.over === i && this.pressed !== i, (el) => el.child(
@@ -373,15 +381,15 @@ export default class Spaces extends View {
       .on_mouse_down("right", () => this.menu(w))
       .child(
         h_flex()
-          .gap(9)
+          .gap(10)
           .items_center()
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/office-chrome/branch.svg").size(13).text_color(t.dim)))
-          .when(!tree, el => el.child(image(placeFor(w.name, this.places)).size(72).flex_none()))
-          .child(v_flex().flex_1().min_w(0).gap(1)
+          .when(!tree, el => el.pl(2).child(badge(w.name, t[this.colors[w.id]] ?? t.muted, t)))
+          .child(v_flex().flex_1().min_w(0).gap(2)
             .child(h_flex().gap(9).items_center()
               .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(w.name))
               .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1()))
-            .when(!tree, el => el.children(this.gitLines(sum, t)))),
+            .when(!tree, el => el.child(this.summary(w, sum, t)))),
       );
   }
 
@@ -414,6 +422,8 @@ export default class Spaces extends View {
       changed = true;
     }
     if (changed) setShared("space.colors", kept);
+    this.colors = kept;
+    this.staff = agents();
     return v_flex().size_full().min_h(0).text_size(13)
       .child(h_flex().h(31).pl(16).pr(10).items_center().justify_between().text_size(11.5).text_color(t.dim)
         .when(!collapsed, el => el.child("Spaces"))

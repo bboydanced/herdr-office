@@ -1,5 +1,5 @@
-// Office card MOD pure functions: no herdr / gpui-kit imports, loadable by node
-// for tests. Data handling only; reading caches and drawing live in main.js.
+// Office MOD pure functions: no herdr / gpui-kit imports, loadable by node for
+// tests. The office plan, roles and picture paths; drawing lives in main.js.
 
 // The eight office roles. Order is the fallback rotation for unlisted tabs.
 export const JOBS = [
@@ -13,47 +13,13 @@ export const JOBS = [
   "writer",
 ];
 
-// A cache older than this is marked stale: the status line rewrites it on every
-// response, so five minutes of silence means the number is no longer live.
-export const STALE_SECONDS = 300;
-
 const JOB_SET = new Set(JOBS);
-const SESSIONS_DIR = "data/office/sessions";
 const PORTRAITS_DIR = "mods/office-agents/art";
-const SPRITES_DIR = "mods/office-agents/sprites";
-// Roles with full-body animation (drawn by tools/build-art.py); any other
-// role falls back to its portrait.
-const SPRITE_JOBS = new Set(JOBS);
+const DESKS_DIR = "mods/office-agents/desks";
+const STATES = new Set(["working", "blocked", "done", "idle"]);
 
-// Local terminal id: same rule as scripts/office-statusline.mjs writes.
-const LOCAL_ID = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
-
-// Only a finite 0-100 number is a percentage; anything else means no data.
-function pct(value) {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100
-    ? value
-    : null;
-}
-
-// Text fields: drop control and bidi characters, collapse whitespace, trim, cap.
-// Same rule as scripts/office-statusline.mjs; enforced again on read.
-function cleanText(value, max) {
-  if (typeof value !== "string") return null;
-  const s = value.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, "").replace(/\s+/g, " ").trim();
-  return s === "" ? null : [...s].slice(0, max).join("");
-}
-
-// Session name (Claude Code /rename) caps at 80 characters.
-const NAME_MAX = 80;
-export function cleanName(value) {
-  return cleanText(value, NAME_MAX);
-}
-
-// Model and effort names are shorter than a session name: one card row at most.
-const MODEL_MAX = 40;
-function cleanModel(value) {
-  return cleanText(value, MODEL_MAX);
-}
+export const EMPTY_DESK = `${DESKS_DIR}/empty.png`;
+export const DESK_SHADOW = `${DESKS_DIR}/shadow.png`;
 
 // Tab name to role: exact match only, case-insensitive, whitespace-trimmed.
 // Only own keys are scanned, so constructor/__proto__ cannot match by accident.
@@ -112,86 +78,92 @@ export function portraitPath(job) {
   return typeof job === "string" && JOB_SET.has(job) ? `${PORTRAITS_DIR}/${job}.png` : null;
 }
 
-// Full-body sprite: working and blocked have their own loop; done, idle and no
-// status share the resting pose.
-export function spritePath(job, status) {
-  if (typeof job !== "string" || !SPRITE_JOBS.has(job)) return null;
-  const state = status === "working" || status === "blocked" ? status : "rest";
-  return `${SPRITES_DIR}/${job}-${state}.gif`;
+// An agent's desk: its role's animation for its status (anything unknown dozes).
+export function deskPath(job, status) {
+  if (typeof job !== "string" || !JOB_SET.has(job)) return null;
+  return `${DESKS_DIR}/${job}-${STATES.has(status) ? status : "idle"}.gif`;
 }
 
-// Program tag: from the app the agent reports (OSC 7501). Only these three are
-// named; builders have no HP/SP source.
-const APPS = new Map([
-  ["claude-code", { text: "Claude", builder: false }],
-  ["codex", { text: "Codex", builder: true }],
-  ["opencode", { text: "OpenCode", builder: true }],
-]);
-export function appLabel(app) {
-  const found = typeof app === "string" ? APPS.get(app) : undefined;
-  return found ? { ...found } : null;
+// A cubicle's columns: up to three desks in a row, four as two by two.
+export function deskColumns(n) {
+  return n <= 3 ? Math.max(1, n) : n === 4 ? 2 : 3;
 }
 
-// Cache files exist only for local terminals; a remote id (vps/t7) has none.
-export function cachePath(appHomeDir, address) {
-  if (typeof appHomeDir !== "string") return null;
-  const base = appHomeDir.replace(/\/+$/, "");
-  if (base === "") return null;
-  if (typeof address !== "string" || !LOCAL_ID.test(address)) return null;
-  return `${base}/${SESSIONS_DIR}/${address}.json`;
-}
-
-// A remote agent reads the cache in that machine's default Herdr folder; with
-// `on`, readTextFile resolves the relative path from that machine's home.
-const MACHINE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-export function remoteCachePath(address) {
-  if (typeof address !== "string") return null;
-  const parts = address.split("/");
-  if (parts.length !== 2 || !MACHINE.test(parts[0]) || !LOCAL_ID.test(parts[1])) return null;
-  return { on: parts[0], path: `.config/herdr-app/${SESSIONS_DIR}/${parts[1]}.json` };
-}
-
-// Cache content: { updatedAt, contextRemainingPct, fiveHourRemainingPct,
-// sessionName, model, effort }. A bad field only nulls that field; a bad
-// updatedAt discards the whole file.
-export function parseCache(text) {
-  if (typeof text !== "string" || text.trim() === "") return null;
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    return null;
+// The office plan: a rug per space in the Spaces list's order, a cubicle per tab,
+// a desk per pane in the tab's pane order (an agent, or nobody). An agent with no
+// pane of its own (a sub-agent) takes an extra desk at the end of its tab. Put-away
+// tabs stay out unless someone in them needs you; empty cubicles and rugs go.
+export function officePlan(spaces, panes, agents) {
+  const paneIds = new Set((panes ?? []).map((p) => p.pane));
+  const byPane = new Map();
+  const extra = new Map();
+  for (const a of agents ?? []) {
+    if (a.pane && paneIds.has(a.pane)) byPane.set(a.pane, a);
+    else extra.set(a.tab, [...(extra.get(a.tab) ?? []), a]);
   }
-  if (data === null || typeof data !== "object" || Array.isArray(data)) return null;
-  const updatedAt = data.updatedAt;
-  if (typeof updatedAt !== "number" || !Number.isFinite(updatedAt) || updatedAt < 0) return null;
-  return {
-    updatedAt,
-    hp: pct(data.contextRemainingPct),
-    sp: pct(data.fiveHourRemainingPct),
-    name: cleanName(data.sessionName),
-    model: cleanModel(data.model),
-    effort: cleanModel(data.effort),
-  };
+  const byTab = new Map();
+  for (const p of panes ?? []) byTab.set(p.tab, [...(byTab.get(p.tab) ?? []), p]);
+  return (spaces ?? [])
+    .map((space) => ({
+      space,
+      tabs: (space.tabs ?? [])
+        .filter((tab) => !tab.settled || tab.status === "blocked")
+        .map((tab) => ({
+          tab,
+          desks: [
+            ...(byTab.get(tab.id) ?? []).map((pane) => ({ pane, agent: byPane.get(pane.pane) ?? null })),
+            ...(extra.get(tab.id) ?? []).map((agent) => ({ pane: null, agent })),
+          ],
+        }))
+        .filter((c) => c.desks.length > 0),
+    }))
+    .filter((row) => row.tabs.length > 0);
 }
 
-// The "model · effort" line: no model means no line (effort alone says nothing).
-export function modelText(model, effort) {
-  const m = cleanModel(model);
-  if (m === null) return null;
-  const e = cleanModel(effort);
-  return e === null ? m : `${m} · ${e}`;
+// Every agent's role. A tab's first agent keeps the tab's role, the face on its
+// tab; the others get roles of their own, so a tab's agents don't share a face
+// while roles last. `names`: tabNames(), so tab roles match the tab bar's.
+export function deskJobs(plan, jobs, names) {
+  const seated = [];
+  for (const row of plan ?? []) {
+    for (const c of row.tabs) {
+      c.desks.filter((d) => d.agent).forEach((d, i) => seated.push({ tab: c.tab.name, address: d.agent.address, first: i === 0 }));
+    }
+  }
+  const own = (s) => `#${s.address}`;
+  const assigned = assignJobs([...(names ?? []), ...seated.filter((s) => !s.first).map(own)], jobs);
+  return new Map(seated.map((s) => [s.address, jobIn(s.first ? s.tab : own(s), assigned)]));
 }
 
-// What one HP/SP bar draws: no number (or no timestamp) shows "—" and no fill;
-// stale only adds a marker, the number itself is never rewritten.
-export function gauge(value, updatedAt, now) {
-  const p = pct(value);
-  const at =
-    typeof updatedAt === "number" && Number.isFinite(updatedAt) && updatedAt >= 0
-      ? updatedAt
-      : null;
-  if (p === null || at === null) return { text: "—", pct: null, stale: false };
-  const stale = typeof now === "number" && Number.isFinite(now) && now - at > STALE_SECONDS;
-  return { text: `${p}%`, pct: p, stale };
+// The line under a desk: the terminal's title without the spinner or status marks
+// programs put in front of it, else the fallback (the program's name).
+export function deskLabel(title, fallback) {
+  const clean = (v) => typeof v === "string"
+    ? v.replace(/[\u0000-\u001f\u007f-\u009f  ‪-‮⁦-⁩]/g, "")
+      .replace(/^[^\p{L}\p{N}]+/u, "").replace(/\s+/g, " ").trim().slice(0, 60)
+    : "";
+  return clean(title) || clean(fallback);
+}
+
+const STATUS = { working: "Working", blocked: "Needs you", done: "Done", idle: "Idle" };
+
+// Hover text for a desk: who, doing what, where.
+export function deskTip({ job, agent, pane, space, tab }) {
+  const where = `${space?.name ?? ""} › ${tab?.name ?? ""}`;
+  if (!agent) return [deskLabel(pane?.title, pane?.program?.name) || "Terminal", "No agent here", where].join("\n");
+  const who = job ? job[0].toUpperCase() + job.slice(1) : "Agent";
+  return [`${who} · ${STATUS[agent.status] ?? agent.status}`, agent.program?.name, deskLabel(agent.title), where]
+    .filter(Boolean).join("\n");
+}
+
+// A theme colour with a two-digit alpha; anything that isn't #rrggbb(aa) stays as is.
+export function withAlpha(color, alpha) {
+  return typeof color === "string" && /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(color) ? `${color.slice(0, 7)}${alpha}` : color;
+}
+
+// A space's colour: the one the Spaces list gave it (`space.colors`, a theme key
+// such as "ansi6"), else muted like its folder there (home gets none).
+export function spaceColor(theme, colors, id) {
+  const key = colors && typeof colors === "object" ? colors[id] : null;
+  return (typeof key === "string" && typeof theme?.[key] === "string" && theme[key]) || theme?.muted || theme?.accent;
 }
