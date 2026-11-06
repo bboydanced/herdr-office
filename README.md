@@ -21,6 +21,14 @@ cp -R mods/* "$H/mods/"
 herdr-app do layout.switch '{"name":"office"}'
 ```
 
+The Changes panel is [Git Changes](https://github.com/aBER0724/herdr-git-changes)
+(MIT), not the one Herdr ships, so install that mod too:
+
+```sh
+git clone https://github.com/aBER0724/herdr-git-changes
+cp -R herdr-git-changes/mods/git-changes "$H/mods/"
+```
+
 `herdr-app check` must pass for every mod before you switch. Never overwrite your
 own files — rename first if you already have a mod or theme called `office-*`.
 
