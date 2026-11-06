@@ -19,6 +19,31 @@ function badge(name, color, t) {
     .child(div().absolute().top(4).left(0).w(28).h(1).bg("#ffffff46"));
 }
 
+// A theme colour with a two-digit alpha (theme colours are #rrggbb).
+const alpha = (c, a) => (typeof c === "string" && /^#[0-9a-fA-F]{6}/.test(c) ? `${c.slice(0, 7)}${a}` : c);
+
+// The most urgent status among some agents: waiting beats working.
+const urgent = (list) => (list.some((a) => a.status === "blocked") ? "blocked" : list.some((a) => a.status === "working") ? "working" : null);
+
+// A row where someone works breathes in the working colour under a steady frame;
+// one where someone waits blinks a thick frame over a red tint (as in the office).
+function activity(id, status, t) {
+  const fill = () => div().absolute().top(0).left(0).right(0).bottom(0);
+  if (status === "working") {
+    return {
+      under: [fill().id(`${id}-glow`).bg(alpha(t.working, "2e")).loop("opacity", { from: 0.15, to: 1, period: 1100 })],
+      over: [fill().border(1).border_color(t.working)],
+    };
+  }
+  if (status === "blocked") {
+    return {
+      under: [fill().bg(alpha(t.blocked, "30"))],
+      over: [fill().id(`${id}-blink`).border(2).border_color(t.blocked).loop("opacity", { from: 0.2, to: 1, period: 600, easing: "linear" })],
+    };
+  }
+  return { under: [], over: [] };
+}
+
 function find(node, id) {
   if (node?.id === id) return node;
   for (const child of node?.children ?? []) {
@@ -342,6 +367,8 @@ export default class Spaces extends View {
 
   row({ w, i, g, sum, tree }, t) {
     const on = w.active;
+    const status = tree ? null : urgent(this.staff.filter((a) => a.space === w.id));
+    const shown = activity(`space-${w.id}`, status, t);
     return v_flex()
       .relative()
       .id(`space-${w.id}`)
@@ -349,6 +376,7 @@ export default class Spaces extends View {
       .h(rowHeight({ tree }))
       .flex_none()
       .justify_center()
+      .children(shown.under)
       .when(on, (el) => el.bg(`${t.surface}c8`).child(div().absolute().left(0).top(0).bottom(0).w(2).bg(t.accent)))
       .when(!on, (el) => el.hover((s) => s.bg(t.hover)))
       .when(this.pressed === i && this.over !== i, (el) => el.opacity(0.5))
@@ -388,9 +416,11 @@ export default class Spaces extends View {
           .child(v_flex().flex_1().min_w(0).gap(2)
             .child(h_flex().gap(9).items_center()
               .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(w.name))
+              .when(status === "blocked", el => el.child(div().flex_none().px(4).bg("#c8392f").text_size(10).font_bold().text_color("#ffffff").child("!")))
               .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1()))
             .when(!tree, el => el.child(this.summary(w, sum, t)))),
-      );
+      )
+      .children(shown.over);
   }
 
   compact({ w, i }, t) {

@@ -67,6 +67,10 @@ first. Herdr keeps the mod names in its own `seen.json`, which is harmless.
     colour with its initial, the name, the branch when unusual, then one line:
     uncommitted files (`ansi3`), unpushed commits (`ansi2`), repos without a
     remote (`ansi1`), and a dot per agent in the space in its status colour.
+    A space where an agent works **breathes**: a steady frame in the working
+    colour over a glow that fades in and out. A space where an agent waits for
+    you **blinks** a thick orange frame over a red tint, with a `!` by its name.
+    Waiting wins over working.
   - **Office:** a header (`N need you`, `N/M at work`, the time), the back wall
     (night windows, clock, kanban board, door, water cooler, plant), then the
     dark carpet. Each **space is a rug** tinted in its folder's colour, in the
@@ -100,13 +104,16 @@ desks fall back to pane order: up to three in a row, four as two by two.
 
 | Status | Screen | Staff |
 |---|---|---|
-| `working` | green, code scrolling, LED green | typing, eyes on the screen, coffee steaming |
-| `blocked` | red, blinking `!` | one hand up, mouth open, a `!` bubble; the label turns into a red `NEEDS YOU` tag |
+| `working` | green, code scrolling fast, LED green | typing fast (a key every 90 ms), eyes on the screen, coffee steaming; the desk breathes: a bright frame, a glow and a wider ring fading in and out |
+| `blocked` | red, blinking `!` | one hand up, mouth open, a `!` bubble; a thick orange frame blinks over a red tint, a `!` badge bobs on the corner, the label turns into a red `NEEDS YOU` tag |
 | `done` | blue with a check mark | stretching, hands behind the head, smiling |
 | `idle` | screensaver | head down on folded arms, `zZz` |
 
 Every desk is lit by its screen, and each role keeps its own things on it (a
-plant, a rubber duck, a phone, a chart, a stack of books...). Click a staffed desk for
+plant, a rubber duck, a phone, a chart, a stack of books...). A rug shows its
+space the same way (breathing or blinking) with `● N working` or
+`! N need you` in its corner. The pulses are native `loop`s on `opacity`/`top`:
+they run without re-rendering the mod. Click a staffed desk for
 `agent.focus` (its terminal, in its space and tab); click an empty one to go to
 that pane. Hover for who, what and where. `agent.next` / `agent.prev` walk the
 desks in the order they are drawn. Narrowed below 160 px, the office becomes a

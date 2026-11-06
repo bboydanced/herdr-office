@@ -7,7 +7,7 @@
 import { View, div, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, appHome, home, layout, panes, readTextFile, run, setAgentOrder, shared, spaces, theme } from "herdr";
-import { DESK_SHADOW, EMPTY_DESK, deskColumns, deskJobs, deskLabel, deskPath, deskTip, localId, officePlan, portraitPath, spaceColor, splitTree, treeWidth, withAlpha } from "./lib.js";
+import { DESK_SHADOW, EMPTY_DESK, deskColumns, deskJobs, deskLabel, deskPath, deskTip, localId, mixHex, officePlan, portraitPath, spaceColor, splitTree, treeWidth, withAlpha } from "./lib.js";
 
 const JOBS_FILE = `${appHome()}/mods/office-agents/jobs.json`;
 // herdr-core keeps every app's shared documents here, Herdr's layout among them.
@@ -21,7 +21,7 @@ const DESK_W = 72;
 const DESK_H = 60;
 const SLOT_W = 80;
 const LABEL_H = 13;
-const GAP = 2;
+const GAP = 6;
 // Wider than this many desks, a split tree falls back to rows of desks.
 const MOST_ACROSS = 3;
 
@@ -47,6 +47,39 @@ function goTo(space, tab, pane) {
 }
 
 const picture = (src) => div().absolute().top(0).left(0).child(image(src).w(DESK_W).h(DESK_H));
+
+// How a desk or a rug shows that someone there is busy or waiting for you.
+// Busy: a steady bright frame, a glow breathing under it and (ring) a wider
+// frame breathing around it. Waiting: a thick frame blinking fast over a red
+// tint. The pulses run natively; nothing re-renders for them.
+function activity(id, status, t, ring) {
+  const fill = () => div().absolute().top(0).left(0).right(0).bottom(0);
+  const frame = (n) => div().absolute().top(-n).left(-n).right(-n).bottom(-n);
+  if (status === "working") {
+    return {
+      under: [fill().id(`${id}-glow`).bg(withAlpha(t.working, "2e")).loop("opacity", { from: 0.15, to: 1, period: 1100 })],
+      over: [
+        frame(1).border(1).border_color(mixHex(t.working, "#ffffff", 0.3)),
+        ...(ring ? [frame(3).id(`${id}-ring`).border(2).border_color(t.working).loop("opacity", { from: 0, to: 0.85, period: 1100 })] : []),
+      ],
+    };
+  }
+  if (status === "blocked") {
+    return {
+      under: [fill().bg(withAlpha(t.blocked, "30"))],
+      over: [frame(2).id(`${id}-blink`).border(2).border_color(t.blocked).loop("opacity", { from: 0.2, to: 1, period: 600, easing: "linear" })],
+    };
+  }
+  return { under: [], over: [] };
+}
+
+// A "!" bobbing on the corner of a desk whose agent waits for you.
+const alert = (id) => div().id(`${id}-alert`).absolute().top(-7).right(-5).size(15).flex().items_center().justify_center()
+  .bg(TAG).border(1).border_color("#fff0e6").text_size(10).font_bold().text_color("#ffffff").child("!")
+  .loop("top", { from: -9, to: -5, period: 700 });
+
+// The most urgent status among some agents: waiting beats working.
+const urgent = (list) => (list.some((a) => a.status === "blocked") ? "blocked" : list.some((a) => a.status === "working") ? "working" : null);
 
 export default class Office extends View {
   init(_props, cx) {
@@ -116,13 +149,16 @@ export default class Office extends View {
     const job = a ? roles.get(a.address) : null;
     const src = (a && deskPath(job, a.status)) || EMPTY_DESK;
     const focused = a ? a.focused : d.pane.focused;
+    const id = `desk-${a ? a.address : d.pane.pane}`;
+    const shown = activity(id, a?.status, t, true);
     const label = a?.status === "blocked"
       ? div().h(LABEL_H).px(5).flex().items_center().bg(TAG).text_size(8.5).font_bold().text_color("#fff0e6").child("NEEDS YOU")
       : div().h(LABEL_H).max_w(SLOT_W).px(4).flex().items_center().bg("#0d131bb8").text_size(10)
         .text_color(focused ? t.accent : a ? t.foreground : t.muted)
         .child(div().min_w(0).truncate().child(deskLabel(d) || " "));
     return v_flex()
-      .id(`desk-${a ? a.address : d.pane.pane}`)
+      .id(id)
+      .relative()
       .w(SLOT_W)
       .flex_none()
       .items_center()
@@ -131,8 +167,11 @@ export default class Office extends View {
       .hover((s) => s.bg(t.hover))
       .tooltip(deskTip({ job, agent: a, pane: d.pane, space, tab: c.tab }))
       .on_click(() => (a ? run("agent.focus", { terminal: a.address }) : goTo(space, c.tab, d.pane)))
+      .children(shown.under)
       .child(div().relative().w(DESK_W).h(DESK_H).child(picture(DESK_SHADOW)).child(picture(src)))
-      .child(label);
+      .child(label)
+      .children(shown.over)
+      .when(a?.status === "blocked", (el) => el.child(alert(id)));
   }
 
   // Desks the way the tab is split: a row for side by side, a column for stacked.
@@ -165,10 +204,17 @@ export default class Office extends View {
       .children(lines.map((line) => h_flex().gap(GAP).children(line.map((d) => this.desk(row, c, d, roles, t)))));
   }
 
+  // A rug per space; one where someone works or waits shows it as a desk does,
+  // with a count in its corner.
   rug(row, roles, colors, trees, t) {
     const color = spaceColor(t, colors, row.space.id);
+    const staff = row.tabs.flatMap((c) => c.desks.filter((d) => d.agent).map((d) => d.agent));
+    const status = urgent(staff);
+    const count = staff.filter((a) => a.status === status).length;
+    const shown = activity(`rug-${row.space.id}`, status, t, false);
     return v_flex()
       .id(`rug-${row.space.id}`)
+      .relative()
       .flex_none()
       .px(6)
       .pt(3)
@@ -177,11 +223,17 @@ export default class Office extends View {
       .bg(withAlpha(color, "24"))
       .border(1)
       .border_color(withAlpha(color, "66"))
+      .children(shown.under)
       .child(h_flex().h(15).gap(6).items_center()
         .child(div().size(7).flex_none().bg(color))
-        .child(div().flex_1().min_w(0).truncate().text_size(11).font_semibold().text_color(t.foreground).child(row.space.name)))
+        .child(div().flex_1().min_w(0).truncate().text_size(11).font_semibold().text_color(t.foreground).child(row.space.name))
+        .when(status === "blocked", (el) => el.child(div().flex_none().px(4).bg(TAG).text_size(10).font_bold().text_color("#ffffff")
+          .child(`! ${count} need${count === 1 ? "s" : ""} you`)))
+        .when(status === "working", (el) => el.child(div().flex_none().text_size(10).text_color(mixHex(t.working, "#ffffff", 0.3))
+          .child(`● ${count} working`))))
       .child(h_flex().flex_wrap().items_start().gap(6)
-        .children(row.tabs.map((c) => this.cubicle(row, c, roles, color, trees.get(c.tab.id) ?? null, t))));
+        .children(row.tabs.map((c) => this.cubicle(row, c, roles, color, trees.get(c.tab.id) ?? null, t))))
+      .children(shown.over);
   }
 
   // A rail too narrow for desks: one face per agent, framed in its status colour.

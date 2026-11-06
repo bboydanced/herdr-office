@@ -460,7 +460,7 @@ def person_back(role: str, state: str, f: int) -> Art:
             a.rect(18, 12, 10, 1, r["acc"])
         return a.outline()
     glow = GLOW.get(state)
-    mood = {"working": "blink" if f == 4 else "look", "blocked": "open", "done": "happy"}.get(state, "front")
+    mood = {"working": "blink" if f == 7 else "look", "blocked": "open", "done": "happy"}.get(state, "front")
     face(a, role, mood, glow)
     a.rows(x0, 0, rows, hair_pal(r))
     accessories(a, role)
@@ -478,10 +478,8 @@ def person_front(role: str, state: str, f: int) -> Art:
         a.rect(22, 16, 2, 1, skin)
         return a.outline()
     lift_l = lift_r = 0
-    if state == "working":
+    if state == "working":  # a key every frame, hands taking turns
         lift_l, lift_r = (1, 0) if f % 2 == 0 else (0, 1)
-        if f % 3 == 2:
-            lift_l = lift_r = 0
     a.rect(20, 16 - lift_l, 2, 1, skin)
     if state != "blocked":
         a.rect(24, 16 - lift_r, 2, 1, skin)
@@ -712,7 +710,8 @@ def scene(role: str | None, state: str, f: int) -> Art:
     return a
 
 
-DESK_STATES = {"working": (6, 170), "blocked": (4, 320), "done": (6, 520), "idle": (8, 420)}
+# Working is fast on purpose: twelve frames (one full scroll of CODE) at 90 ms.
+DESK_STATES = {"working": (12, 90), "blocked": (4, 320), "done": (6, 520), "idle": (8, 420)}
 
 
 def build_desks() -> None:

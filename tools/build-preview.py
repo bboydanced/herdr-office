@@ -85,7 +85,7 @@ SPACES = [
      "tabs": [{"name": "docs", "panes": [("writer", "working", "README"), ("intern", "idle", "Typos")]}]},
 ]
 
-DESK_W, DESK_H, SLOT_W, LABEL_H, GAP = 72, 60, 80, 13, 2
+DESK_W, DESK_H, SLOT_W, LABEL_H, GAP = 72, 60, 80, 13, 6
 SLOT_H = DESK_H + 1 + LABEL_H
 
 
@@ -106,8 +106,16 @@ def draw_spaces(sb: Image.Image, d: ImageDraw.ImageDraw, top: int) -> None:
     for s in SPACES:
         box = [8, y, SIDEBAR - 8, y + 44]
         if s.get("active"):
-            d.rectangle(box, fill=hexa("surface", 0xC8))
+            tint(sb, box, hexa("surface", 0xC8))
             d.rectangle([box[0], box[1], box[0] + 1, box[3]], fill=hexa("accent"))
+        sts = [st for t in s["tabs"] for _, st, _ in t["panes"] if st]
+        status = "blocked" if "blocked" in sts else "working" if "working" in sts else None
+        if status == "working":
+            tint(sb, box, hexa("working", 0x2E))
+            d.rectangle(box, outline=hexa("working"))
+        elif status == "blocked":
+            tint(sb, box, hexa("blocked", 0x30))
+            d.rectangle(box, outline=hexa("blocked"), width=2)
         col = hexa(s["color"])
         bx, by = box[0] + 10, y + 9
         d.rectangle([bx, by, bx + 11, by + 3], fill=col)
@@ -118,6 +126,10 @@ def draw_spaces(sb: Image.Image, d: ImageDraw.ImageDraw, top: int) -> None:
         d.text((bx + 14 - d.textlength(letter, font=f) / 2, by + 7), letter, font=f, fill=hexa("canvas"))
         tx = bx + 38
         d.text((tx, y + 7), s["name"], font=font(13), fill=hexa("foreground"))
+        if status == "blocked":
+            nx = tx + d.textlength(s["name"], font=font(13)) + 8
+            d.rectangle([nx, y + 8, nx + 10, y + 21], fill=hexa("#c8392f"))
+            d.text((nx + 3, y + 7), "!", font=font(11, bold=True), fill=(255, 255, 255, 255))
         if s["tail"]:
             tf = font(11.5)
             d.text((box[2] - 10 - d.textlength(s["tail"], font=tf), y + 9), s["tail"], font=tf, fill=hexa("dim"))
@@ -156,8 +168,31 @@ def tree_size(node) -> tuple[int, int]:
     return max(w for w, _ in sizes), sum(h for _, h in sizes) + gaps
 
 
+def mix(a: str, b: str, t: float) -> tuple[int, int, int, int]:
+    x, y = hexa(a), hexa(b)
+    return tuple(round(x[i] + (y[i] - x[i]) * t) for i in range(3)) + (255,)
+
+
+def bright(key: str, t: float = 0.3) -> tuple[int, int, int, int]:
+    return mix(C[key], "#ffffff", t)
+
+
+def busy_marks(sb, d, box, status, ring):
+    """What the mods draw for someone working or waiting, at the pulse's peak."""
+    x0, y0, x1, y1 = box
+    if status == "working":
+        tint(sb, box, hexa("working", 0x2E))
+        d.rectangle([x0 - 1, y0 - 1, x1 + 1, y1 + 1], outline=bright("working"))
+        if ring:
+            d.rectangle([x0 - 3, y0 - 3, x1 + 3, y1 + 3], outline=hexa("working", 0xD8), width=2)
+    elif status == "blocked":
+        tint(sb, box, hexa("blocked", 0x30))
+        d.rectangle([x0 - 2, y0 - 2, x1 + 2, y1 + 2], outline=hexa("blocked"), width=2)
+
+
 def draw_desk(sb, d, t, i, cx, cy, shadow, frame):
     role, st, title = t["panes"][i]
+    busy_marks(sb, d, [cx, cy, cx + SLOT_W - 1, cy + SLOT_H - 1], st, True)
     dx = cx + (SLOT_W - DESK_W) // 2
     sb.alpha_composite(shadow, (dx, cy))
     art = f"mods/office-agents/desks/{role}-{st}.gif" if role else "mods/office-agents/desks/empty.png"
@@ -169,6 +204,9 @@ def draw_desk(sb, d, t, i, cx, cy, shadow, frame):
         tx = cx + SLOT_W / 2 - tw / 2
         d.rectangle([tx, ly, tx + tw, ly + LABEL_H], fill=hexa("#c8392f"))
         d.text((tx + 5, ly + 1), "NEEDS YOU", font=tf, fill=(255, 240, 230, 255))
+        bx, by = cx + SLOT_W - 10, cy - 7
+        d.rectangle([bx, by, bx + 14, by + 14], fill=hexa("#c8392f"), outline=(255, 240, 230, 255))
+        d.text((bx + 5, by), "!", font=font(11, bold=True), fill=(255, 255, 255, 255))
     else:
         lf = font(10)
         label = fit(d, title, lf, SLOT_W - 8)
@@ -227,8 +265,19 @@ def draw_office(sb: Image.Image, top: int, bottom: int, frame: int) -> None:
         rug = [8, y, SIDEBAR - 9, y + rug_h - 1]
         tint(sb, rug, color[:3] + (0x24,))
         d.rectangle(rug, outline=color[:3] + (0x66,))
+        sts = [st for t in s["tabs"] for _, st, _ in t["panes"] if st]
+        status = "blocked" if "blocked" in sts else "working" if "working" in sts else None
+        busy_marks(sb, d, rug, status, False)
         d.rectangle([rug[0] + 7, y + 7, rug[0] + 13, y + 13], fill=color)
         d.text((rug[0] + 19, y + 3), s["name"], font=font(11, bold=True), fill=hexa("foreground"))
+        if status:
+            n = sts.count(status)
+            text = f"! {n} need{'s' if n == 1 else ''} you" if status == "blocked" else f"● {n} working"
+            tf = font(10, bold=status == "blocked")
+            tx = rug[2] - 8 - d.textlength(text, font=tf)
+            if status == "blocked":
+                d.rectangle([tx - 4, y + 4, rug[2] - 4, y + 17], fill=hexa("#c8392f"))
+            d.text((tx, y + 4), text, font=tf, fill=(255, 255, 255, 255) if status == "blocked" else bright("working"))
         py = y + 3 + 15 + 5
         for r in rows:
             px = rug[0] + 7
