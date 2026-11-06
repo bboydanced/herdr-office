@@ -6,7 +6,8 @@ reviewed without Herdr. Not part of the mods - nothing reads this file.
 
 The mock follows layouts/office.json and the sizes the mods ask for: a 300 px
 sidebar (46 header, Spaces, the office, 69 footer), 58 px tab bar, 8 px padding.
-In the office each space is a rug, each tab a cubicle on it, each pane a desk.
+In the office each space is a rug, each tab a cubicle on it, each pane a desk;
+the work column and the side panel sit on the sidebar's wallpaper.
 """
 
 from __future__ import annotations
@@ -22,7 +23,6 @@ SIDEBAR = 300
 TABS = 58
 PAD = 8
 SPACES_H = 200
-DESK_W, DESK_H, LABEL_H = 60, 56, 12
 
 THEME = json.load(open(os.path.join(ROOT, "themes/office-night.json")))
 C = THEME["colors"]
@@ -76,7 +76,7 @@ SPACES = [
     {"name": "api", "color": "ansi3", "tail": "",
      "git": [("ansi3", "4 changed")],
      "tabs": [
-         {"name": "tests", "panes": [("tester", "working", "e2e suite"), (None, None, "zsh")]},
+         {"name": "tests", "panes": [("tester", "working", "e2e suite"), (None, None, "Terminal")]},
          {"name": "deploy", "panes": [("support", "idle", "Rollout")]},
      ]},
     {"name": "notes", "color": "ansi5", "tail": "",
@@ -84,9 +84,27 @@ SPACES = [
      "tabs": [{"name": "docs", "panes": [("writer", "working", "README"), ("intern", "idle", "Typos")]}]},
 ]
 
+DESK_W, DESK_H, SLOT_W, LABEL_H, GAP = 72, 60, 80, 13, 2
+PANEL, PANEL_TOP, PANEL_EDGE = "#aab3c2", "#c8cfda", "#5c6576"
+
+
+def mix(a: str, b: str, t: float) -> tuple[int, int, int, int]:
+    x, y = hexa(a), hexa(b)
+    return tuple(round(x[i] + (y[i] - x[i]) * t) for i in range(3)) + (255,)
+
 
 def grid(n: int) -> int:
     return n if n <= 3 else 2 if n == 4 else 3
+
+
+def wallpaper(size: tuple[int, int]) -> Image.Image:
+    paper = load("mods/office-chrome/sidebar.png").convert("RGB")
+    paper = paper.resize((paper.width // 2, paper.height // 2), Image.NEAREST)
+    out = Image.new("RGB", size)
+    for y in range(0, size[1], paper.height):
+        for x in range(0, size[0], paper.width):
+            out.paste(paper, (x, y))
+    return out
 
 
 def draw_spaces(sb: Image.Image, d: ImageDraw.ImageDraw, top: int) -> None:
@@ -95,11 +113,10 @@ def draw_spaces(sb: Image.Image, d: ImageDraw.ImageDraw, top: int) -> None:
     y = top + 31
     for s in SPACES:
         box = [8, y, SIDEBAR - 8, y + 44]
-        if s["active"] if "active" in s else False:
+        if s.get("active"):
             d.rectangle(box, fill=hexa("surface", 0xC8))
             d.rectangle([box[0], box[1], box[0] + 1, box[3]], fill=hexa("accent"))
         col = hexa(s["color"])
-        # Folder badge: a tab on top, the body with the project's initial.
         bx, by = box[0] + 10, y + 9
         d.rectangle([bx, by, bx + 11, by + 3], fill=col)
         d.rectangle([bx, by + 3, bx + 27, by + 25], fill=col)
@@ -119,7 +136,6 @@ def draw_spaces(sb: Image.Image, d: ImageDraw.ImageDraw, top: int) -> None:
                 x += 10
             d.text((x, y + 25), text, font=font(11), fill=hexa(color))
             x += d.textlength(text, font=font(11)) + 4
-        # One dot per agent in the space, coloured by its status.
         dots = [st for t in s["tabs"] for _, st, _ in t["panes"] if st]
         dx = box[2] - 10 - len(dots) * 9
         for st in dots:
@@ -128,91 +144,123 @@ def draw_spaces(sb: Image.Image, d: ImageDraw.ImageDraw, top: int) -> None:
         y += 46
 
 
+def cubicle_size(t) -> tuple[int, int, int]:
+    n = len(t["panes"])
+    cols = grid(n)
+    w = cols * SLOT_W + (cols - 1) * GAP + 12
+    h = 15 + 2 + 3 + ((n + cols - 1) // cols) * (DESK_H + 1 + LABEL_H + GAP) - GAP + 4
+    return cols, w, h
+
+
 def draw_office(sb: Image.Image, top: int, bottom: int, frame: int) -> None:
     d = ImageDraw.Draw(sb, "RGBA")
     floor = load("mods/office-agents/room/floor.png")
     floor = floor.resize((floor.width // 2, floor.height // 2), Image.NEAREST)
     sb.paste(floor.crop((0, 0, SIDEBAR, bottom - top)), (0, top))
-    # Header.
     d.rectangle([0, top, SIDEBAR, top + 28], fill=hexa("chrome"))
     d.text((16, top + 8), "Office", font=font(11.5), fill=hexa("dim"))
     agents = [st for s in SPACES for t in s["tabs"] for _, st, _ in t["panes"] if st]
     busy = sum(1 for st in agents if st == "working")
     info = f"{busy}/{len(agents)} at work · 21:40"
     d.text((SIDEBAR - 12 - d.textlength(info, font=font(11)), top + 8), info, font=font(11), fill=hexa("dim"))
+    need = "1 needs you ·"
+    d.text((SIDEBAR - 16 - d.textlength(info, font=font(11)) - d.textlength(need, font=font(11.5)), top + 8),
+           need, font=font(11.5), fill=hexa("blocked"))
     wall = load("mods/office-agents/room/wall.png")
-    wall = wall.resize((wall.width // 2, wall.height // 2), Image.NEAREST)
-    sb.alpha_composite(wall, (0, top + 28))
+    sb.alpha_composite(wall.resize((wall.width // 2, wall.height // 2), Image.NEAREST), (0, top + 28))
     y = top + 28 + 44 + 8
     shadow = load("mods/office-agents/desks/shadow.png", (DESK_W, DESK_H))
     for s in SPACES:
-        col = hexa(s["color"])
-        # Lay out the cubicles first to know the rug's height.
-        inner = SIDEBAR - 16 - 14
+        color = THEME["ansi"][int(s["color"][4:])]
+        inner = SIDEBAR - 16 - 20
         rows, row, used = [], [], 0
         for t in s["tabs"]:
-            n = len(t["panes"])
-            cols = grid(n)
-            w = cols * DESK_W + (cols - 1) * 2 + 10
-            h = ((n + cols - 1) // cols) * (DESK_H + LABEL_H) + 10 + 14
+            cols, w, h = cubicle_size(t)
             if row and used + 6 + w > inner:
                 rows.append(row)
                 row, used = [], 0
             row.append((t, cols, w, h))
             used += (6 if used else 0) + w
         rows.append(row)
-        rug_h = 18 + sum(max(h for *_, h in r) for r in rows) + 6 * (len(rows) - 1) + 12
-        rug = [8, y, SIDEBAR - 8, y + rug_h]
-        d.rectangle(rug, fill=col[:3] + (0x24,), outline=col[:3] + (0x66,))
-        d.rectangle([rug[0] + 7, y + 7, rug[0] + 13, y + 13], fill=col)
-        d.text((rug[0] + 19, y + 3), s["name"], font=font(11, bold=True), fill=hexa("foreground"))
-        py = y + 18 + 6
+        rug_h = 3 + 2 + 1 + 3 + 16 + 5 + sum(max(h for *_, h in r) for r in rows) + 6 * (len(rows) - 1) + 6 + 1 + 2 + 3
+        rug = [8, y, SIDEBAR - 9, y + rug_h - 1]
+        d.rectangle(rug, fill=mix(color, "#1a2129", 0.6))
+        d.rectangle(rug, outline=mix(color, "#0d1116", 0.62), width=3)
+        d.rectangle([rug[0] + 5, rug[1] + 5, rug[2] - 5, rug[3] - 5], outline=hexa(color, 0xAA))
+        d.rectangle([rug[0] + 10, y + 12, rug[0] + 17, y + 19], fill=hexa(color), outline=(13, 17, 22, 255))
+        d.text((rug[0] + 23, y + 8), s["name"], font=font(11.5, bold=True), fill=(245, 239, 228, 255))
+        py = y + 3 + 2 + 1 + 3 + 16 + 5
         for r in rows:
-            px = rug[0] + 7
+            px = rug[0] + 10
             for t, cols, w, h in r:
-                active = s.get("active") and t.get("active")
-                d.rectangle([px, py, px + w - 1, py + h - 1], fill=(8, 12, 18, 0x70),
-                            outline=hexa("accent") if active else col[:3] + (0x88,))
-                d.text((px + 5, py + 2), fit(d, t["name"], font(10), w - 10), font=font(10),
-                       fill=hexa("accent" if active else "muted"))
+                here = s.get("active") and t.get("active")
+                d.rectangle([px, py, px + w - 1, py + 14], fill=hexa("accent") if here else hexa(PANEL), outline=hexa(PANEL_EDGE))
+                d.rectangle([px, py + 15, px + w - 1, py + 16], fill=hexa(PANEL_TOP))
+                d.rectangle([px, py + 17, px + 2, py + h - 1], fill=hexa(PANEL))
+                d.rectangle([px + w - 3, py + 17, px + w - 1, py + h - 1], fill=hexa(PANEL))
+                d.text((px + 6, py + 1), fit(d, t["name"], font(10, bold=True), w - 12), font=font(10, bold=True), fill=(27, 37, 47, 255))
                 for i, (role, st, title) in enumerate(t["panes"]):
-                    cx = px + 5 + (i % cols) * (DESK_W + 2)
-                    cy = py + 16 + (i // cols) * (DESK_H + LABEL_H)
-                    sb.alpha_composite(shadow, (cx, cy))
+                    cx = px + 6 + (i % cols) * (SLOT_W + GAP)
+                    cy = py + 20 + (i // cols) * (DESK_H + 1 + LABEL_H + GAP)
+                    dx = cx + (SLOT_W - DESK_W) // 2
+                    sb.alpha_composite(shadow, (dx, cy))
                     art = (f"mods/office-agents/desks/{role}-{st}.gif" if role else "mods/office-agents/desks/empty.png")
-                    sb.alpha_composite(load(art, (DESK_W, DESK_H), frame), (cx, cy))
-                    if st == "blocked":  # the label becomes a red tag
-                        tag = "NEEDS YOU"
-                        tf = font(8, bold=True)
-                        tw = d.textlength(tag, font=tf) + 8
-                        tx = cx + DESK_W / 2 - tw / 2
-                        d.rectangle([tx, cy + DESK_H, tx + tw, cy + DESK_H + 11], fill=hexa("#c8392f"))
-                        d.text((tx + 4, cy + DESK_H + 1), tag, font=tf, fill=(255, 240, 230, 255))
+                    sb.alpha_composite(load(art, (DESK_W, DESK_H), frame), (dx, cy))
+                    ly = cy + DESK_H + 1
+                    if st == "blocked":
+                        tf = font(8.5, bold=True)
+                        tw = d.textlength("NEEDS YOU", font=tf) + 10
+                        tx = cx + SLOT_W / 2 - tw / 2
+                        d.rectangle([tx, ly, tx + tw, ly + LABEL_H], fill=hexa("#c8392f"))
+                        d.text((tx + 5, ly + 1), "NEEDS YOU", font=tf, fill=(255, 240, 230, 255))
                     else:
-                        lf = font(9.5)
-                        label = fit(d, title, lf, DESK_W)
-                        color = hexa("foreground" if role else "dim")
-                        d.text((cx + DESK_W / 2 - d.textlength(label, font=lf) / 2, cy + DESK_H), label, font=lf, fill=color)
+                        lf = font(10)
+                        label = fit(d, title, lf, SLOT_W - 8)
+                        tw = d.textlength(label, font=lf) + 8
+                        tx = cx + SLOT_W / 2 - tw / 2
+                        d.rectangle([tx, ly, tx + tw, ly + LABEL_H], fill=(13, 19, 27, 0xB8))
+                        d.text((tx + 4, ly), label, font=lf, fill=hexa("foreground" if role else "muted"))
                 px += w + 6
             py += max(h for *_, h in r) + 6
-        y += rug_h + 8
+        y += rug_h + 10
+
+
+def tint(im: Image.Image, box, color) -> None:
+    """A translucent fill blended over what is there (ImageDraw on RGBA replaces)."""
+    im.alpha_composite(Image.new("RGBA", (box[2] - box[0] + 1, box[3] - box[1] + 1), color), (box[0], box[1]))
+
+
+def faces(im: Image.Image, x: int, roles: list[tuple[str, str]]) -> int:
+    if len(roles) == 1:
+        p = load(f"mods/office-agents/art/{roles[0][0]}.png", (44, 44))
+        im.alpha_composite(p, (x, 7))
+        return 44
+    d = ImageDraw.Draw(im, "RGBA")
+    for n, (role, st) in enumerate(roles[:4]):
+        fx = x + n * 22
+        d.rectangle([fx, 12, fx + 33, 45], fill=hexa("raised"), outline=hexa(st))
+        im.alpha_composite(load(f"mods/office-agents/art/{role}.png", (32, 32)), (fx + 1, 13))
+    return 34 + 22 * (min(4, len(roles)) - 1)
 
 
 def main() -> None:
     im = Image.new("RGBA", (W, H), hexa("canvas"))
+    im.paste(wallpaper((W, H)), (0, 0))
     floor = load("mods/office-chrome/floor.png").convert("RGB")
     pane = (SIDEBAR + PAD, TABS + PAD, W - PAD, H - 28 - PAD)
     pw, ph = pane[2] - pane[0], pane[3] - pane[1]
-    im.paste(floor.resize((floor.width // 2, floor.height // 2), Image.NEAREST).crop((0, 0, pw, ph)), pane[:2])
+    scale = max(pw / floor.width, ph / floor.height)  # the pane background is "cover"
+    im.paste(floor.resize((int(floor.width * scale) + 1, int(floor.height * scale) + 1)).crop((0, 0, pw, ph)), pane[:2])
+    tint(im, pane, hexa("background", 0x9E))  # terminal_opacity 0.62 over the floor
+    tint(im, [pane[0], pane[1], pane[2], pane[1] + 30], hexa("chrome", 0xC8))
     d = ImageDraw.Draw(im, "RGBA")
-    d.rectangle(pane, fill=hexa("background", 0x60), outline=hexa("accent", 0x99))
-    d.rectangle([pane[0], pane[1], pane[2], pane[1] + 30], fill=hexa("chrome", 0xC8))
+    d.rectangle(pane, outline=hexa("accent", 0x99))
     d.text((pane[0] + 12, pane[1] + 8), "web-app / main — Fix login", font=font(13), fill=hexa("muted"))
     lines = [
         ("accent", "$ herdr-app do layout.switch '{\"name\":\"office\"}'"),
         ("foreground", "switched to office (office-night)"),
         ("dim", ""),
-        ("working", "● 3 spaces · 6 agents at their desks"),
+        ("working", "● 3 spaces · 7 agents at their desks"),
         ("foreground", "web-app  main    manager · designer · developer"),
         ("foreground", "web-app  review  analyst"),
         ("blocked", "needs you  developer: allow `git push`?"),
@@ -224,8 +272,7 @@ def main() -> None:
         y += 22
 
     sb = Image.new("RGBA", (SIDEBAR, H), hexa("canvas"))
-    strip = load("mods/office-chrome/sidebar.png").convert("RGB")
-    sb.paste(strip.crop((0, 0, SIDEBAR, H)), (0, 0))
+    sb.paste(wallpaper((SIDEBAR, H)), (0, 0))
     sd = ImageDraw.Draw(sb, "RGBA")
     sd.rectangle([0, 0, SIDEBAR, 46], fill=hexa("chrome", 0xC8))
     sd.text((16, 15), "Herdr", font=font(14, bold=True), fill=hexa("foreground"))
@@ -238,17 +285,18 @@ def main() -> None:
     sd.text((16, H - 34), "Add machine", font=font(13), fill=hexa("dim"))
     im.alpha_composite(sb, (0, 0))
 
+    tint(im, [SIDEBAR, 0, W, TABS], hexa("chrome", 0xC8))
     td = ImageDraw.Draw(im, "RGBA")
-    td.rectangle([SIDEBAR, 0, W, TABS], fill=hexa("chrome"))
     td.line([SIDEBAR, TABS, W, TABS], fill=hexa("border", 0x66))
     x = SIDEBAR + 10
-    for role, name, active in (("manager", "main", True), ("analyst", "review", False)):
-        tw = 150
+    tabs = [([("manager", "working"), ("designer", "working"), ("developer", "blocked")], "main", True, 0),
+            ([("analyst", "done")], "review", False, 0)]
+    for people, name, active, others in tabs:
+        tw = 210 if len(people) > 1 else 150
         td.rectangle([x, 5, x + tw, TABS - 5], fill=hexa("raised" if active else "chrome"),
                      outline=hexa("accent" if active else "chrome"))
-        p = load(f"mods/office-agents/art/{role}.png", (44, 44))
-        im.alpha_composite(p, (x + 3, 7))
-        td.text((x + 54, 21), name, font=font(13), fill=hexa("foreground" if active else "muted"))
+        fw = faces(im, x + 6, people)
+        td.text((x + 14 + fw, 21), name, font=font(13), fill=hexa("foreground" if active else "muted"))
         x += tw + 3
     td.text((x + 8, 20), "+", font=font(16), fill=hexa("dim"))
     bx = W - 300
@@ -257,7 +305,7 @@ def main() -> None:
         im.alpha_composite(icon, (bx + i * 98, 19))
         td.text((bx + i * 98 + 26, 22), label, font=font(12), fill=hexa("muted"))
     td.rectangle([SIDEBAR, H - 28, W, H], fill=hexa("chrome"))
-    td.text((SIDEBAR + 14, H - 22), "office · 3 spaces · 6 agents", font=font(11), fill=hexa("dim"))
+    td.text((SIDEBAR + 14, H - 22), "office · 3 spaces · 7 agents", font=font(11), fill=hexa("dim"))
 
     out = im.convert("RGB")
     out.save(os.path.join(ROOT, "preview.png"))

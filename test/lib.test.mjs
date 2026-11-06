@@ -59,26 +59,37 @@ ok(main[3].pane === null && main[3].agent.address === "a9", "sub-agent at the en
 ok(A.officePlan(null, null, null).length === 0, "nothing in, nothing out");
 
 // desk roles: first agent of a tab keeps the tab's role, the rest differ
-const roles = A.deskJobs(plan, { main: "developer" }, A.tabNames(spaces, agents));
+const roles = A.deskJobs(spaces, panes, agents, { main: "developer" });
 ok(roles.get("a1") === "developer", "first agent wears the tab's role");
 ok(roles.get("a3") !== "developer" && roles.get("a9") !== "developer" && roles.get("a3") !== roles.get("a9"), "tab mates get their own roles");
-ok(T.portraitPath(T.jobIn("main", T.assignJobs(T.tabNames(spaces, agents), { main: "developer" }))) === A.portraitPath(roles.get("a1")), "tab bar face matches first desk");
+ok(roles.size === 4, "every agent has a role, settled tabs too");
+
+// tabs lib: the same seats and roles, so a tab's faces match its desks
+const tRoles = T.deskJobs(spaces, panes, agents, { main: "developer" });
+ok([...roles].every(([k, v]) => tRoles.get(k) === v) && tRoles.size === roles.size, "tab bar roles match office roles");
+ok(T.tabDesks(spaces, panes, agents).get("t1").map((d) => d.agent?.address ?? "-").join() === "a1,-,a3,a9", "tab seats in pane order");
+ok(T.portraitPath("manager") === A.portraitPath("manager"), "tabs lib shares portrait path");
+ok(T.parseCache === undefined && T.deskPath === undefined, "tabs lib has only the seating helpers");
 
 // labels, tips, colours
-ok(A.deskLabel("✳ Fix login bug", "Claude") === "Fix login bug", "spinner marks dropped");
-ok(A.deskLabel("  ", "Claude Code") === "Claude Code", "empty title -> program");
-ok(A.deskLabel("a\u202eb", null) === "ab", "bidi stripped");
+const shell = { program: { name: "zsh", shell: true }, title: "khoenv@khoenv:~/smartgift/sg-AI/coyle-member-sync", cwd: "/home/k/smartgift/sg-AI/coyle-member-sync" };
+ok(A.deskLabel({ agent: { title: "✳ Fix login bug", program: { name: "Claude Code" } } }) === "Fix login bug", "spinner marks dropped");
+ok(A.deskLabel({ agent: { title: "  ", program: { name: "Claude Code" } } }) === "Claude Code", "empty title -> program");
+ok(A.deskLabel({ agent: { title: "khoenv@khoenv:~/x", program: { name: "Codex" } } }) === "Codex", "prompt title -> program");
+ok(A.deskLabel({ agent: { title: "a\u202eb" } }) === "ab", "bidi stripped");
+ok(A.deskLabel({ pane: shell }) === "Terminal", "shell -> Terminal");
+ok(A.deskLabel({ pane: { program: { name: "Neovim", shell: false }, title: "x" } }) === "Neovim", "other program -> its name");
+ok(A.deskLabel({ pane: { mod: "browser", title: "" } }) === "browser", "mod pane -> mod");
+ok(A.shortPath("/home/k/smartgift/sg-AI/coyle-member-sync") === "…/sg-AI/coyle-member-sync", "short path");
 ok(A.deskTip({ job: "tester", agent: { status: "blocked", title: "e2e", program: { name: "Codex" } }, space: { name: "api" }, tab: { name: "1" } }) === "Tester · Needs you\nCodex\ne2e\napi › 1", "tip");
-ok(A.deskTip({ pane: { title: "zsh" }, space: { name: "api" }, tab: { name: "1" } }).startsWith("zsh\nNo agent here"), "empty desk tip");
+ok(A.deskTip({ pane: shell, space: { name: "api" }, tab: { name: "1" } }) === "Terminal\n…/sg-AI/coyle-member-sync\napi › 1", "terminal tip");
 ok(A.withAlpha("#6fb6ad", "24") === "#6fb6ad24" && A.withAlpha("#e0a44a55", "88") === "#e0a44a88", "alpha");
 ok(A.withAlpha("red", "24") === "red", "non-hex untouched");
+ok(A.mixHex("#000000", "#ffffff", 0.5) === "#808080" && A.mixHex("#6fb6ad", "#6fb6ad", 0.3) === "#6fb6ad", "mix");
+ok(A.mixHex("red", "#ffffff", 0.5) === "red", "mix leaves non-hex");
 ok(A.spaceColor({ ansi6: "#6fb6ad", accent: "#e0a44a" }, { s1: "ansi6" }, "s1") === "#6fb6ad", "space colour");
 ok(A.spaceColor({ muted: "#b0a894", accent: "#e0a44a" }, { s1: "ansi6" }, "s1") === "#b0a894", "unknown key -> muted");
-ok(A.spaceColor({ accent: "#e0a44a", __proto__: { x: 1 } }, null, "s1") === "#e0a44a", "no colours -> accent");
-
-// tabs lib: only the role helpers
-ok(T.portraitPath("manager") === A.portraitPath("manager"), "tabs lib shares portrait path");
-ok(T.parseCache === undefined && T.spritePath === undefined, "tabs lib has no cache or sprite helpers");
+ok(A.spaceColor({ accent: "#e0a44a" }, null, "s1") === "#e0a44a", "no colours, no muted -> accent");
 
 // inbox lib
 ok(I.kindOf("a.PNG") === "image", "ext case-insensitive");

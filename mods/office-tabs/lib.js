@@ -1,6 +1,6 @@
 // Office tabs MOD pure functions: no herdr / gpui-kit imports, loadable by node
-// for tests. Who sits at which tab; the same rules as mods/office-agents/lib.js,
-// so a tab's face matches its first agent's desk in the office.
+// for tests. Who sits at which tab: copied verbatim from mods/office-agents/lib.js
+// (roles, tabDesks, deskJobs), so the faces on a tab match its desks in the office.
 
 // The eight office roles. Order is the fallback rotation for unlisted tabs.
 export const JOBS = [
@@ -72,4 +72,37 @@ export function jobIn(name, assigned) {
 // be composed, so no traversal path is ever built.
 export function portraitPath(job) {
   return typeof job === "string" && JOB_SET.has(job) ? `${PORTRAITS_DIR}/${job}.png` : null;
+}
+
+// Every tab's desks: a desk per pane in the tab's pane order (an agent, or
+// nobody), then one per agent with no pane of its own (a sub-agent).
+export function tabDesks(spaces, panes, agents) {
+  const paneIds = new Set((panes ?? []).map((p) => p.pane));
+  const byPane = new Map();
+  const extra = new Map();
+  for (const a of agents ?? []) {
+    if (a.pane && paneIds.has(a.pane)) byPane.set(a.pane, a);
+    else extra.set(a.tab, [...(extra.get(a.tab) ?? []), a]);
+  }
+  const out = new Map();
+  for (const p of panes ?? []) out.set(p.tab, [...(out.get(p.tab) ?? []), { pane: p, agent: byPane.get(p.pane) ?? null }]);
+  for (const [tab, list] of extra) out.set(tab, [...(out.get(tab) ?? []), ...list.map((agent) => ({ pane: null, agent }))]);
+  return out;
+}
+
+// Every agent's role, by address. A tab's first agent keeps the tab's role (the
+// role jobs.json gives its name); the others get roles of their own, so a tab's
+// agents don't share a face while roles last.
+export function deskJobs(spaces, panes, agents, jobs) {
+  const desks = tabDesks(spaces, panes, agents);
+  const seated = [];
+  for (const s of spaces ?? []) {
+    for (const tab of s.tabs ?? []) {
+      (desks.get(tab.id) ?? []).filter((d) => d.agent)
+        .forEach((d, i) => seated.push({ tab: tab.name, address: d.agent.address, first: i === 0 }));
+    }
+  }
+  const own = (s) => `#${s.address}`;
+  const assigned = assignJobs([...tabNames(spaces, agents), ...seated.filter((s) => !s.first).map(own)], jobs);
+  return new Map(seated.map((s) => [s.address, jobIn(s.first ? s.tab : own(s), assigned)]));
 }

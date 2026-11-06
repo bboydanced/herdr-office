@@ -170,7 +170,11 @@
               },
               "min": 280,
               "max": 900,
-              "hidden": true
+              "hidden": true,
+              "background": {
+                "image": "mods/office-chrome/sidebar.png",
+                "fit": "cover"
+              }
             }
           ],
           "padding": 8,
@@ -187,7 +191,11 @@
           }
         }
       ],
-      "resizable": false
+      "resizable": false,
+      "background": {
+        "image": "mods/office-chrome/sidebar.png",
+        "fit": "cover"
+      }
     }
   ],
   "background": "canvas",

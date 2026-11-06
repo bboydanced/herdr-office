@@ -13,14 +13,14 @@ prompts below. Green screen (`#00FF00`) backgrounds get cut out afterwards.
 | File | Size | Notes |
 |---|---|---|
 | `mods/office-agents/art/<role>.png` | 88x88 | 8 role busts, transparent, shown at 44 pt |
-| `mods/office-agents/desks/<role>-<state>.gif` | 120x112 | `state` = `working` \| `blocked` \| `done` \| `idle`, transparent, looping, shown at 60x56 pt |
-| `mods/office-agents/desks/empty.png` | 120x112 | a desk with nobody at it, screen off |
-| `mods/office-agents/desks/shadow.png` | 120x112 | soft shadow drawn under every desk |
+| `mods/office-agents/desks/<role>-<state>.gif` | 144x120 | `state` = `working` \| `blocked` \| `done` \| `idle`, transparent, looping, shown at 72x60 pt |
+| `mods/office-agents/desks/empty.png` | 144x120 | a desk with nobody at it, screen off |
+| `mods/office-agents/desks/shadow.png` | 144x120 | soft shadow drawn under every desk |
 | `mods/office-agents/room/wall.png` | 600x88 | the office's back wall, shown 300x44 pt |
-| `mods/office-agents/room/floor.png` | 600x1600 | carpet behind the rugs, low contrast |
+| `mods/office-agents/room/floor.png` | 600x1600 | wooden floor behind the rugs |
 | `mods/office-tabs/art/<kind>.png` | 256x256 | `files`, `changes`, `inbox`, transparent |
-| `mods/office-chrome/sidebar.png` | 460x1844 | full-height sidebar, `cover`-cropped |
-| `mods/office-chrome/floor.png` | 1660x1224 | terminal background, low contrast |
+| `mods/office-chrome/sidebar.png` | 460x1844 | wallpaper behind the sidebar, the work column and the side panel, `cover`-cropped |
+| `mods/office-chrome/floor.png` | 1660x1224 | terminal background, dim wood |
 | `layouts/office.png` | 640x468 | layout picker thumbnail (from `tools/build-preview.py`) |
 
 Roles: `manager` (Claude Code), `developer`, `designer`, `analyst`, `writer`,
@@ -47,23 +47,24 @@ intern: ginger hair under a backwards red cap, freckles, green t-shirt, a lanyar
 
 ## Desks: one per role per state
 
-Desks are seen from slightly above, the worker from behind in an office chair,
-the monitor facing you so its screen shows the state. Keep the canvas: 30x28 art
-pixels, drawn at 4x.
+Desks are seen from the front and slightly above: the worker behind the desk in
+a high-backed chair, facing you, the monitor on the left also facing you so its
+screen shows the state, the role's things on the right. Keep the canvas: 36x30
+art pixels, drawn at 4x.
 
 Common block:
 
 ```
-Pixel art office desk seen from slightly above and behind the worker, 30x28 logical pixels scaled up with hard square pixels, dark outlines, limited palette, modern office at night, a warm desk lamp on the left, a monitor facing the viewer, the worker seated in a dark office chair with their back to the viewer, centered, plain solid pure green background (#00FF00), no text, no border, no floor, no scenery.
+Pixel art wooden office desk seen from the front, 36x30 logical pixels scaled up with hard square pixels, dark outlines, limited palette, modern office, a monitor on the left of the desk facing the viewer, the worker seated behind the desk in a dark high-backed office chair facing the viewer, a keyboard in front of them, centered, plain solid pure green background (#00FF00), no text, no border, no floor, no scenery.
 ```
 
 Then one line per state:
 
 ```
-working: hands on the keyboard, green screen with scrolling code, coffee steaming.
-blocked: one arm raised high, the screen flashing red with a white exclamation mark.
-done: leaning back with hands behind the head, blue screen with a green check mark.
-idle: head down on folded arms, dim screensaver on the screen, a small zZz above.
+working: hands on the keyboard, eyes on the screen, green screen with scrolling code, coffee steaming.
+blocked: one arm raised high, mouth open, a speech bubble with a red exclamation mark, the screen flashing red.
+done: stretching with hands behind the head, eyes closed and smiling, blue screen with a green check mark.
+idle: head down on folded arms on the desk, dim screensaver on the screen, a small zZz above.
 ```
 
 ## Tab icons
@@ -85,13 +86,13 @@ Wide strip pixel art, 150x22 logical pixels scaled up with hard square pixels, t
 ## Sidebar strip
 
 ```
-Tall narrow vertical illustration, pixel art, a dark ink-blue office wall at night with faint vertical panels, extremely dark and low contrast so white UI text stays readable on top, no characters, no text, no logo, no border. Aspect ratio about 1:4.
+Seamless pixel art wallpaper, dark ink-blue vertical stripes with a tiny dot pattern, extremely dark and low contrast so white UI text stays readable on top, no characters, no text, no logo, no border.
 ```
 
-## Carpet (office floor and terminal floor)
+## Wooden floor (office floor and terminal floor)
 
 ```
-Seamless pixel art office carpet tiles seen from above, alternating pile direction per tile, dark blue-grey, very low contrast, no light pools, no objects, no text, no border.
+Seamless pixel art wooden floor seen from above, rows of warm oak planks of random length with staggered joints and faint grain, soft pools of ceiling light, no objects, no text, no border. For the terminal floor: the same, much darker and lower contrast.
 ```
 
 ## Tuning

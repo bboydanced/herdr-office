@@ -56,24 +56,32 @@ first. Herdr keeps the mod names in its own `seen.json`, which is harmless.
 - **Theme `office-night`:** ink blue background `#101820`, panel `#1b252f`,
   amber accent `#e0a44a`, paper text `#e6dfd2`, muted steel `#5f8fa8`. Square
   corners with thin amber frames.
-- **Terminals** sit on dark office carpet: the pane `background` is
-  `mods/office-chrome/floor.png` (`cover`), root `terminal_opacity` is `0.62`.
+- **Terminals** sit on the office's wooden floor, dimmed: the pane `background`
+  is `mods/office-chrome/floor.png` (`cover`), root `terminal_opacity` is `0.62`.
+  The sidebar, the work column (tab bar, panes) and the side panel all sit on the
+  same night wallpaper, `mods/office-chrome/sidebar.png`.
 - **Sidebar, 300 px**, two parts (weights 0.62 and 1.38):
   - **Spaces:** a 44 px row per space. A 28 px project folder in the space's
     colour with its initial, the name, the branch when unusual, then one line:
     uncommitted files (`ansi3`), unpushed commits (`ansi2`), repos without a
     remote (`ansi1`), and a dot per agent in the space in its status colour.
   - **Office:** a header (`N need you`, `N/M at work`, the time), the back wall
-    (night windows, clock, kanban board, door, water cooler, plant), then the
-    floor. Each **space is a rug** in its folder's colour, in the Spaces order.
-    On it each **tab is a cubicle** with its name (amber for the tab you are
-    on), and in it each **pane is a desk** in the tab's pane order: up to three
-    in a row, four as two by two. A pane with an agent has its staff member at
-    the desk; any other pane (a shell, an editor) is an empty desk with the
-    screen off. A sub-agent without a pane of its own takes an extra desk at
+    (night windows, clock, kanban board, door, water cooler, plant), then a
+    wooden floor under pools of ceiling light. Each **space is a rug** in its
+    folder's colour, with a woven border, in the Spaces order. On it each **tab
+    is a cubicle**: light partition walls, the tab's name on the back one (amber
+    for the tab you are on). In it each **pane is a desk** in the tab's pane
+    order: up to three in a row, four as two by two. A pane with an agent has
+    its staff member behind the desk facing you, the monitor beside them showing
+    the state; any other pane is an empty desk with the screen off, labelled
+    `Terminal` for a shell (never the long `user@host:path` title) or its
+    program's name. A sub-agent without a pane of its own takes an extra desk at
     the end of its tab. Put-away tabs stay out unless someone in them needs you.
-- **Tabs, 58 px:** square 48 px tabs with a 44 px portrait, plus Files, Changes
-  and Inbox buttons that open the right panel.
+- **Tabs, 58 px:** square 48 px tabs showing **every agent in the tab**: one
+  agent as a 44 px portrait, several as overlapping faces framed in their status
+  colour (four at most, then `+n`), then a terminal mark with the count of the
+  tab's other panes. Faces match the desks in the office. Files, Changes and
+  Inbox buttons open the right panel.
 
 Herdr tells mods each tab's panes in order, but not where a split put them, so
 desks follow the pane order rather than the exact split.
@@ -82,12 +90,13 @@ desks follow the pane order rather than the exact split.
 
 | Status | Screen | Staff |
 |---|---|---|
-| `working` | green, code scrolling, LED green | typing, coffee steaming |
-| `blocked` | red, blinking `!` | one hand up; the label turns into a red `NEEDS YOU` tag |
-| `done` | blue with a check mark | leaning back, hands behind the head |
-| `idle` | screensaver | head down on the desk, `zZz` |
+| `working` | green, code scrolling, LED green | typing, eyes on the screen, coffee steaming |
+| `blocked` | red, blinking `!` | one hand up, mouth open, a `!` bubble; the label turns into a red `NEEDS YOU` tag |
+| `done` | blue with a check mark | stretching, hands behind the head, smiling |
+| `idle` | screensaver | head down on folded arms, `zZz` |
 
-Every desk is lit by its lamp and its screen. Click a staffed desk for
+Every desk is lit by its screen, and each role keeps its own things on it (a
+plant, a rubber duck, a phone, a chart, a stack of books...). Click a staffed desk for
 `agent.focus` (its terminal, in its space and tab); click an empty one to go to
 that pane. Hover for who, what and where. `agent.next` / `agent.prev` walk the
 desks in the order they are drawn. Narrowed below 160 px, the office becomes a
@@ -97,10 +106,10 @@ column of faces framed in their status colour.
 
 - **Who is who:** `mods/office-agents/jobs.json` maps a tab name to a role.
   Roles: `manager`, `developer`, `designer`, `analyst`, `writer`, `tester`,
-  `support`, `intern`. A tab's first agent wears the tab's role — the face on
-  the tab — and the other agents in that tab get roles of their own, so faces
-  repeat only past eight. Copy the file to every machine to get the same faces
-  everywhere.
+  `support`, `intern`. A tab's first agent wears the tab's role and the other
+  agents in that tab get roles of their own, so faces repeat only past eight.
+  The tab bar and the office work this out the same way (`tabDesks`,
+  `deskJobs`). Copy the file to every machine to get the same faces everywhere.
 - **Project colours** come from the Spaces list (`space.colors`), so the folder
   and the rug of a space always match.
 - **Art:** drawn by `tools/build-art.py`; `tools/build-preview.py` composes the

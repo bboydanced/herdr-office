@@ -10,15 +10,15 @@ shape, "sel-out" style), then scaled 4x with nearest-neighbour: one art pixel is
 2 points on screen and 4 device pixels on Retina.
 
 Output (relative to the repo root):
-    mods/office-agents/desks/<role>-<working|blocked|done|idle>.gif  120x112
-    mods/office-agents/desks/empty.png    a pane with no agent        120x112
-    mods/office-agents/desks/shadow.png   soft shadow under a desk    120x112
+    mods/office-agents/desks/<role>-<working|blocked|done|idle>.gif  144x120
+    mods/office-agents/desks/empty.png    a pane with no agent        144x120
+    mods/office-agents/desks/shadow.png   soft shadow under a desk    144x120
     mods/office-agents/art/<role>.png     bust portraits (tab bar)     88x88
     mods/office-agents/room/wall.png      the office's back wall      600x88
-    mods/office-agents/room/floor.png     office carpet              600x1600
+    mods/office-agents/room/floor.png     wooden floor               600x1600
     mods/office-tabs/art/<files|changes|inbox>.png                    256x256
-    mods/office-chrome/sidebar.png        sidebar backdrop           460x1844
-    mods/office-chrome/floor.png          terminal backdrop         1660x1224
+    mods/office-chrome/sidebar.png        wallpaper (sidebar, tab bar, panel)  460x1844
+    mods/office-chrome/floor.png          terminal backdrop, dim wood        1660x1224
 """
 
 from __future__ import annotations
@@ -193,197 +193,355 @@ ROLES = {
                    acc=(90, 70, 60), props=("lamp", "books")),
 }
 
-# Seen from behind, at the desk: 8 (afro: 10) columns from the top of the head.
-BACK = {
-    "short": (11, [
-        ".LLHHHH.",
-        "LHHHHHHh",
-        "HHHHHHHh",
-        "HHHHHHhh",
-        "SHHHHHhS",
-        ".hhhhhh.",
+# ---- the desk: staff facing you ---------------------------------------------
+# 36x30 art pixels: the monitor on the left with its screen to you, the staff
+# member behind the desk in a high-backed chair looking at you, their things on
+# the right. The head is x19..26, y2..9; eyes on y5..6.
+
+DW, DH = 36, 30
+
+KIT = {
+    "manager": ("mug", "papers"),
+    "developer": ("mug_dark", "can"),
+    "designer": ("plant",),
+    "analyst": ("chart",),
+    "intern": ("cactus", "can"),
+    "support": ("phone",),
+    "tester": ("duck",),
+    "writer": ("books", "mug"),
+}
+
+# Hair seen from the front: (first column, rows from y=0). "." leaves the face.
+HAIR = {
+    "short": (18, [
+        "..........",
+        "...hHHh...",
+        "..hHHLLHh.",
+        ".hHHLHHHHh",
+        ".HH..HHHHh",
+        ".H......H.",
+        ".h......h.",
     ]),
-    "grey": (11, [
-        ".LLLLHH.",
-        "LLHHHHHh",
-        "LHHHHHHh",
-        "HHHHHHhh",
-        "SHHHHHhS",
-        ".hhhhhh.",
+    "grey": (18, [
+        "..........",
+        "...LLLL...",
+        "..LHHHHLL.",
+        ".LHHHHHHHL",
+        ".HHH..HHHH",
+        ".H......H.",
+        ".h......h.",
     ]),
-    "messy": (11, [
-        "H.HL.HH.",
-        "AAAAAAAA",
-        "HHLHHHHh",
-        "HHHHHHhh",
-        "HHHHHHhh",
-        ".hHhhHh.",
+    "messy": (18, [
+        "..H..H.H..",
+        "..HHHHHHH.",
+        ".HHLHHLHHh",
+        ".HHHHHHHHh",
+        ".H.HH.HH.h",
+        ".h......h.",
     ]),
-    "long": (11, [
-        ".LLHHHH.",
-        "LHHLHHHh",
-        "HHHHHHHh",
-        "HHHHHHhh",
-        "HHHHHHhh",
-        "HHHHHhhh",
-        "HHHHhhhh",
-        ".HHhhhh.",
-        "..h..h..",
+    "long": (18, [
+        "..........",
+        "...hHHh...",
+        "..hHLLHHh.",
+        ".hHLHHHHHh",
+        ".HHHHHHHHh",
+        "HH......HH",
+        "HH......HH",
+        "HH......HH",
+        "HH......Hh",
+        "HH......hh",
+        "HHh....hHh",
+        ".Hh....hH.",
+        ".h......h.",
     ]),
-    "ponytail": (11, [
-        ".LLHHHH.",
-        "LHHLHHHh",
-        "HHHHHHHh",
-        "HHHAAHhh",
-        "SHHHHHhS",
-        ".hhHHhh.",
-        "...HH...",
-        "...Hh...",
-        "...h....",
+    "ponytail": (18, [
+        "..........",
+        "...hHHh...",
+        "..hHLLHHh.",
+        ".hHHLHHHHh",
+        ".HH..HHHHH",
+        ".H......HH",
+        ".h......HH",
+        ".........H",
+        ".........H",
+        ".........h",
     ]),
-    "headset": (11, [
-        ".LLHHHH.",
-        "AAAAAAAA",
-        "HHHHHHHh",
-        "HHHHHHhh",
-        "HHHHHHhh",
-        "HHHHHhhh",
-        "HHHHhhhh",
-        ".HHhhhh.",
+    "headset": (18, [
+        "..........",
+        "...hHHh...",
+        "..hHLLHHh.",
+        ".hHLHHHHHh",
+        ".HHHHHHHHh",
+        "HH......HH",
+        "HH......HH",
+        "HH......HH",
+        "HH......Hh",
+        "HH......hh",
+        "HHh....hHh",
+        ".Hh....hH.",
+        ".h......h.",
     ]),
-    "cap": (11, [
-        ".AAAAAA.",
-        "AAABAAAa",
-        "AAAAAAaa",
-        "SHHHHHHS",
-        "SHHHHHhS",
-        ".hhhhhh.",
+    "cap": (18, [
+        "...aAAa...",
+        "..aAABAa..",
+        ".aAAAAAAa.",
+        ".aaaaaaaa.",
+        ".HH.H.HH..",
+        ".H......H.",
     ]),
-    "afro": (10, [
-        ".HH.HLH.H.",
-        "HHLHHHHHHh",
-        "HHHHHLHHhh",
-        "HLHHHHHHhh",
-        "HHHHHHHhhh",
-        ".hHhhHhhh.",
+    "afro": (17, [
+        "..HHLHHLHH..",
+        ".HHHHHHHHHH.",
+        "HHLHHHHHHLHH",
+        "HHHHHHHHHHHh",
+        "HHH......HHh",
+        "HH........hh",
+        "HH........hh",
+        ".h........h.",
     ]),
 }
 
 
-def person(role: str, state: str, f: int) -> Art:
+def hair_pal(r):
+    return {"H": r["hair"], "h": dark(r["hair"], 0.28), "L": light(r["hair"], 0.25),
+            "A": r["acc"], "a": dark(r["acc"], 0.3), "B": light(r["acc"], 0.45)}
+
+
+def face(a: Art, role: str, mood: str, glow) -> None:
     r = ROLES[role]
-    a = Art(30, 28)
+    skin = r["skin"]
+    skin_d = dark(skin, 0.18)
+    a.rect(20, 2, 6, 1, skin)
+    a.rect(19, 3, 8, 6, skin)
+    a.rect(20, 9, 6, 1, skin)
+    a.rect(26, 3, 1, 6, skin_d)
+    a.rect(21, 9, 4, 1, skin_d)
+    a.rect(18, 5, 1, 2, skin)
+    a.rect(27, 5, 1, 2, skin_d)
+    glasses = role in ("analyst", "writer")
+    look = 0 if glasses or mood != "look" else -1  # eyes on the monitor, left
+    if mood in ("happy", "blink"):
+        a.rect(20 + look, 6, 2, 1, OUT)
+        a.rect(23 + look, 6, 2, 1, OUT)
+    else:
+        a.rect(21 + look, 5, 1, 2, OUT)
+        a.rect(24 + look, 5, 1, 2, OUT)
+        if sum(skin) < 420:  # a catch-light, so dark eyes read on darker skin
+            a.dot(22 + look, 5, (236, 232, 226))
+            a.dot(25 + look, 5, (236, 232, 226))
+    blush = mix(skin, (240, 120, 120), 0.4)
+    if role == "intern":
+        blush = mix(skin, (150, 90, 50), 0.45)
+    a.dot(20, 7, blush)
+    a.dot(25, 7, blush)
+    lip = mix(skin_d, (190, 70, 70), 0.4)
+    if mood == "open":
+        a.rect(22, 8, 2, 2, (120, 40, 44))
+    elif mood == "happy":
+        a.rect(21, 8, 4, 1, lip)
+    else:
+        a.rect(22, 8, 2, 1, lip)
+    if glasses:  # thin rims: the top bar and the outer sides
+        frame = (70, 56, 50) if role == "writer" else (44, 46, 60)
+        a.rect(20, 4, 6, 1, frame)
+        a.dot(20, 5, frame)
+        a.dot(25, 5, frame)
+        a.dot(22, 5, light(skin, 0.35))
+        a.dot(23, 5, light(skin, 0.35))
+    if glow is not None:  # the monitor lights the side of the face nearest it
+        for y in range(2, 10):
+            for x in (19, 20):
+                a.tint(x, y, glow, 0.14 if x == 19 else 0.06)
+
+
+def torso(a: Art, role: str) -> None:
+    r = ROLES[role]
     shirt, skin = r["shirt"], r["skin"]
     shirt_d, shirt_l, skin_d = dark(shirt, 0.28), light(shirt, 0.2), dark(skin, 0.18)
-    head_y = 8 + (2 if state == "idle" else 0)
+    a.rect(21, 10, 4, 1, skin_d)
+    a.rect(18, 11, 10, 1, shirt_l)
+    a.rect(17, 12, 12, 4, shirt)
+    a.rect(17, 12, 1, 4, shirt_l)
+    a.rect(28, 12, 1, 4, shirt_d)
+    acc = r["acc"]
+    if role == "manager":
+        a.rect(22, 11, 2, 1, WHITE)
+        a.rect(22, 12, 2, 4, acc)
+        a.rect(22, 12, 2, 1, dark(acc, 0.3))
+        for x, y in ((21, 12), (20, 13), (24, 12), (25, 13)):
+            a.dot(x, y, shirt_d)
+    elif role == "developer":
+        a.rect(19, 11, 8, 1, shirt_d)
+        a.rect(21, 12, 1, 2, WHITE)
+        a.rect(24, 12, 1, 2, WHITE)
+    elif role == "designer":
+        a.rect(21, 11, 4, 1, skin)
+        a.rect(22, 12, 2, 1, acc)
+    elif role == "analyst":
+        a.dot(21, 11, WHITE)
+        a.dot(24, 11, WHITE)
+        a.dot(23, 13, shirt_l)
+        a.dot(23, 15, shirt_l)
+    elif role == "intern":
+        a.dot(21, 11, (60, 60, 70))
+        a.dot(22, 12, (60, 60, 70))
+        a.rect(22, 13, 2, 2, WHITE)
+        a.dot(22, 13, (80, 140, 220))
+    elif role == "support":
+        a.dot(21, 11, shirt_l)
+        a.dot(24, 11, shirt_l)
+        a.dot(26, 13, WHITE)
+    elif role == "tester":
+        a.rect(19, 13, 2, 2, (60, 50, 40))
+        a.dot(18, 13, (60, 50, 40))
+        a.dot(21, 13, (60, 50, 40))
+    elif role == "writer":
+        a.rect(22, 11, 2, 5, (96, 74, 64))
+        a.dot(21, 13, dark(shirt, 0.4))
+        a.dot(24, 13, dark(shirt, 0.4))
 
-    # Shoulders over the chair back (the chair, drawn later, hides the rest).
-    a.rect(10, 15, 10, 1, shirt_l)
-    a.rect(9, 16, 12, 4, shirt)
-    a.rect(9, 16, 1, 4, shirt_l)
-    a.rect(20, 16, 1, 4, shirt_d)
-    a.rect(13, 14, 4, 1, skin_d)
 
+def accessories(a: Art, role: str, y_shift: int = 0) -> None:
+    r = ROLES[role]
+    acc = r["acc"]
+    if r["style"] == "messy":  # headphones
+        a.rect(19, 1 + y_shift, 8, 1, acc)
+        a.rect(18, 2 + y_shift, 1, 3, acc)
+        a.rect(27, 2 + y_shift, 1, 3, acc)
+        a.rect(17, 5 + y_shift, 2, 3, acc)
+        a.rect(27, 5 + y_shift, 2, 3, acc)
+        a.rect(17, 5 + y_shift, 1, 3, light(acc, 0.3))
+    if r["style"] == "headset":
+        a.rect(20, 1 + y_shift, 6, 1, acc)
+        a.rect(27, 5 + y_shift, 2, 2, acc)
+        if not y_shift:
+            a.dot(26, 7, acc)
+            a.dot(25, 8, (220, 80, 70))
+    if r["style"] == "long":
+        a.dot(26, 3 + y_shift, acc)
+        a.dot(27, 4 + y_shift, acc)
+    if r["style"] == "ponytail":
+        a.dot(27, 4 + y_shift, acc)
+
+
+def person_back(role: str, state: str, f: int) -> Art:
+    """Everything of the person behind the desk's top edge."""
+    r = ROLES[role]
+    a = Art(DW, DH)
+    shirt = r["shirt"]
+    shirt_d, skin = dark(shirt, 0.28), r["skin"]
+    if state == "done":  # stretching, hands behind the head
+        a.rect(17, 5, 2, 7, shirt)
+        a.rect(18, 3, 2, 2, shirt)
+        a.rect(27, 5, 2, 7, shirt_d)
+        a.rect(26, 3, 2, 2, shirt_d)
+    torso(a, role)
+    if state == "blocked":  # one hand up, waving
+        wave = f % 2
+        a.rect(28 + wave, 4, 2, 8, shirt_d)
+        a.rect(28 + wave, 2, 2, 2, skin)
+        a.dot(30 + wave, 3, skin)
+    x0, rows = HAIR[r["style"]]
+    if state == "idle":  # head down on the desk: the top of the head
+        top = [
+            "..hHHHHh..",
+            ".hHHLLHHh.",
+            ".HHLHHHHHh",
+            ".HHHHHHHHh",
+            ".hHHHHHHhh",
+        ]
+        pal = hair_pal(r)
+        if r["style"] == "cap":
+            top = [row.replace("H", "A").replace("L", "B").replace("h", "a") for row in top[:3]] + top[3:]
+        a.rows(18, 10, top, pal)
+        if r["style"] == "afro":
+            a.rect(17, 11, 1, 3, r["hair"])
+            a.rect(28, 11, 1, 3, dark(r["hair"], 0.28))
+        if r["style"] == "messy":
+            a.rect(18, 12, 10, 1, r["acc"])
+        return a.outline()
+    glow = GLOW.get(state)
+    mood = {"working": "blink" if f == 4 else "look", "blocked": "open", "done": "happy"}.get(state, "front")
+    face(a, role, mood, glow)
+    a.rows(x0, 0, rows, hair_pal(r))
+    accessories(a, role)
+    return a.outline()
+
+
+def person_front(role: str, state: str, f: int) -> Art:
+    """Hands on the keyboard, or arms folded on the desk."""
+    r = ROLES[role]
+    a = Art(DW, DH)
+    shirt, skin = r["shirt"], r["skin"]
+    if state == "idle":
+        a.rect(18, 15, 10, 2, shirt)
+        a.rect(18, 15, 10, 1, light(shirt, 0.2))
+        a.rect(22, 16, 2, 1, skin)
+        return a.outline()
+    lift_l = lift_r = 0
     if state == "working":
         lift_l, lift_r = (1, 0) if f % 2 == 0 else (0, 1)
         if f % 3 == 2:
             lift_l = lift_r = 0
-        a.rect(8, 14, 2, 3, shirt)
-        a.rect(20, 14, 2, 3, shirt_d)
-        a.rect(9, 13 - lift_l, 2, 1, skin)
-        a.rect(19, 13 - lift_r, 2, 1, skin)
-    elif state == "blocked":
-        a.rect(8, 14, 2, 3, shirt)
-        a.rect(9, 13, 2, 1, skin)
-        wave = f % 2
-        a.rect(20, 13, 2, 3, shirt_d)
-        a.rect(20 + wave, 9, 2, 4, shirt)
-        a.rect(20 + wave, 7, 2, 2, skin)
-        a.dot(21 + wave, 6, skin)
-    elif state == "done":
-        a.rect(8, 13, 2, 3, shirt)
-        a.rect(9, 11, 2, 2, shirt)
-        a.rect(20, 13, 2, 3, shirt_d)
-        a.rect(19, 11, 2, 2, shirt_d)
-    else:  # idle: arms folded on the desk, head down on them
-        a.rect(9, 13, 12, 2, shirt)
-        a.rect(9, 13, 12, 1, shirt_l)
-
-    x0, rows = BACK[r["style"]]
-    pal = {"H": r["hair"], "h": dark(r["hair"], 0.28), "L": light(r["hair"], 0.25),
-           "S": skin, "A": r["acc"], "a": dark(r["acc"], 0.3), "B": light(r["acc"], 0.4)}
-    if r["style"] in ("messy", "headset"):
-        pal["A"] = r["acc"]
-    if r["style"] == "ponytail":
-        pal["A"] = r["acc"]
-    a.rows(x0, head_y, rows, pal)
-
-    if r["style"] == "messy":  # headphone cups
-        a.rect(10, head_y + 3, 1, 2, r["acc"])
-        a.rect(19, head_y + 3, 1, 2, r["acc"])
-        a.dot(10, head_y + 3, light(r["acc"], 0.3))
-    if r["style"] == "headset":  # one ear piece and the mic boom
-        a.rect(19, head_y + 3, 1, 2, r["acc"])
-        a.dot(20, head_y + 5, r["acc"])
-        a.dot(20, head_y + 6, (220, 80, 70))
-    if role == "manager":  # white collar
-        a.rect(12, 14, 6, 1, WHITE)
-    if role == "developer":  # hoodie hood bunched at the neck
-        a.rect(12, 14, 6, 2, shirt_d)
-        a.rect(13, 14, 4, 1, shirt)
-
-    # The screen lights the top of the head.
-    if state in GLOW:
-        for x in range(a.w):
-            for y in range(head_y, head_y + 3):
-                if a.get(x, y) is not None:
-                    a.tint(x, y, GLOW[state], 0.22)
-                    break
+    a.rect(20, 16 - lift_l, 2, 1, skin)
+    if state != "blocked":
+        a.rect(24, 16 - lift_r, 2, 1, skin)
+    if state == "done":
+        return Art(DW, DH)  # hands are behind the head
     return a.outline()
 
 
-def chair(dx: int = 0, dy: int = 0) -> Art:
-    a = Art(30, 28)
-    x, y = 10 + dx, 17 + dy
-    a.rect(x + 1, y, 8, 1, CHAIR_HI)
-    a.rect(x, y + 1, 10, 5, CHAIR)
-    a.rect(x, y + 1, 1, 5, CHAIR_HI)
-    a.rect(x + 9, y + 1, 1, 5, CHAIR_SH)
-    a.rect(x + 1, y + 5, 8, 1, CHAIR_SH)
-    a.rect(x + 2, y + 2, 6, 1, mix(CHAIR, CHAIR_HI, 0.5))
-    a.rect(x + 4, y + 6, 2, 2, METAL_D)
-    a.rect(x + 1, y + 8, 8, 1, METAL_D)
-    for wx in (x + 1, x + 4, x + 8):
-        a.dot(wx, y + 9, (28, 30, 40))
+def keyboard() -> Art:
+    a = Art(DW, DH)
+    a.rect(19, 16, 8, 2, (196, 200, 210))
+    for x in range(19, 27, 2):
+        a.dot(x, 16, (150, 156, 170))
+        a.dot(x + 1, 17, (150, 156, 170))
+    a.rect(29, 17, 2, 1, (196, 200, 210))
     return a.outline()
 
 
-# ---- the desk and what is on it -------------------------------------------
+def chair_front(empty: bool = False) -> Art:
+    a = Art(DW, DH)
+    x = 16
+    a.rect(x + 1, 1, 12, 1, CHAIR_HI)
+    a.rect(x, 2, 14, 14, CHAIR)
+    a.rect(x, 2, 1, 14, CHAIR_HI)
+    a.rect(x + 13, 2, 1, 14, CHAIR_SH)
+    if empty:
+        for y in (5, 9):
+            a.rect(x + 3, y, 8, 1, mix(CHAIR, CHAIR_SH, 0.7))
+        a.rect(x + 2, 13, 10, 3, CHAIR_SH)
+    return a.outline()
 
 
-def desk(lit: bool) -> Art:
-    a = Art(30, 28)
-    a.rect(2, 12, 26, 2, WOOD)
-    a.rect(2, 14, 26, 1, WOOD_HI)
-    for x, y, n in ((4, 12, 5), (14, 13, 6), (22, 12, 4)):
+def desk_front(state: str) -> Art:
+    a = Art(DW, DH)
+    a.rect(1, 16, 34, 2, WOOD)
+    a.rect(1, 18, 34, 1, WOOD_HI)
+    for x, y, n in ((3, 16, 6), (12, 17, 5), (24, 16, 7), (31, 17, 3)):
         a.rect(x, y, n, 1, WOOD_GRAIN)
-    a.rect(2, 15, 26, 2, WOOD_SH)
-    a.rect(2, 16, 26, 1, WOOD_DK)
-    a.rect(22, 15, 3, 1, BRASS)
-    a.rect(3, 17, 2, 4, WOOD_DK)
-    a.rect(25, 17, 2, 4, WOOD_DK)
-    a.rect(3, 17, 1, 4, WOOD_SH)
-    a.rect(25, 17, 1, 4, WOOD_SH)
-    if lit:  # the desk lamp's pool of light
-        for y in range(12, 15):
-            for x in range(2, 11):
-                t = max(0.0, 1 - abs(x - 5) / 5.5) * (0.5 if y < 14 else 0.32)
-                a.tint(x, y, WARM, t)
+    a.rect(2, 19, 32, 8, WOOD_SH)
+    a.rect(2, 19, 32, 1, WOOD_DK)
+    a.rect(4, 21, 18, 4, mix(WOOD_SH, WOOD_DK, 0.35))
+    a.rect(4, 21, 18, 1, WOOD_DK)
+    a.rect(25, 20, 7, 2, WOOD)
+    a.rect(25, 23, 7, 2, WOOD)
+    a.rect(25, 22, 7, 1, WOOD_DK)
+    a.rect(28, 20, 2, 1, BRASS)
+    a.rect(28, 23, 2, 1, BRASS)
+    a.rect(2, 26, 32, 1, WOOD_DK)
+    a.rect(2, 27, 3, 2, WOOD_DK)
+    a.rect(31, 27, 3, 2, WOOD_DK)
+    if state in GLOW:  # the screen's light on the desk below it
+        for x in range(2, 15):
+            a.tint(x, 16, GLOW[state], 0.22)
+            a.tint(x, 17, GLOW[state], 0.12)
     return a.outline()
 
 
 def screen(a: Art, state: str, f: int) -> None:
-    x0, y0, w, h = 10, 2, 10, 5
+    x0, y0, w, h = 3, 5, 11, 6
     bg = SCREEN[state]
     if state == "blocked" and f % 2:
         bg = (128, 36, 34)
@@ -391,62 +549,39 @@ def screen(a: Art, state: str, f: int) -> None:
     if state == "working":
         for i in range(h):
             indent, length, col = CODE[(f + i) % len(CODE)]
-            a.rect(x0 + 1 + indent, y0 + i, length, 1, col)
+            a.rect(x0 + 1 + indent, y0 + i, min(length, w - 2 - indent), 1, col)
         if f % 2 == 0:
-            a.dot(x0 + 9, y0 + h - 1, WHITE)
+            a.dot(x0 + w - 2, y0 + h - 1, WHITE)
     elif state == "blocked":
         fg = (255, 244, 236) if f % 2 == 0 else (236, 150, 140)
-        a.rect(14, y0, 2, 3, fg)
-        a.rect(14, y0 + 4, 2, 1, fg)
+        a.rect(x0 + 4, y0, 2, 4, fg)
+        a.rect(x0 + 4, y0 + 5, 2, 1, fg)
     elif state == "done":
-        check = ["..........", ".......#..", "..#...#...", "...#.#....", "....#....."]
+        check = ["...........", "........#..", ".......#...", "..#...#....", "...#.#.....", "....#......"]
         a.rows(x0, y0, [r.replace("#", "C") for r in check], {"C": (156, 240, 166)})
-        sparkle = [(1, 0), (8, 3), (2, 4)][f % 3]
+        sparkle = [(1, 0), (9, 4), (2, 5)][f % 3]
         a.dot(x0 + sparkle[0], y0 + sparkle[1], (200, 220, 255))
     elif state == "idle":
-        xs, ys = [0, 2, 4, 6, 8, 6, 4, 2], [0, 1, 2, 3, 2, 1, 0, 1]
+        xs, ys = [0, 2, 4, 6, 9, 6, 4, 2], [0, 1, 2, 4, 2, 1, 0, 1]
         col = [(232, 120, 160), (120, 200, 240), (240, 200, 100)][(f // 3) % 3]
         a.rect(x0 + xs[f % 8], y0 + ys[f % 8], 2, 2, dark(col, 0.25))
-        a.dot(x0 + 3, y0 + 4 - ys[(f + 3) % 8], (44, 52, 76))
+        a.dot(x0 + 5, y0 + 5 - ys[(f + 3) % 8], (44, 52, 76))
     else:  # switched off: only a reflection
-        for i in range(3):
+        for i in range(4):
             a.dot(x0 + 6 + i, y0 + i, (46, 54, 72))
         a.dot(x0 + 8, y0, (46, 54, 72))
 
 
-def monitor(state: str, f: int) -> Art:
-    a = Art(30, 28)
-    a.rect(9, 1, 12, 7, BEZEL)
-    a.rect(9, 1, 12, 1, BEZEL_HI)
-    a.rect(14, 8, 2, 3, METAL_D)
-    a.rect(12, 11, 6, 1, METAL)
+def monitor_front(state: str, f: int) -> Art:
+    a = Art(DW, DH)
+    a.rect(2, 4, 13, 9, BEZEL)
+    a.rect(2, 4, 13, 1, BEZEL_HI)
+    a.rect(7, 13, 3, 2, METAL_D)
+    a.rect(5, 15, 7, 1, METAL)
     a.outline()
     screen(a, state, f)
-    a.dot(19, 7, LED[state])
+    a.dot(13, 12, LED[state])
     return a
-
-
-def lamp(a: Art, lit: bool) -> None:
-    a.rect(2, 12, 4, 1, METAL_D)
-    a.rect(3, 8, 1, 4, METAL)
-    a.dot(4, 7, METAL)
-    a.rect(4, 5, 4, 2, LAMP)
-    a.rect(5, 4, 2, 1, LAMP_D)
-    a.rect(4, 6, 4, 1, LAMP_D)
-    a.rect(5, 7, 2, 1, BULB if lit else BULB_OFF)
-
-
-def second_monitor(a: Art, state: str, f: int) -> None:
-    a.rect(2, 4, 6, 7, BEZEL)
-    a.rect(2, 4, 6, 1, BEZEL_HI)
-    a.rect(4, 11, 2, 1, METAL)
-    bg = (14, 40, 56) if state == "working" else (20, 26, 38)
-    a.rect(3, 5, 4, 5, bg)
-    for i in range(5):
-        indent, length, col = CODE[(f * 2 + i + 5) % len(CODE)]
-        if state != "working":
-            col = (40, 52, 70)
-        a.rect(3 + min(indent, 1), 5 + i, min(length, 4 - min(indent, 1)), 1, col)
 
 
 def mug(a: Art, x: int, y: int, body, band) -> None:
@@ -465,29 +600,24 @@ def steam(a: Art, x: int, y: int, f: int) -> None:
         a.dot(x + 2, y - 3, STEAM)
 
 
-def props(role: str | None, state: str, f: int, lit: bool) -> Art:
-    a = Art(30, 28)
-    kit = ROLES[role]["props"] if role else ("lamp",)
+def props_front(role: str, state: str, f: int) -> Art:
+    a = Art(DW, DH)
     after = []
-    for p in kit:
-        if p == "lamp":
-            lamp(a, lit)
-        elif p == "monitor2":
-            second_monitor(a, state, f)
-        elif p == "mug":
-            mug(a, 22, 11, PAPER, (224, 120, 74))
-            after.append(("steam", 22, 10))
+    for p in KIT[role]:
+        if p == "mug":
+            x = 31 if "books" not in KIT[role] else 30
+            mug(a, x, 14 if "books" not in KIT[role] else 9, PAPER, (224, 120, 74))
+            after.append((x, 13 if "books" not in KIT[role] else 8))
         elif p == "mug_dark":
-            mug(a, 23, 11, (56, 60, 74), (240, 180, 80))
-            after.append(("steam", 23, 10))
+            mug(a, 30, 14, (56, 60, 74), (240, 180, 80))
+            after.append((30, 13))
         elif p == "papers":
-            a.rect(25, 13, 4, 1, PAPER)
-            a.rect(26, 12, 3, 1, PAPER_D)
-            a.rect(25, 11, 3, 1, PAPER)
+            a.rect(29, 16, 5, 1, PAPER)
+            a.rect(30, 17, 5, 1, PAPER_D)
         elif p == "plant":
-            a.rect(23, 11, 4, 3, TERRA)
-            a.rect(22, 11, 6, 1, TERRA_L)
-            a.rows(21, 3, [
+            a.rect(30, 13, 4, 3, TERRA)
+            a.rect(29, 13, 6, 1, TERRA_L)
+            a.rows(28, 4, [
                 "...l....",
                 ".lGG.G..",
                 "GGgGlGG.",
@@ -496,84 +626,91 @@ def props(role: str | None, state: str, f: int, lit: bool) -> Art:
                 ".gGGGgG.",
                 "..gGGg..",
                 "...gG...",
+                "...g....",
             ], {"G": LEAF, "g": LEAF_D, "l": LEAF_L})
         elif p == "chart":
-            a.rect(22, 5, 6, 6, PAPER)
-            a.rect(23, 9, 1, 1, (120, 180, 240))
-            a.rect(24, 8, 1, 2, (120, 210, 140))
-            a.rect(25, 7, 1, 3, (240, 190, 90))
-            a.rect(26, 6, 1, 4, (232, 110, 110))
-            a.rect(24, 11, 2, 1, METAL_D)
-            a.rect(23, 12, 4, 1, (246, 220, 120))
+            a.rect(29, 7, 6, 7, PAPER)
+            a.rect(30, 12, 1, 1, (120, 180, 240))
+            a.rect(31, 11, 1, 2, (120, 210, 140))
+            a.rect(32, 10, 1, 3, (240, 190, 90))
+            a.rect(33, 9, 1, 4, (232, 110, 110))
+            a.rect(31, 14, 2, 2, METAL_D)
         elif p == "cactus":
-            a.rect(22, 11, 3, 2, TERRA)
-            a.rect(23, 7, 1, 4, LEAF)
-            a.dot(22, 8, LEAF)
-            a.dot(22, 9, LEAF_D)
-            a.dot(24, 9, LEAF_D)
-            a.dot(23, 6, (240, 120, 160))
+            a.rect(29, 14, 3, 2, TERRA)
+            a.rect(30, 10, 1, 4, LEAF)
+            a.dot(29, 11, LEAF)
+            a.dot(29, 12, LEAF_D)
+            a.dot(31, 12, LEAF_D)
+            a.dot(30, 9, (240, 120, 160))
         elif p == "can":
-            a.rect(26, 10, 2, 3, (70, 200, 120))
-            a.rect(26, 11, 2, 1, (30, 40, 40))
-            a.dot(26, 10, (200, 255, 210))
+            a.rect(33, 13, 2, 3, (70, 200, 120))
+            a.rect(33, 14, 2, 1, (30, 40, 40))
+            a.dot(33, 13, (200, 255, 210))
         elif p == "phone":
-            a.rect(22, 11, 5, 2, (200, 70, 60))
-            a.rect(22, 10, 5, 1, (150, 44, 40))
-            a.dot(22, 9, (150, 44, 40))
-            a.dot(26, 9, (150, 44, 40))
-            a.dot(24, 12, (250, 220, 200))
+            a.rect(29, 14, 5, 2, (200, 70, 60))
+            a.rect(29, 13, 5, 1, (150, 44, 40))
+            a.dot(29, 12, (150, 44, 40))
+            a.dot(33, 12, (150, 44, 40))
+            a.dot(31, 15, (250, 220, 200))
             if state == "blocked" and f % 2 == 0:
-                a.dot(27, 8, (255, 230, 120))
+                a.dot(34, 11, (255, 230, 120))
         elif p == "duck":
-            a.rect(22, 11, 4, 2, (250, 214, 64))
-            a.rect(24, 9, 2, 2, (250, 214, 64))
-            a.dot(26, 10, (240, 130, 50))
-            a.dot(24, 9, (40, 40, 40))
-            a.dot(22, 11, (255, 236, 140))
+            a.rect(29, 14, 4, 2, (250, 214, 64))
+            a.rect(31, 12, 2, 2, (250, 214, 64))
+            a.dot(33, 13, (240, 130, 50))
+            a.dot(32, 12, (40, 40, 40))
+            a.dot(29, 14, (255, 236, 140))
         elif p == "books":
-            a.rect(22, 12, 6, 1, (170, 60, 60))
-            a.rect(23, 11, 5, 1, (60, 110, 170))
-            a.rect(22, 10, 6, 1, (90, 150, 90))
-            a.rect(23, 9, 4, 1, (220, 180, 90))
-            for y in (9, 10, 11, 12):
-                a.dot(27 if y != 9 else 26, y, PAPER)
+            a.rect(29, 15, 6, 1, (170, 60, 60))
+            a.rect(30, 14, 5, 1, (60, 110, 170))
+            a.rect(29, 13, 6, 1, (90, 150, 90))
+            a.rect(30, 12, 4, 1, (220, 180, 90))
+            for y in (12, 13, 14, 15):
+                a.dot(34 if y != 12 else 33, y, PAPER)
     a.outline()
-    for kind, x, y in after:
-        if kind == "steam" and state == "working":
+    if state == "working":
+        for x, y in after:
             steam(a, x, y, f)
     return a
 
 
-def zzz(f: int) -> Art:
-    a = Art(30, 28)
-    z = ["###", ".#.", "###"]
-    big = ["####", "..#.", ".#..", "####"]
-    col = {"#": (206, 218, 255)}
-    step = (f // 2) % 4
-    if step >= 1:
-        a.rows(20, 7, z, col)
-    if step >= 2:
-        a.rows(23, 2, big, col)
-    return a.outline() if step else a
+def overlay(state: str, f: int) -> Art:
+    a = Art(DW, DH)
+    if state == "idle":
+        step = (f // 2) % 4
+        col = {"#": (206, 218, 255)}
+        if step >= 1:
+            a.rows(29, 6, ["###", ".#.", "###"], col)
+        if step >= 2:
+            a.rows(31, 0, ["####", "..#.", ".#..", "####"], col)
+        return a.outline() if step else a
+    if state == "blocked":  # a speech bubble with an exclamation mark
+        a.rect(31, 0, 4, 7, WHITE)
+        red = (220, 60, 50) if f % 2 == 0 else (160, 40, 36)
+        a.rect(32, 1, 2, 3, red)
+        a.rect(32, 5, 2, 1, red)
+        a.dot(31, 7, WHITE)
+        return a.outline()
+    return a
 
 
 def scene(role: str | None, state: str, f: int) -> Art:
-    lit = state != "empty"
-    base = desk(lit and (role is None or "lamp" in ROLES[role]["props"]))
-    if state in GLOW:  # the screen's light on the desk in front of it
-        for x in range(10, 20):
-            base.tint(x, 12, GLOW[state], 0.2)
-            base.tint(x, 13, GLOW[state], 0.1)
-    base.over(monitor(state, f))
-    base.over(props(role, state, f, lit))
+    a = Art(DW, DH)
     if state == "empty":
-        base.over(chair(dx=3, dy=1))
-    else:
-        base.over(person(role, state, f))
-        base.over(chair())
-        if state == "idle":
-            base.over(zzz(f))
-    return base
+        a.over(chair_front(empty=True))
+        a.over(desk_front("empty"))
+        a.over(monitor_front("empty", 0))
+        a.over(keyboard())
+        return a
+    a.over(chair_front())
+    a.over(person_back(role, state, f))
+    a.over(desk_front(state))
+    a.over(monitor_front(state, f))
+    a.over(keyboard())
+    a.over(person_front(role, state, f))
+    a.over(props_front(role, state, f))
+    a.over(overlay(state, f))
+    return a
 
 
 DESK_STATES = {"working": (6, 170), "blocked": (4, 320), "done": (6, 520), "idle": (8, 420)}
@@ -587,12 +724,12 @@ def build_desks() -> None:
             frames = [scene(role, state, i).big() for i in range(count)]
             write_gif(os.path.join(out, f"{role}-{state}.gif"), frames, ms)
     scene(None, "empty", 0).big().save(os.path.join(out, "empty.png"))
-    shadow = Art(30, 28)
-    for y in range(28):
-        for x in range(30):
-            d = ((x - 14.5) / 14.5) ** 2 + ((y - 22.5) / 5.5) ** 2
+    shadow = Art(DW, DH)
+    for y in range(DH):
+        for x in range(DW):
+            d = ((x - 17.5) / 17.5) ** 2 + ((y - 27.5) / 3.5) ** 2
             if d <= 1:
-                shadow.px[x, y] = (6, 8, 14, round(110 * (1 - d) ** 0.6))
+                shadow.px[x, y] = (6, 8, 14, round(120 * (1 - d) ** 0.6))
     shadow.big().save(os.path.join(out, "shadow.png"))
 
 
@@ -824,7 +961,8 @@ def build_portraits() -> None:
 
 def window(a: Art, x: int, y: int, w: int, h: int, seed: int, moon: bool) -> None:
     R = random.Random(seed)
-    a.rect(x - 1, y - 1, w + 2, h + 2, (74, 84, 106))
+    frame = (176, 182, 198)
+    a.rect(x - 1, y - 1, w + 2, h + 2, frame)
     for j in range(h):
         a.rect(x, y + j, w, 1, mix((12, 18, 42), (34, 42, 82), j / max(1, h - 1)))
     for _ in range(5):
@@ -845,9 +983,9 @@ def window(a: Art, x: int, y: int, w: int, h: int, seed: int, moon: bool) -> Non
                 if R.random() < 0.38:
                     a.dot(xx, yy, R.choice([(240, 186, 96), (220, 160, 80), (190, 200, 230)]))
         bx += bw
-    a.rect(x + w // 2, y, 1, h, (74, 84, 106))
-    a.rect(x, y + h // 2, w, 1, (74, 84, 106))
-    a.rect(x - 2, y + h + 1, w + 4, 1, (96, 106, 130))
+    a.rect(x + w // 2, y, 1, h, frame)
+    a.rect(x, y + h // 2, w, 1, frame)
+    a.rect(x - 2, y + h + 1, w + 4, 1, (206, 210, 222))
 
 
 def build_room() -> None:
@@ -855,23 +993,25 @@ def build_room() -> None:
     os.makedirs(out, exist_ok=True)
     W, H = 150, 22
     a = Art(W, H)
-    wall, wall_d = (38, 48, 70), (34, 43, 63)
+    wall, wall_d = (70, 82, 110), (64, 76, 102)
     a.rect(0, 0, W, 14, wall)
     for x in range(3, W, 6):
         a.rect(x, 2, 1, 12, wall_d)
-    a.rect(0, 0, W, 1, (24, 30, 44))
-    a.rect(0, 1, W, 1, (52, 62, 88))
-    a.rect(0, 14, W, 6, (30, 38, 56))
-    a.rect(0, 14, W, 1, (62, 72, 98))
+    a.rect(0, 0, W, 1, (40, 48, 66))
+    a.rect(0, 1, W, 1, (96, 108, 136))
+    # Wood wainscot with a rail and panels, then the skirting.
+    a.rect(0, 14, W, 6, (104, 74, 52))
+    a.rect(0, 14, W, 1, (150, 110, 74))
     for x in range(2, W, 12):
-        a.rect(x, 16, 9, 3, (27, 34, 50))
-    a.rect(0, 20, W, 2, (20, 24, 36))
+        a.rect(x, 16, 9, 3, (92, 64, 45))
+        a.rect(x, 16, 9, 1, (82, 56, 40))
+    a.rect(0, 20, W, 2, (56, 40, 30))
 
     window(a, 5, 2, 30, 10, 7, True)
     window(a, 106, 2, 26, 10, 11, False)
 
     # Clock at ten past ten.
-    a.rect(40, 3, 8, 8, (230, 228, 220))
+    a.rect(40, 3, 8, 8, (236, 234, 226))
     for x, y in ((40, 3), (47, 3), (40, 10), (47, 10)):
         a.dot(x, y, wall)
     a.rect(43, 4, 1, 3, (40, 40, 48))
@@ -879,7 +1019,7 @@ def build_room() -> None:
     a.dot(44, 7, (200, 60, 60))
 
     # Kanban board with sticky notes.
-    a.rect(52, 2, 22, 10, (222, 226, 232))
+    a.rect(52, 2, 22, 10, (228, 232, 238))
     for x in (59, 66):
         a.rect(x, 3, 1, 8, (190, 196, 206))
     notes = [(53, 3, (250, 214, 90)), (56, 4, (240, 130, 160)), (54, 7, (130, 200, 240)),
@@ -893,17 +1033,17 @@ def build_room() -> None:
     a.rect(78, 0, 8, 2, (60, 170, 110))
     a.rect(79, 0, 6, 1, (140, 240, 180))
     a.rect(76, 3, 12, 17, (66, 44, 32))
-    a.rect(77, 4, 10, 16, (128, 86, 58))
+    a.rect(77, 4, 10, 16, (138, 94, 62))
     a.rect(78, 5, 8, 4, (30, 40, 60))
     a.dot(79, 5, (70, 90, 120))
-    a.rect(78, 11, 8, 7, (116, 78, 52))
+    a.rect(78, 11, 8, 7, (124, 84, 56))
     a.dot(85, 13, BRASS)
 
     # Water cooler.
     a.rect(93, 6, 5, 5, (110, 176, 230))
     a.rect(94, 6, 1, 4, (190, 226, 250))
-    a.rect(92, 11, 7, 9, (200, 206, 216))
-    a.rect(92, 11, 1, 9, (226, 230, 238))
+    a.rect(92, 11, 7, 9, (210, 214, 222))
+    a.rect(92, 11, 1, 9, (236, 238, 242))
     a.dot(94, 14, (220, 80, 70))
     a.dot(96, 14, (80, 140, 230))
     a.rect(93, 16, 5, 1, (150, 156, 168))
@@ -926,28 +1066,46 @@ def build_room() -> None:
         ".....g......",
     ], {"G": LEAF, "g": LEAF_D, "l": LEAF_L})
     a.outline()
-    a.rect(0, 20, W, 2, (20, 24, 36))
+    a.rect(0, 20, W, 2, (56, 40, 30))
     a.big().save(os.path.join(out, "wall.png"))
 
-    carpet(150, 400, (30, 38, 52), seed=3).save(os.path.join(out, "floor.png"))
+    lights = [(75, y) for y in range(40, 400, 110)]
+    planks(150, 400, (138, 100, 68), seed=3, lights=lights).big().save(os.path.join(out, "floor.png"))
 
 
-def carpet(w: int, h: int, base, seed: int) -> Image.Image:
-    """Office carpet tiles with alternating pile, quiet enough to sit under text."""
+def planks(w: int, h: int, base, seed: int, lights=(), contrast: float = 1.0) -> Art:
+    """A wooden floor: rows of planks of random length with staggered joints,
+    each its own shade, faint grain, lit from above by `lights` (art pixels)."""
     R = random.Random(seed)
     a = Art(w, h)
-    up, down = light(base, 0.025), dark(base, 0.05)
-    for y in range(h):
-        for x in range(w):
-            tile = ((x // 8) + (y // 8)) % 2
-            stripe = (y % 2 == 0) if tile else (x % 2 == 0)
-            c = up if stripe else base
-            if x % 8 == 0 or y % 8 == 0:
-                c = down
-            if R.random() < 0.02:
-                c = mix(c, (60, 70, 90), 0.15)
-            a.dot(x, y, c)
-    return a.big()
+    seam = dark(base, 0.32)
+    for row in range(0, h, 4):
+        x = -R.randrange(0, 30)
+        while x < w:
+            length = R.randint(18, 40)
+            shade = R.uniform(-0.09, 0.09) * contrast
+            tone = light(base, shade) if shade > 0 else dark(base, -shade)
+            for yy in range(row, min(row + 4, h)):
+                for xx in range(max(x, 0), min(x + length, w)):
+                    c = tone
+                    if yy == row:
+                        c = seam
+                    elif yy == row + 1:
+                        c = light(tone, 0.05 * contrast)
+                    elif R.random() < 0.06:
+                        c = dark(tone, 0.08 * contrast)
+                    a.dot(xx, yy, c)
+            if x >= 0:
+                for yy in range(row, min(row + 4, h)):
+                    a.dot(x, yy, seam)
+            x += length
+    for lx, ly in lights:  # pools of light from the ceiling
+        for y in range(max(0, ly - 60), min(h, ly + 60)):
+            for x in range(w):
+                d = ((x - lx) / 90) ** 2 + ((y - ly) / 55) ** 2
+                if d < 1:
+                    a.tint(x, y, (255, 226, 176), 0.16 * (1 - d))
+    return a
 
 
 # ---- chrome ----------------------------------------------------------------
@@ -986,23 +1144,24 @@ def build_icons() -> None:
 
 
 def build_sidebar() -> None:
-    """The sidebar's backdrop: a dim night wall, barely there under the text."""
+    """Wallpaper behind the sidebar, the tab bar and the side panel: a dim
+    striped night wall, quiet enough for text on top."""
     w, h = 460, 1844
-    im = Image.new("RGB", (w, h), INK)
-    px = im.load()
-    for y in range(h):
-        c = mix((19, 27, 36), (13, 19, 26), y / h)
-        for x in range(w):
-            px[x, y] = c
-    d = ImageDraw.Draw(im)
-    for x in range(0, w, 46):
-        d.line([x, 0, x, h], fill=(17, 24, 32), width=2)
-    im.save(os.path.join(ROOT, "mods/office-chrome/sidebar.png"))
+    a = Art(w // 4, h // 4 + 1)
+    base, alt, dot = (19, 27, 37), (22, 31, 42), (28, 38, 51)
+    for y in range(a.h):
+        for x in range(a.w):
+            c = alt if (x // 4) % 2 else base
+            if (x % 8 == 2) and (y % 8 == 3 or y % 8 == 7 and x % 16 == 10):
+                c = dot
+            a.dot(x, y, c)
+    a.big().crop((0, 0, w, h)).convert("RGB").save(os.path.join(ROOT, "mods/office-chrome/sidebar.png"))
 
 
 def build_floor() -> None:
-    """The terminals' backdrop: the same carpet as the office, darker."""
-    carpet(415, 306, (18, 25, 33), seed=5).save(os.path.join(ROOT, "mods/office-chrome/floor.png"))
+    """The terminals' backdrop: the office's wooden floor, dimmed for text."""
+    planks(415, 306, (104, 78, 56), seed=5, lights=[(120, 80), (300, 220)]) \
+        .big().convert("RGB").save(os.path.join(ROOT, "mods/office-chrome/floor.png"))
 
 
 def main() -> None:

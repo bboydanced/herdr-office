@@ -1,5 +1,7 @@
 // Office MOD pure functions: no herdr / gpui-kit imports, loadable by node for
-// tests. The office plan, roles and picture paths; drawing lives in main.js.
+// tests. Who sits where, roles, labels and picture paths; drawing lives in
+// main.js. tabDesks, deskJobs and the role helpers are copied verbatim into
+// mods/office-tabs/lib.js, so the faces on a tab match the desks here.
 
 // The eight office roles. Order is the fallback rotation for unlisted tabs.
 export const JOBS = [
@@ -78,6 +80,39 @@ export function portraitPath(job) {
   return typeof job === "string" && JOB_SET.has(job) ? `${PORTRAITS_DIR}/${job}.png` : null;
 }
 
+// Every tab's desks: a desk per pane in the tab's pane order (an agent, or
+// nobody), then one per agent with no pane of its own (a sub-agent).
+export function tabDesks(spaces, panes, agents) {
+  const paneIds = new Set((panes ?? []).map((p) => p.pane));
+  const byPane = new Map();
+  const extra = new Map();
+  for (const a of agents ?? []) {
+    if (a.pane && paneIds.has(a.pane)) byPane.set(a.pane, a);
+    else extra.set(a.tab, [...(extra.get(a.tab) ?? []), a]);
+  }
+  const out = new Map();
+  for (const p of panes ?? []) out.set(p.tab, [...(out.get(p.tab) ?? []), { pane: p, agent: byPane.get(p.pane) ?? null }]);
+  for (const [tab, list] of extra) out.set(tab, [...(out.get(tab) ?? []), ...list.map((agent) => ({ pane: null, agent }))]);
+  return out;
+}
+
+// Every agent's role, by address. A tab's first agent keeps the tab's role (the
+// role jobs.json gives its name); the others get roles of their own, so a tab's
+// agents don't share a face while roles last.
+export function deskJobs(spaces, panes, agents, jobs) {
+  const desks = tabDesks(spaces, panes, agents);
+  const seated = [];
+  for (const s of spaces ?? []) {
+    for (const tab of s.tabs ?? []) {
+      (desks.get(tab.id) ?? []).filter((d) => d.agent)
+        .forEach((d, i) => seated.push({ tab: tab.name, address: d.agent.address, first: i === 0 }));
+    }
+  }
+  const own = (s) => `#${s.address}`;
+  const assigned = assignJobs([...tabNames(spaces, agents), ...seated.filter((s) => !s.first).map(own)], jobs);
+  return new Map(seated.map((s) => [s.address, jobIn(s.first ? s.tab : own(s), assigned)]));
+}
+
 // An agent's desk: its role's animation for its status (anything unknown dozes).
 export function deskPath(job, status) {
   if (typeof job !== "string" || !JOB_SET.has(job)) return null;
@@ -90,59 +125,46 @@ export function deskColumns(n) {
 }
 
 // The office plan: a rug per space in the Spaces list's order, a cubicle per tab,
-// a desk per pane in the tab's pane order (an agent, or nobody). An agent with no
-// pane of its own (a sub-agent) takes an extra desk at the end of its tab. Put-away
-// tabs stay out unless someone in them needs you; empty cubicles and rugs go.
+// its desks from tabDesks. Put-away tabs stay out unless someone in them needs
+// you; empty cubicles and rugs go.
 export function officePlan(spaces, panes, agents) {
-  const paneIds = new Set((panes ?? []).map((p) => p.pane));
-  const byPane = new Map();
-  const extra = new Map();
-  for (const a of agents ?? []) {
-    if (a.pane && paneIds.has(a.pane)) byPane.set(a.pane, a);
-    else extra.set(a.tab, [...(extra.get(a.tab) ?? []), a]);
-  }
-  const byTab = new Map();
-  for (const p of panes ?? []) byTab.set(p.tab, [...(byTab.get(p.tab) ?? []), p]);
+  const desks = tabDesks(spaces, panes, agents);
   return (spaces ?? [])
     .map((space) => ({
       space,
       tabs: (space.tabs ?? [])
         .filter((tab) => !tab.settled || tab.status === "blocked")
-        .map((tab) => ({
-          tab,
-          desks: [
-            ...(byTab.get(tab.id) ?? []).map((pane) => ({ pane, agent: byPane.get(pane.pane) ?? null })),
-            ...(extra.get(tab.id) ?? []).map((agent) => ({ pane: null, agent })),
-          ],
-        }))
+        .map((tab) => ({ tab, desks: desks.get(tab.id) ?? [] }))
         .filter((c) => c.desks.length > 0),
     }))
     .filter((row) => row.tabs.length > 0);
 }
 
-// Every agent's role. A tab's first agent keeps the tab's role, the face on its
-// tab; the others get roles of their own, so a tab's agents don't share a face
-// while roles last. `names`: tabNames(), so tab roles match the tab bar's.
-export function deskJobs(plan, jobs, names) {
-  const seated = [];
-  for (const row of plan ?? []) {
-    for (const c of row.tabs) {
-      c.desks.filter((d) => d.agent).forEach((d, i) => seated.push({ tab: c.tab.name, address: d.agent.address, first: i === 0 }));
-    }
+const clean = (v) => typeof v === "string"
+  ? v.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, "").replace(/^[^\p{L}\p{N}]+/u, "").replace(/\s+/g, " ").trim().slice(0, 60)
+  : "";
+// A shell's own title: "user@host:~/some/folder".
+const PROMPT = /^[^\s@]+@[^\s:]+:/;
+
+// The line under a desk. An agent: its terminal's title without the spinner or
+// status marks in front, else its program. A shell: "Terminal". Anything else:
+// its program's name.
+export function deskLabel({ agent, pane } = {}) {
+  if (agent) {
+    const title = clean(agent.title);
+    return (title && !PROMPT.test(title) ? title : clean(agent.program?.name)) || "Agent";
   }
-  const own = (s) => `#${s.address}`;
-  const assigned = assignJobs([...(names ?? []), ...seated.filter((s) => !s.first).map(own)], jobs);
-  return new Map(seated.map((s) => [s.address, jobIn(s.first ? s.tab : own(s), assigned)]));
+  if (!pane) return "";
+  if (pane.mod) return clean(pane.title) || clean(pane.mod) || "Panel";
+  if (!pane.program || pane.program.shell) return "Terminal";
+  return clean(pane.program.name) || "Terminal";
 }
 
-// The line under a desk: the terminal's title without the spinner or status marks
-// programs put in front of it, else the fallback (the program's name).
-export function deskLabel(title, fallback) {
-  const clean = (v) => typeof v === "string"
-    ? v.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029‪-‮⁦-⁩]/g, "")
-      .replace(/^[^\p{L}\p{N}]+/u, "").replace(/\s+/g, " ").trim().slice(0, 60)
-    : "";
-  return clean(title) || clean(fallback);
+// The last two folders of a path, enough to tell terminals apart.
+export function shortPath(path) {
+  if (typeof path !== "string" || path === "") return "";
+  const parts = path.replace(/\/+$/, "").split("/").filter(Boolean);
+  return parts.length > 2 ? `…/${parts.slice(-2).join("/")}` : path;
 }
 
 const STATUS = { working: "Working", blocked: "Needs you", done: "Done", idle: "Idle" };
@@ -150,15 +172,24 @@ const STATUS = { working: "Working", blocked: "Needs you", done: "Done", idle: "
 // Hover text for a desk: who, doing what, where.
 export function deskTip({ job, agent, pane, space, tab }) {
   const where = `${space?.name ?? ""} › ${tab?.name ?? ""}`;
-  if (!agent) return [deskLabel(pane?.title, pane?.program?.name) || "Terminal", "No agent here", where].join("\n");
+  if (!agent) return [deskLabel({ pane }) || "Terminal", shortPath(pane?.cwd) || "No agent here", where].join("\n");
   const who = job ? job[0].toUpperCase() + job.slice(1) : "Agent";
-  return [`${who} · ${STATUS[agent.status] ?? agent.status}`, agent.program?.name, deskLabel(agent.title), where]
+  return [`${who} · ${STATUS[agent.status] ?? agent.status}`, agent.program?.name, deskLabel({ agent }), where]
     .filter(Boolean).join("\n");
 }
 
+const HEX = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
+
 // A theme colour with a two-digit alpha; anything that isn't #rrggbb(aa) stays as is.
 export function withAlpha(color, alpha) {
-  return typeof color === "string" && /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(color) ? `${color.slice(0, 7)}${alpha}` : color;
+  return typeof color === "string" && HEX.test(color) ? `${color.slice(0, 7)}${alpha}` : color;
+}
+
+// Two #rrggbb colours mixed, `t` of the way from `a` to `b`; a non-hex `a` stays.
+export function mixHex(a, b, t) {
+  if (typeof a !== "string" || !HEX.test(a) || typeof b !== "string" || !HEX.test(b)) return a;
+  const ch = (c, i) => parseInt(c.slice(1 + i * 2, 3 + i * 2), 16);
+  return `#${[0, 1, 2].map((i) => Math.round(ch(a, i) + (ch(b, i) - ch(a, i)) * t).toString(16).padStart(2, "0")).join("")}`;
 }
 
 // A space's colour: the one the Spaces list gave it (`space.colors`, a theme key
