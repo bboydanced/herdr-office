@@ -79,7 +79,7 @@ first. Herdr keeps the mod names in its own `seen.json`, which is harmless.
     split**: panes split right sit side by side, panes split down sit one above
     the other, so a tab split right and then down on the right shows one desk
     on the left and two stacked on the right. A pane with an agent has
-    its staff member behind the desk facing you, the monitor beside them showing
+    its staff member (a pastel chibi) behind the desk facing you, the monitor beside them showing
     the state; any other pane is an empty desk with the screen off, labelled
     `Terminal` for a shell (never the long `user@host:path` title) or its
     program's name. A sub-agent without a pane of its own takes an extra desk at

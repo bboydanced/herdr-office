@@ -25,36 +25,44 @@ prompts below. Green screen (`#00FF00`) backgrounds get cut out afterwards.
 Roles: `manager` (Claude Code), `developer`, `designer`, `analyst`, `writer`,
 `tester`, `support`, `intern`.
 
+## People: the style
+
+Staff are drawn as **pastel chibi** characters, after a pastel voxel office:
+big heads, eyes with a white shine, rosy cheeks, soft warm-brown outlines (no
+black), blocky shading (lit top, darker right side). Desks, chairs and screens
+keep the darker office look around them. The tab portrait is the desk's head,
+laughing, over a wider body.
+
 ## Portrait: common block
 
 ```
-Pixel art character bust portrait, high resolution detailed 32-bit sprite style, hand-placed pixels, limited rich palette, soft cool light from upper left, warm amber highlights and deep ink-blue shadows, head and shoulders visible, three-quarter view facing right, centered, plain solid pure green background (#00FF00), no text, no logo, no border, no frame, no scenery. Modern office workplace, late evening.
+Cute pastel chibi character bust in the style of a voxel / pixel art office game, big head, large dark eyes with a white highlight, rosy cheeks, open happy smile, soft pastel colours, soft warm-brown outlines, blocky light-top dark-side shading, head and shoulders, facing the viewer, centered, plain solid pure green background (#00FF00), no text, no logo, no border, no scenery.
 ```
 
 ## Portraits: one per role
 
 ```
-manager: neat short brown hair with a side part, charcoal suit, white shirt, gold tie, calm confident expression.
-developer: messy dark hair, red over-ear headphones, teal hoodie with white drawstrings, focused half-smile.
-designer: long pink hair with a small gold clip, plum sweater, a gold necklace, bright curious eyes.
-analyst: blonde hair in a ponytail with a red scrunchie, round dark glasses, steel-blue button shirt.
-writer: short silver-grey hair, round dark glasses, cream cardigan over a brown shirt, thoughtful look.
-tester: big curly dark-brown afro, mustard t-shirt with a tiny bug print, one eyebrow arched.
-support: long dark auburn hair, a grey headset with a mic in front of the mouth, coral polo, warm smile.
-intern: ginger hair under a backwards red cap, freckles, green t-shirt, a lanyard with a white badge, eager expression.
+manager: neat brown hair with a side part, slate-blue suit, white collar, gold tie.
+developer: messy dark-brown hair, mint over-ear headphones, peach and cream striped tee.
+designer: long pastel-pink hair with a small yellow clip, lilac sweater, a gold necklace.
+analyst: blonde ponytail with a pink scrunchie, light blue half-rim glasses, sky-blue button shirt.
+writer: short silver-grey hair, light half-rim glasses, cream cardigan over a brown shirt.
+tester: big curly brown afro, warm brown skin, pastel mustard tee with a tiny bug print.
+support: long auburn hair, a grey headset with a short mic, coral polo.
+intern: brown hair under a light blue cap, freckles, yellow polo.
 ```
 
 ## Desks: one per role per state
 
-Desks are seen from the front and slightly above: the worker behind the desk in
-a high-backed chair, facing you, the monitor on the left also facing you so its
-screen shows the state, the role's things on the right. Keep the canvas: 36x30
-art pixels, drawn at 4x.
+Desks are seen from the front and slightly above: the worker, a pastel chibi,
+behind the desk in a high-backed chair, facing you, the monitor on the left also
+facing you so its screen shows the state, the role's things on the right. Keep
+the canvas: 36x30 art pixels, drawn at 4x.
 
 Common block:
 
 ```
-Pixel art wooden office desk seen from the front, 36x30 logical pixels scaled up with hard square pixels, dark outlines, limited palette, modern office, a monitor on the left of the desk facing the viewer, the worker seated behind the desk in a dark high-backed office chair facing the viewer, a keyboard in front of them, centered, plain solid pure green background (#00FF00), no text, no border, no floor, no scenery.
+Pixel art wooden office desk seen from the front, 36x30 logical pixels scaled up with hard square pixels, dark outlines, limited palette, modern office, a monitor on the left of the desk facing the viewer, a cute pastel chibi worker with a big head seated behind the desk in a dark high-backed office chair facing the viewer, soft warm-brown outlines on the worker, a keyboard in front of them, centered, plain solid pure green background (#00FF00), no text, no border, no floor, no scenery.
 ```
 
 Then one line per state:

@@ -169,28 +169,43 @@ def write_gif(path: str, frames: list[Image.Image], duration: int) -> None:
                    loop=0, disposal=2, optimize=True)
 
 
-# ---- people ----------------------------------------------------------------
-# Eight staff, each with their own look and their own things on the desk.
-# Keys in the hair rows: H hair, h hair shade, L hair light, S skin, A/a/B extras.
+# ---- people: pastel chibi ---------------------------------------------------
+# Big heads, eyes with a shine, rosy cheeks, soft warm outlines and blocky
+# light-top / dark-side shading, after a pastel voxel office. Desks, chairs and
+# screens keep their own look; only the people are drawn this way.
 
 ROLES = {
-    "manager": dict(shirt=(66, 74, 100), skin=(236, 194, 160), hair=(74, 46, 34), style="short",
-                    acc=(232, 186, 98), props=("lamp", "mug", "papers")),
-    "developer": dict(shirt=(46, 142, 140), skin=(200, 142, 102), hair=(58, 46, 52), style="messy",
-                      acc=(214, 84, 92), props=("monitor2", "mug_dark")),
-    "designer": dict(shirt=(150, 98, 184), skin=(242, 204, 174), hair=(234, 128, 168), style="long",
-                     acc=(255, 214, 90), props=("lamp", "plant")),
-    "analyst": dict(shirt=(84, 128, 192), skin=(226, 182, 142), hair=(234, 198, 112), style="ponytail",
-                    acc=(206, 76, 96), props=("lamp", "chart")),
-    "intern": dict(shirt=(98, 172, 96), skin=(246, 208, 178), hair=(214, 118, 56), style="cap",
-                   acc=(212, 72, 64), props=("lamp", "cactus", "can")),
-    "support": dict(shirt=(216, 102, 92), skin=(160, 108, 74), hair=(92, 48, 56), style="headset",
-                    acc=(60, 64, 80), props=("lamp", "phone")),
-    "tester": dict(shirt=(214, 168, 66), skin=(120, 80, 56), hair=(96, 62, 44), style="afro",
-                   acc=(255, 214, 64), props=("lamp", "duck")),
-    "writer": dict(shirt=(226, 214, 188), skin=(232, 188, 152), hair=(182, 184, 192), style="grey",
-                   acc=(90, 70, 60), props=("lamp", "books")),
+    "manager": dict(shirt=(120, 132, 176), skin=(255, 222, 196), hair=(110, 70, 52), style="short", acc=(246, 204, 92)),
+    "developer": dict(shirt=(242, 158, 128), skin=(246, 206, 172), hair=(92, 58, 46), style="messy", acc=(150, 214, 186)),
+    "designer": dict(shirt=(196, 166, 226), skin=(255, 226, 204), hair=(246, 166, 190), style="long", acc=(255, 214, 110)),
+    "analyst": dict(shirt=(150, 192, 236), skin=(250, 214, 184), hair=(250, 214, 130), style="ponytail", acc=(240, 120, 140)),
+    "intern": dict(shirt=(250, 214, 96), skin=(255, 222, 196), hair=(150, 92, 62), style="cap", acc=(120, 170, 230)),
+    "support": dict(shirt=(246, 150, 140), skin=(204, 146, 108), hair=(120, 64, 60), style="headset", acc=(150, 156, 176)),
+    "tester": dict(shirt=(236, 204, 116), skin=(176, 118, 84), hair=(96, 64, 50), style="afro", acc=(255, 214, 64)),
+    "writer": dict(shirt=(246, 234, 214), skin=(250, 214, 184), hair=(214, 214, 222), style="grey", acc=(150, 110, 90)),
 }
+
+EDGE = (92, 62, 64)
+EYE, SHINE = (44, 34, 42), (255, 255, 255)
+BLUSH = (248, 168, 166)
+LIP, MOUTH, TONGUE = (196, 104, 104), (150, 58, 70), (240, 128, 138)
+CREAM = (252, 238, 222)
+
+
+def soft_outline(a: Art) -> Art:
+    """Art.outline with a warm brown edge instead of ink: soft, pastel."""
+    src = a.im.copy().load()
+    for y in range(a.h):
+        for x in range(a.w):
+            if src[x, y][3]:
+                continue
+            for dx, dy in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < a.w and 0 <= ny < a.h and src[nx, ny][3]:
+                    a.px[x, y] = (*mix(src[nx, ny][:3], EDGE, 0.62), 255)
+                    break
+    return a
+
 
 # ---- the desk: staff facing you ---------------------------------------------
 # 36x30 art pixels: the monitor on the left with its screen to you, the staff
@@ -210,282 +225,315 @@ KIT = {
     "writer": ("books", "mug"),
 }
 
-# Hair seen from the front: (first column, rows from y=0). "." leaves the face.
+# Hair from the front: (first column, rows from y=0); "." leaves the face.
+# The head is x18..27, y1..10; eyes x20..21 and x24..25 on y6..7.
 HAIR = {
-    "short": (18, [
-        "..........",
-        "...hHHh...",
-        "..hHHLLHh.",
-        ".hHHLHHHHh",
-        ".HH..HHHHh",
-        ".H......H.",
-        ".h......h.",
-    ]),
-    "grey": (18, [
-        "..........",
-        "...LLLL...",
-        "..LHHHHLL.",
-        ".LHHHHHHHL",
-        ".HHH..HHHH",
-        ".H......H.",
-        ".h......h.",
-    ]),
-    "messy": (18, [
-        "..H..H.H..",
-        "..HHHHHHH.",
-        ".HHLHHLHHh",
-        ".HHHHHHHHh",
-        ".H.HH.HH.h",
-        ".h......h.",
-    ]),
-    "long": (18, [
-        "..........",
-        "...hHHh...",
-        "..hHLLHHh.",
-        ".hHLHHHHHh",
-        ".HHHHHHHHh",
-        "HH......HH",
-        "HH......HH",
-        "HH......HH",
-        "HH......Hh",
-        "HH......hh",
-        "HHh....hHh",
-        ".Hh....hH.",
-        ".h......h.",
-    ]),
-    "ponytail": (18, [
-        "..........",
-        "...hHHh...",
-        "..hHLLHHh.",
-        ".hHHLHHHHh",
-        ".HH..HHHHH",
-        ".H......HH",
-        ".h......HH",
-        ".........H",
-        ".........H",
-        ".........h",
-    ]),
-    "headset": (18, [
-        "..........",
-        "...hHHh...",
-        "..hHLLHHh.",
-        ".hHLHHHHHh",
-        ".HHHHHHHHh",
-        "HH......HH",
-        "HH......HH",
-        "HH......HH",
-        "HH......Hh",
-        "HH......hh",
-        "HHh....hHh",
-        ".Hh....hH.",
-        ".h......h.",
-    ]),
-    "cap": (18, [
-        "...aAAa...",
-        "..aAABAa..",
-        ".aAAAAAAa.",
-        ".aaaaaaaa.",
-        ".HH.H.HH..",
-        ".H......H.",
-    ]),
-    "afro": (17, [
-        "..HHLHHLHH..",
-        ".HHHHHHHHHH.",
-        "HHLHHHHHHLHH",
-        "HHHHHHHHHHHh",
-        "HHH......HHh",
-        "HH........hh",
-        "HH........hh",
+    "short": (17, [
+        "....hHHh....",
+        "...hHLLHHh..",
+        "..hHHLLHHHh.",
+        ".hHHLHHHHHHh",
+        ".HHHH...HHHh",
+        ".HH......HHh",
+        ".H........H.",
         ".h........h.",
     ]),
+    "grey": (17, [
+        "....LLLL....",
+        "...LLHHHLL..",
+        "..LHHHHHHHL.",
+        ".LHHHHHHHHHh",
+        ".HHH.HHHHHHh",
+        ".HH.....HHHh",
+        ".H........H.",
+        ".h........h.",
+    ]),
+    "messy": (17, [
+        "...H.HH.H.H.",
+        "..HHHHHHHHH.",
+        ".HHLHHHLHHHh",
+        ".HHHHHHHHHHh",
+        ".HHH.HHH.HHh",
+        ".HH......HHh",
+        ".h........h.",
+    ]),
+    "long": (17, [
+        "....hHHh....",
+        "...hHLLHHh..",
+        "..hHLLHHHHh.",
+        ".hHLHHHHHHHh",
+        "HHHHHHHHHHHH",
+        "HHH.H..H.HHH",
+        "HH........HH",
+        "HH........HH",
+        "HH........HH",
+        "HH........Hh",
+        "HHh......hHh",
+        "HHh......hHh",
+        ".Hh......hH.",
+        ".h........h.",
+    ]),
+    "ponytail": (17, [
+        "....hHHh....",
+        "...hHLLHHh..",
+        "..hHHLHHHHh.",
+        ".hHHHHHHHHHH",
+        ".HHHH...HHHH",
+        ".HH......HHH",
+        ".H........HH",
+        "..........HH",
+        "..........Hh",
+        "..........Hh",
+        "...........h",
+    ]),
+    "cap": (17, [
+        "...aAAAAa...",
+        "..aAABBAAa..",
+        ".aAAAAAAAAa.",
+        ".aAAAAAAAAAa",
+        "bbbbbbbbbbb.",
+        ".HH......HH.",
+        ".H........H.",
+    ]),
+    "afro": (16, [
+        "....HHLHHLH...",
+        "..HHHHHHHHHHH.",
+        ".HHLHHHHHHLHH.",
+        "HHHHHHHHHHHHHh",
+        "HHHHHHHHHHHHhh",
+        "HHH........Hhh",
+        "HH..........hh",
+        "HH..........hh",
+        ".H..........h.",
+    ]),
 }
+HAIR["headset"] = HAIR["long"]
+
+# The top of a head resting on the desk (idle), from x=17, y=9.
+TOP = [
+    "...hHHHHh...",
+    "..hHLLHHHh..",
+    ".hHLHHHHHHh.",
+    ".HHHHHHHHHHh",
+    ".HHHHHHHHHHh",
+    "..hHHHHHHh..",
+]
 
 
 def hair_pal(r):
-    return {"H": r["hair"], "h": dark(r["hair"], 0.28), "L": light(r["hair"], 0.25),
-            "A": r["acc"], "a": dark(r["acc"], 0.3), "B": light(r["acc"], 0.45)}
+    return {"H": r["hair"], "h": dark(r["hair"], 0.25), "L": light(r["hair"], 0.3),
+            "A": r["acc"], "a": dark(r["acc"], 0.25), "B": light(r["acc"], 0.5), "b": light(r["acc"], 0.3)}
 
 
-def face(a: Art, role: str, mood: str, glow) -> None:
+def headwear(a: Art, role: str, dy: int = 0) -> None:
+    """Headphones, a headset, a hair clip or a scrunchie, over the hair."""
+    r = ROLES[role]
+    acc, hi, side = r["acc"], light(r["acc"], 0.35), dark(r["acc"], 0.22)
+    style = r["style"]
+    if style == "messy":
+        a.rect(19, dy, 8, 1, hi)
+        a.dot(18, dy + 1, acc)
+        a.dot(27, dy + 1, acc)
+        a.rect(17, dy + 2, 1, 3, acc)
+        a.rect(28, dy + 2, 1, 3, acc)
+        for x in (16, 27):
+            a.rect(x, dy + 5, 3, 5, acc)
+            a.rect(x, dy + 5, 3, 1, hi)
+        a.rect(29, dy + 6, 1, 4, side)
+    elif style == "headset":
+        a.rect(19, dy, 8, 1, acc)
+        a.rect(27, dy + 5, 3, 3, acc)
+        a.rect(27, dy + 5, 3, 1, hi)
+        if not dy:  # a short mic boom by the cheek
+            a.dot(28, 8, acc)
+            a.dot(27, 9, (232, 88, 80))
+    elif style == "long":
+        a.dot(26, dy + 3, acc)
+        a.dot(27, dy + 4, acc)
+    elif style == "ponytail":
+        a.rect(27, dy + 4, 2, 1, acc)
+
+
+def head(role: str, mood: str, glow=None) -> Art:
+    """The head, face and hair, softly outlined. `mood`: look (at the monitor,
+    left), front, blink, open (surprised or laughing), happy (eyes closed)."""
     r = ROLES[role]
     skin = r["skin"]
-    skin_d = dark(skin, 0.18)
-    a.rect(20, 2, 6, 1, skin)
-    a.rect(19, 3, 8, 6, skin)
-    a.rect(20, 9, 6, 1, skin)
-    a.rect(26, 3, 1, 6, skin_d)
-    a.rect(21, 9, 4, 1, skin_d)
-    a.rect(18, 5, 1, 2, skin)
-    a.rect(27, 5, 1, 2, skin_d)
+    skin_d = dark(skin, 0.14)
+    a = Art(DW, DH)
+    a.rect(20, 1, 6, 1, skin)
+    a.rect(19, 2, 8, 1, skin)
+    a.rect(18, 3, 10, 6, skin)
+    a.rect(19, 9, 8, 1, skin)
+    a.rect(20, 10, 6, 1, skin)
+    a.rect(27, 3, 1, 6, skin_d)
+    a.dot(26, 9, skin_d)
+    a.rect(17, 6, 1, 2, skin)
+    a.rect(28, 6, 1, 2, skin_d)
     glasses = role in ("analyst", "writer")
-    look = 0 if glasses or mood != "look" else -1  # eyes on the monitor, left
-    if mood in ("happy", "blink"):
-        a.rect(20 + look, 6, 2, 1, OUT)
-        a.rect(23 + look, 6, 2, 1, OUT)
+    shift = -1 if mood in ("look", "blink") and not glasses else 0
+    if mood == "happy":
+        for x in (19, 24):
+            a.dot(x, 7, EYE)
+            a.dot(x + 1, 6, EYE)
+            a.dot(x + 2, 7, EYE)
+    elif mood == "blink":
+        a.rect(20 + shift, 7, 2, 1, EYE)
+        a.rect(24 + shift, 7, 2, 1, EYE)
     else:
-        a.rect(21 + look, 5, 1, 2, OUT)
-        a.rect(24 + look, 5, 1, 2, OUT)
-        if sum(skin) < 420:  # a catch-light, so dark eyes read on darker skin
-            a.dot(22 + look, 5, (236, 232, 226))
-            a.dot(25 + look, 5, (236, 232, 226))
-    blush = mix(skin, (240, 120, 120), 0.4)
-    if role == "intern":
-        blush = mix(skin, (150, 90, 50), 0.45)
-    a.dot(20, 7, blush)
-    a.dot(25, 7, blush)
-    lip = mix(skin_d, (190, 70, 70), 0.4)
+        for x in (20 + shift, 24 + shift):
+            a.rect(x, 6, 2, 2, EYE)
+            a.dot(x, 6, SHINE)
+    a.rect(18, 8, 2, 1, BLUSH)
+    a.rect(26, 8, 2, 1, BLUSH)
+    if role == "intern":  # freckles
+        a.dot(19, 8, mix(skin, (170, 100, 60), 0.5))
+        a.dot(26, 8, mix(skin, (170, 100, 60), 0.5))
     if mood == "open":
-        a.rect(22, 8, 2, 2, (120, 40, 44))
+        a.rect(22, 8, 2, 1, MOUTH)
+        a.rect(22, 9, 2, 1, TONGUE)
     elif mood == "happy":
-        a.rect(21, 8, 4, 1, lip)
+        a.dot(21, 8, MOUTH)
+        a.dot(24, 8, MOUTH)
+        a.rect(22, 9, 2, 1, MOUTH)
     else:
-        a.rect(22, 8, 2, 1, lip)
-    if glasses:  # thin rims: the top bar and the outer sides
-        frame = (70, 56, 50) if role == "writer" else (44, 46, 60)
-        a.rect(20, 4, 6, 1, frame)
-        a.dot(20, 5, frame)
-        a.dot(25, 5, frame)
-        a.dot(22, 5, light(skin, 0.35))
-        a.dot(23, 5, light(skin, 0.35))
-    if glow is not None:  # the monitor lights the side of the face nearest it
-        for y in range(2, 10):
-            for x in (19, 20):
-                a.tint(x, y, glow, 0.14 if x == 19 else 0.06)
+        a.rect(22, 9, 2, 1, LIP)
+    x0, rows = HAIR[r["style"]]
+    a.rows(x0, 0, rows, hair_pal(r))
+    headwear(a, role)
+    if glasses:  # light half-rims: a bar over each eye and the outer sides
+        frame = (150, 112, 104) if role == "writer" else (120, 140, 190)
+        a.rect(19, 5, 3, 1, frame)
+        a.rect(24, 5, 3, 1, frame)
+        a.rect(22, 5, 2, 1, dark(frame, 0.15))
+        a.dot(19, 6, frame)
+        a.dot(26, 6, frame)
+    if glow is not None:  # the monitor's light on the near cheek
+        for y in range(3, 10):
+            a.tint(18, y, glow, 0.12)
+    return soft_outline(a)
 
 
-def torso(a: Art, role: str) -> None:
+def outfit(a: Art, role: str, cx: int, top: int, x0: int, x1: int, bottom: int) -> None:
+    """Shirt details: `cx` the left of the two middle columns, `top` the
+    shoulder row, the body x0..x1 down to `bottom`."""
     r = ROLES[role]
-    shirt, skin = r["shirt"], r["skin"]
-    shirt_d, shirt_l, skin_d = dark(shirt, 0.28), light(shirt, 0.2), dark(skin, 0.18)
-    a.rect(21, 10, 4, 1, skin_d)
-    a.rect(18, 11, 10, 1, shirt_l)
-    a.rect(17, 12, 12, 4, shirt)
-    a.rect(17, 12, 1, 4, shirt_l)
-    a.rect(28, 12, 1, 4, shirt_d)
-    acc = r["acc"]
-    if role == "manager":
-        a.rect(22, 11, 2, 1, WHITE)
-        a.rect(22, 12, 2, 4, acc)
-        a.rect(22, 12, 2, 1, dark(acc, 0.3))
-        for x, y in ((21, 12), (20, 13), (24, 12), (25, 13)):
-            a.dot(x, y, shirt_d)
-    elif role == "developer":
-        a.rect(19, 11, 8, 1, shirt_d)
-        a.rect(21, 12, 1, 2, WHITE)
-        a.rect(24, 12, 1, 2, WHITE)
+    shirt, skin, acc = r["shirt"], r["skin"], r["acc"]
+    shirt_d, shirt_l = dark(shirt, 0.18), light(shirt, 0.35)
+    if role == "developer":  # stripes, like a peach and cream tee
+        for y in range(top, bottom + 1):
+            if (y - top) % 2 == 0:
+                for x in range(x0, x1 + 1):
+                    if a.get(x, y) is not None:
+                        a.dot(x, y, CREAM if x < x1 else dark(CREAM, 0.12))
+    elif role == "manager":
+        a.rect(cx, top, 2, 1, WHITE)
+        a.rect(cx, top + 1, 2, bottom - top, acc)
+        a.rect(cx, top + 1, 2, 1, dark(acc, 0.25))
+        a.dot(cx - 1, top + 1, shirt_d)
+        a.dot(cx + 2, top + 1, shirt_d)
     elif role == "designer":
-        a.rect(21, 11, 4, 1, skin)
-        a.rect(22, 12, 2, 1, acc)
+        a.rect(cx - 1, top, 4, 1, skin)
+        a.rect(cx, top + 1, 2, 1, acc)
     elif role == "analyst":
-        a.dot(21, 11, WHITE)
-        a.dot(24, 11, WHITE)
-        a.dot(23, 13, shirt_l)
-        a.dot(23, 15, shirt_l)
+        a.dot(cx - 1, top, WHITE)
+        a.dot(cx + 2, top, WHITE)
+        for y in range(top + 2, bottom + 1, 2):
+            a.dot(cx + 1, y, shirt_l)
     elif role == "intern":
-        a.dot(21, 11, (60, 60, 70))
-        a.dot(22, 12, (60, 60, 70))
-        a.rect(22, 13, 2, 2, WHITE)
-        a.dot(22, 13, (80, 140, 220))
+        a.dot(cx - 1, top, shirt_l)
+        a.dot(cx + 2, top, shirt_l)
+        a.rect(cx, top + 1, 2, 1, shirt_d)
     elif role == "support":
-        a.dot(21, 11, shirt_l)
-        a.dot(24, 11, shirt_l)
-        a.dot(26, 13, WHITE)
+        a.dot(cx - 1, top, WHITE)
+        a.dot(cx + 2, top, WHITE)
+        a.dot(x1 - 1, top + 2, WHITE)
     elif role == "tester":
-        a.rect(19, 13, 2, 2, (60, 50, 40))
-        a.dot(18, 13, (60, 50, 40))
-        a.dot(21, 13, (60, 50, 40))
+        a.rect(x0 + 1, top + 2, 2, 2, (110, 80, 60))
     elif role == "writer":
-        a.rect(22, 11, 2, 5, (96, 74, 64))
-        a.dot(21, 13, dark(shirt, 0.4))
-        a.dot(24, 13, dark(shirt, 0.4))
+        a.rect(cx, top, 2, bottom - top + 1, (150, 110, 90))
+        a.dot(cx - 1, top + 2, dark(shirt, 0.3))
+        a.dot(cx + 2, top + 2, dark(shirt, 0.3))
 
 
-def accessories(a: Art, role: str, y_shift: int = 0) -> None:
+def torso(role: str) -> Art:
     r = ROLES[role]
-    acc = r["acc"]
-    if r["style"] == "messy":  # headphones
-        a.rect(19, 1 + y_shift, 8, 1, acc)
-        a.rect(18, 2 + y_shift, 1, 3, acc)
-        a.rect(27, 2 + y_shift, 1, 3, acc)
-        a.rect(17, 5 + y_shift, 2, 3, acc)
-        a.rect(27, 5 + y_shift, 2, 3, acc)
-        a.rect(17, 5 + y_shift, 1, 3, light(acc, 0.3))
-    if r["style"] == "headset":
-        a.rect(20, 1 + y_shift, 6, 1, acc)
-        a.rect(27, 5 + y_shift, 2, 2, acc)
-        if not y_shift:
-            a.dot(26, 7, acc)
-            a.dot(25, 8, (220, 80, 70))
-    if r["style"] == "long":
-        a.dot(26, 3 + y_shift, acc)
-        a.dot(27, 4 + y_shift, acc)
-    if r["style"] == "ponytail":
-        a.dot(27, 4 + y_shift, acc)
+    shirt = r["shirt"]
+    a = Art(DW, DH)
+    a.rect(21, 11, 4, 1, dark(r["skin"], 0.14))
+    a.rect(19, 12, 8, 1, light(shirt, 0.2))
+    a.rect(18, 13, 10, 3, shirt)
+    a.rect(18, 13, 1, 3, light(shirt, 0.2))
+    a.rect(27, 13, 1, 3, dark(shirt, 0.18))
+    outfit(a, role, 22, 12, 18, 27, 15)
+    return soft_outline(a)
+
+
+def sleeve(a: Art, role: str, x: int, y: int, w: int, h: int) -> None:
+    shirt = ROLES[role]["shirt"]
+    a.rect(x, y, w, h, shirt)
+    if role == "developer":
+        for yy in range(y, y + h, 2):
+            a.rect(x, yy, w, 1, CREAM)
+    a.rect(x + w - 1, y, 1, h, dark(shirt, 0.18) if role != "developer" else dark(CREAM, 0.1))
 
 
 def person_back(role: str, state: str, f: int) -> Art:
     """Everything of the person behind the desk's top edge."""
     r = ROLES[role]
     a = Art(DW, DH)
-    shirt = r["shirt"]
-    shirt_d, skin = dark(shirt, 0.28), r["skin"]
     if state == "done":  # stretching, hands behind the head
-        a.rect(17, 5, 2, 7, shirt)
-        a.rect(18, 3, 2, 2, shirt)
-        a.rect(27, 5, 2, 7, shirt_d)
-        a.rect(26, 3, 2, 2, shirt_d)
-    torso(a, role)
+        arms = Art(DW, DH)
+        sleeve(arms, role, 16, 4, 2, 8)
+        sleeve(arms, role, 28, 4, 2, 8)
+        arms.rect(17, 3, 2, 1, r["shirt"])
+        arms.rect(27, 3, 2, 1, r["shirt"])
+        a.over(soft_outline(arms))
+    a.over(torso(role))
+    if state == "idle":  # head down on the desk: its top, and what is on it
+        top = Art(DW, DH)
+        rows = TOP
+        if r["style"] == "cap":
+            rows = [row.replace("H", "A").replace("L", "B").replace("h", "a") for row in TOP[:3]] + TOP[3:]
+        top.rows(17, 9, rows, hair_pal(r))
+        if r["style"] == "afro":
+            top.rect(16, 10, 1, 4, r["hair"])
+            top.rect(29, 10, 1, 4, dark(r["hair"], 0.25))
+        if r["style"] in ("messy", "headset"):
+            top.rect(18, 11, 10, 1, r["acc"])
+        a.over(soft_outline(top))
+        return a
+    mood = {"working": "blink" if f == 7 else "look", "blocked": "open", "done": "happy"}.get(state, "front")
+    a.over(head(role, mood, GLOW.get(state)))
     if state == "blocked":  # one hand up, waving
         wave = f % 2
-        a.rect(28 + wave, 4, 2, 8, shirt_d)
-        a.rect(28 + wave, 2, 2, 2, skin)
-        a.dot(30 + wave, 3, skin)
-    x0, rows = HAIR[r["style"]]
-    if state == "idle":  # head down on the desk: the top of the head
-        top = [
-            "..hHHHHh..",
-            ".hHHLLHHh.",
-            ".HHLHHHHHh",
-            ".HHHHHHHHh",
-            ".hHHHHHHhh",
-        ]
-        pal = hair_pal(r)
-        if r["style"] == "cap":
-            top = [row.replace("H", "A").replace("L", "B").replace("h", "a") for row in top[:3]] + top[3:]
-        a.rows(18, 10, top, pal)
-        if r["style"] == "afro":
-            a.rect(17, 11, 1, 3, r["hair"])
-            a.rect(28, 11, 1, 3, dark(r["hair"], 0.28))
-        if r["style"] == "messy":
-            a.rect(18, 12, 10, 1, r["acc"])
-        return a.outline()
-    glow = GLOW.get(state)
-    mood = {"working": "blink" if f == 7 else "look", "blocked": "open", "done": "happy"}.get(state, "front")
-    face(a, role, mood, glow)
-    a.rows(x0, 0, rows, hair_pal(r))
-    accessories(a, role)
-    return a.outline()
+        arm = Art(DW, DH)
+        sleeve(arm, role, 28 + wave, 5, 2, 7)
+        arm.rect(28 + wave, 2, 3, 3, r["skin"])
+        arm.dot(27 + wave, 3, r["skin"])
+        a.over(soft_outline(arm))
+    return a
 
 
 def person_front(role: str, state: str, f: int) -> Art:
     """Hands on the keyboard, or arms folded on the desk."""
     r = ROLES[role]
     a = Art(DW, DH)
-    shirt, skin = r["shirt"], r["skin"]
+    skin = r["skin"]
     if state == "idle":
-        a.rect(18, 15, 10, 2, shirt)
-        a.rect(18, 15, 10, 1, light(shirt, 0.2))
-        a.rect(22, 16, 2, 1, skin)
-        return a.outline()
+        sleeve(a, role, 18, 15, 10, 2)
+        a.rect(18, 15, 10, 1, light(r["shirt"], 0.25))
+        return soft_outline(a)
+    if state == "done":
+        return a  # hands are behind the head
     lift_l = lift_r = 0
     if state == "working":  # a key every frame, hands taking turns
         lift_l, lift_r = (1, 0) if f % 2 == 0 else (0, 1)
-    a.rect(20, 16 - lift_l, 2, 1, skin)
-    if state != "blocked":
-        a.rect(24, 16 - lift_r, 2, 1, skin)
-    if state == "done":
-        return Art(DW, DH)  # hands are behind the head
-    return a.outline()
+    hands = [(20, lift_l)] if state == "blocked" else [(20, lift_l), (24, lift_r)]
+    for x, lift in hands:
+        sleeve(a, role, x, 15 - lift, 2, 1)
+        a.rect(x, 16 - lift, 2, 1, skin)
+    return soft_outline(a)
 
 
 def keyboard() -> Art:
@@ -732,219 +780,24 @@ def build_desks() -> None:
 
 
 # ---- portraits (tab bar) ---------------------------------------------------
-# Front view, 22x22. Hair rows start at FRONT_X; "." leaves the face showing.
-
-FRONT = {
-    "short": (4, 2, [
-        ".....hHHHh....",
-        "...hHHLLHHHh..",
-        "..hHHLLHHHHHh.",
-        "..HHHHHHHHHHH.",
-        "..HHH.....HHH.",
-        "..H........HH.",
-        "..h.........h.",
-    ]),
-    "grey": (4, 2, [
-        ".....LLLLL....",
-        "...LLHHHHHLL..",
-        "..LHHHHHHHHHL.",
-        "..HHH.HHHHHHH.",
-        "..H........HH.",
-        "..h.........h.",
-    ]),
-    "messy": (4, 1, [
-        ".....H..H.....",
-        "...HHHHHHHH...",
-        "..HHLHHHLHHH..",
-        "..HHHHHHHHHH..",
-        "..HHHHHHHHHHH.",
-        "..H.HH..HH.HH.",
-        "..H.........H.",
-    ]),
-    "long": (4, 1, [
-        "..............",
-        ".....hHHHh....",
-        "...hHHHLLHHh..",
-        "..hHHLLHHHHHh.",
-        ".hHHHHHHHHHHHh",
-        ".HHHHHH.HHHHHh",
-        ".HHH......HHHh",
-        ".HH........HHh",
-        ".HH........HHh",
-        ".HH........HHh",
-        ".HH........Hhh",
-        ".hH........Hh.",
-        ".hH........hh.",
-        "..h.........h.",
-    ]),
-    "ponytail": (4, 2, [
-        ".....hHHHh....",
-        "...hHHLLLHHh..",
-        "..hHHLHHHHHHh.",
-        "..HHHHHHHHHHHH",
-        "..HH.HHHH..HHH",
-        "..H.........HH",
-        "............Hh",
-        "............hh",
-        "............h.",
-    ]),
-    "headset": (4, 1, [
-        "..............",
-        ".....AAAAA....",
-        "...hHHHLLHHh..",
-        "..hHHLLHHHHHh.",
-        ".hHHHHHHHHHHHh",
-        ".HHHHHHHHHHHHh",
-        ".HHH......HHHh",
-        ".HH........HHh",
-        ".HH........HHh",
-        ".HH........HHh",
-        ".HH........Hhh",
-        ".hH........Hh.",
-        ".hH........hh.",
-        "..h.........h.",
-    ]),
-    "cap": (4, 1, [
-        "..............",
-        "....aAAAAAa...",
-        "...aAABAAAAa..",
-        "..aAAAAAAAAAa.",
-        "..aaaaaaaaaaa.",
-        "..HH.H.HH.HHH.",
-        "..H.........H.",
-    ]),
-    "afro": (3, 0, [
-        "....HHLHHHLH....",
-        "..HHHHHHHHHHHH..",
-        ".HHLHHHHHHHLHHH.",
-        "HHHHHHHHHHHHHHHh",
-        "HHHHHHHHHHHHHHhh",
-        "HHHHHHHHHHHHHhhh",
-        "HHHH........Hhhh",
-        "HHH..........hhh",
-        ".Hh..........hh.",
-        ".h............h.",
-    ]),
-}
+# The same head as at the desk, laughing, over a wider body: 22x22.
 
 
 def bust(role: str) -> Art:
     r = ROLES[role]
+    shirt = r["shirt"]
+    body = Art(22, 22)
+    body.rect(9, 14, 4, 1, dark(r["skin"], 0.14))
+    body.rect(6, 15, 10, 1, light(shirt, 0.2))
+    body.rect(4, 16, 14, 6, shirt)
+    body.rect(4, 16, 1, 6, light(shirt, 0.2))
+    body.rect(17, 16, 1, 6, dark(shirt, 0.18))
+    outfit(body, role, 10, 15, 4, 17, 21)
     a = Art(22, 22)
-    shirt, skin = r["shirt"], r["skin"]
-    shirt_d, shirt_l, skin_d = dark(shirt, 0.28), light(shirt, 0.2), dark(skin, 0.16)
-
-    # Shoulders.
-    for y, (x0, x1) in zip(range(16, 22), ((5, 16), (3, 18), (2, 19), (2, 19), (2, 19), (2, 19))):
-        a.rect(x0, y, x1 - x0 + 1, 1, shirt)
-        a.dot(x0, y, shirt_l)
-        a.dot(x1, y, shirt_d)
-    a.rect(4, 17, 2, 1, shirt_l)
-
-    # Neck, face, ears.
-    a.rect(9, 13, 4, 3, skin)
-    a.rect(9, 13, 4, 1, skin_d)
-    a.rect(6, 4, 10, 8, skin)
-    a.rect(7, 12, 8, 1, skin)
-    a.rect(15, 5, 1, 7, skin_d)
-    a.rect(5, 8, 1, 2, skin)
-    a.rect(16, 8, 1, 2, skin_d)
-
-    # Face: eyes, brows, nose, mouth, cheeks.
-    for ex in (8, 13):
-        a.rect(ex, 8, 1, 2, OUT)
-    a.dot(11, 10, skin_d)
-    a.rect(10, 11, 2, 1, mix(skin_d, (190, 80, 80), 0.35))
-    a.dot(7, 10, mix(skin, (240, 120, 120), 0.4))
-    a.dot(14, 10, mix(skin, (240, 120, 120), 0.4))
-    a.rect(7, 7, 2, 1, dark(r["hair"], 0.3))
-    a.rect(13, 7, 2, 1, dark(r["hair"], 0.3))
-
-    # Outfit details.
-    if role == "manager":
-        a.rect(9, 15, 4, 2, WHITE)
-        a.rect(10, 16, 2, 5, r["acc"])
-        a.rect(10, 16, 2, 1, dark(r["acc"], 0.3))
-        for i in range(4):
-            a.dot(8 - i // 2, 17 + i, shirt_d)
-            a.dot(13 + i // 2, 17 + i, shirt_d)
-    elif role == "developer":
-        a.rect(7, 15, 8, 2, shirt_d)
-        a.rect(9, 15, 4, 1, skin_d)
-        a.rect(9, 17, 1, 2, WHITE)
-        a.rect(12, 17, 1, 2, WHITE)
-        a.rect(6, 20, 10, 1, shirt_d)
-    elif role == "designer":
-        a.rect(8, 15, 6, 1, shirt_l)
-        a.dot(10, 17, r["acc"])
-        a.dot(11, 17, r["acc"])
-    elif role == "analyst":
-        a.dot(9, 15, WHITE)
-        a.dot(12, 15, WHITE)
-        for y in range(17, 22, 2):
-            a.dot(11, y, shirt_l)
-    elif role == "intern":
-        a.rect(9, 15, 4, 1, shirt_d)
-        a.dot(9, 16, (60, 60, 70))
-        a.dot(10, 17, (60, 60, 70))
-        a.rect(10, 18, 2, 3, WHITE)
-        a.dot(10, 19, (80, 140, 220))
-        a.dot(8, 10, mix(skin, (150, 90, 50), 0.4))
-        a.dot(13, 10, mix(skin, (150, 90, 50), 0.4))
-    elif role == "support":
-        a.dot(9, 15, shirt_l)
-        a.dot(12, 15, shirt_l)
-        a.dot(15, 18, WHITE)
-    elif role == "tester":
-        a.rect(9, 15, 4, 1, shirt_d)
-        a.rect(6, 18, 2, 2, (60, 50, 40))
-        a.dot(5, 18, (60, 50, 40))
-        a.dot(8, 18, (60, 50, 40))
-    elif role == "writer":
-        a.rect(10, 16, 2, 6, (96, 74, 64))
-        a.rect(9, 15, 4, 1, (96, 74, 64))
-        a.dot(9, 18, dark(shirt, 0.4))
-        a.dot(9, 20, dark(shirt, 0.4))
-
-    # Hair and headwear.
-    style = r["style"]
-    x0, y0, rows = FRONT["long" if style == "long" else style]
-    pal = {"H": r["hair"], "h": dark(r["hair"], 0.28), "L": light(r["hair"], 0.25),
-           "A": r["acc"], "a": dark(r["acc"], 0.3), "B": light(r["acc"], 0.45)}
-    a.rows(x0, y0, rows, pal)
-
-    if style == "messy":  # headphones over the hair
-        acc = r["acc"]
-        a.rect(6, 1, 10, 1, acc)
-        a.dot(5, 2, acc)
-        a.dot(16, 2, acc)
-        a.rect(4, 3, 1, 5, acc)
-        a.rect(17, 3, 1, 5, acc)
-        a.rect(3, 7, 2, 4, acc)
-        a.rect(17, 7, 2, 4, acc)
-        a.rect(3, 7, 1, 4, light(acc, 0.25))
-        a.rect(18, 8, 1, 2, dark(acc, 0.35))
-    if style == "headset":
-        acc = r["acc"]
-        a.rect(16, 7, 2, 3, acc)
-        a.dot(15, 11, acc)
-        a.dot(14, 12, acc)
-        a.dot(13, 12, (220, 80, 70))
-    if style == "long":  # a hair clip
-        a.dot(15, 4, r["acc"])
-        a.dot(16, 5, r["acc"])
-    if role in ("analyst", "writer"):  # glasses
-        frame = (44, 44, 56)
-        for gx in (7, 12):
-            a.rect(gx, 7, 3, 1, frame)
-            a.rect(gx, 10, 3, 1, frame)
-            a.rect(gx, 8, 1, 2, frame)
-            a.rect(gx + 2, 8, 1, 2, frame)
-            a.rect(gx + 1, 8, 1, 2, OUT)
-        a.rect(10, 8, 2, 1, frame)
-        for ex in (8, 13):
-            a.dot(ex, 8, light(skin, 0.5))
-    return a.outline()
+    a.over(soft_outline(body))
+    face = head(role, "open")
+    a.im.alpha_composite(face.im, dest=(0, 3), source=(12, 0, 34, 19))
+    return a
 
 
 def build_portraits() -> None:
