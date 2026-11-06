@@ -7,7 +7,8 @@ reviewed without Herdr. Not part of the mods - nothing reads this file.
 The mock follows layouts/office.json and the sizes the mods ask for: a 300 px
 sidebar (46 header, Spaces, the office, 69 footer), 58 px tab bar, 8 px padding.
 In the office each space is a rug, each tab a cubicle on it, each pane a desk;
-the work column and the side panel sit on the sidebar's wallpaper.
+the sidebar, the work column, the side panel and the terminals sit on one
+night-windows wallpaper. A tab with a `tree` shows its split; others, rows.
 """
 
 from __future__ import annotations
@@ -68,7 +69,7 @@ SPACES = [
     {"name": "web-app", "color": "ansi6", "active": True, "tail": "feat/login ↑1",
      "git": [("ansi3", "2 changed"), ("ansi2", "1 unpushed")],
      "tabs": [
-         {"name": "main", "active": True, "panes": [
+         {"name": "main", "active": True, "tree": ("across", [0, ("stacked", [1, 2])]), "panes": [
              ("manager", "working", "Plan sprint"), ("designer", "working", "Navbar"),
              ("developer", "blocked", "Fix login")]},
          {"name": "review", "panes": [("analyst", "done", "PR #42")]},
@@ -85,12 +86,7 @@ SPACES = [
 ]
 
 DESK_W, DESK_H, SLOT_W, LABEL_H, GAP = 72, 60, 80, 13, 2
-PANEL, PANEL_TOP, PANEL_EDGE = "#aab3c2", "#c8cfda", "#5c6576"
-
-
-def mix(a: str, b: str, t: float) -> tuple[int, int, int, int]:
-    x, y = hexa(a), hexa(b)
-    return tuple(round(x[i] + (y[i] - x[i]) * t) for i in range(3)) + (255,)
+SLOT_H = DESK_H + 1 + LABEL_H
 
 
 def grid(n: int) -> int:
@@ -98,13 +94,9 @@ def grid(n: int) -> int:
 
 
 def wallpaper(size: tuple[int, int]) -> Image.Image:
-    paper = load("mods/office-chrome/sidebar.png").convert("RGB")
-    paper = paper.resize((paper.width // 2, paper.height // 2), Image.NEAREST)
-    out = Image.new("RGB", size)
-    for y in range(0, size[1], paper.height):
-        for x in range(0, size[0], paper.width):
-            out.paste(paper, (x, y))
-    return out
+    paper = load("mods/office-chrome/wallpaper.png").convert("RGB")
+    scale = max(size[0] / paper.width, size[1] / paper.height)  # "cover", as the layout asks
+    return paper.resize((int(paper.width * scale) + 1, int(paper.height * scale) + 1)).crop((0, 0, *size))
 
 
 def draw_spaces(sb: Image.Image, d: ImageDraw.ImageDraw, top: int) -> None:
@@ -144,12 +136,60 @@ def draw_spaces(sb: Image.Image, d: ImageDraw.ImageDraw, top: int) -> None:
         y += 46
 
 
-def cubicle_size(t) -> tuple[int, int, int]:
-    n = len(t["panes"])
-    cols = grid(n)
-    w = cols * SLOT_W + (cols - 1) * GAP + 12
-    h = 15 + 2 + 3 + ((n + cols - 1) // cols) * (DESK_H + 1 + LABEL_H + GAP) - GAP + 4
-    return cols, w, h
+def tree_of(t):
+    """The tab's split tree as (dir, children) / pane index, else rows of desks."""
+    if "tree" in t:
+        return t["tree"]
+    n, cols = len(t["panes"]), grid(len(t["panes"]))
+    rows = [("across", list(range(i, min(i + cols, n)))) for i in range(0, n, cols)]
+    return rows[0] if len(rows) == 1 else ("stacked", rows)
+
+
+def tree_size(node) -> tuple[int, int]:
+    if isinstance(node, int):
+        return SLOT_W, SLOT_H
+    kind, children = node
+    sizes = [tree_size(c) for c in children]
+    gaps = GAP * (len(children) - 1)
+    if kind == "across":
+        return sum(w for w, _ in sizes) + gaps, max(h for _, h in sizes)
+    return max(w for w, _ in sizes), sum(h for _, h in sizes) + gaps
+
+
+def draw_desk(sb, d, t, i, cx, cy, shadow, frame):
+    role, st, title = t["panes"][i]
+    dx = cx + (SLOT_W - DESK_W) // 2
+    sb.alpha_composite(shadow, (dx, cy))
+    art = f"mods/office-agents/desks/{role}-{st}.gif" if role else "mods/office-agents/desks/empty.png"
+    sb.alpha_composite(load(art, (DESK_W, DESK_H), frame), (dx, cy))
+    ly = cy + DESK_H + 1
+    if st == "blocked":
+        tf = font(8.5, bold=True)
+        tw = d.textlength("NEEDS YOU", font=tf) + 10
+        tx = cx + SLOT_W / 2 - tw / 2
+        d.rectangle([tx, ly, tx + tw, ly + LABEL_H], fill=hexa("#c8392f"))
+        d.text((tx + 5, ly + 1), "NEEDS YOU", font=tf, fill=(255, 240, 230, 255))
+    else:
+        lf = font(10)
+        label = fit(d, title, lf, SLOT_W - 8)
+        tw = d.textlength(label, font=lf) + 8
+        tx = cx + SLOT_W / 2 - tw / 2
+        tint(sb, [round(tx), ly, round(tx + tw), ly + LABEL_H], (13, 19, 27, 0xB8))
+        d.text((tx + 4, ly), label, font=lf, fill=hexa("foreground" if role else "muted"))
+
+
+def draw_tree(sb, d, t, node, x, y, shadow, frame):
+    if isinstance(node, int):
+        draw_desk(sb, d, t, node, x, y, shadow, frame)
+        return
+    kind, children = node
+    for c in children:
+        draw_tree(sb, d, t, c, x, y, shadow, frame)
+        w, h = tree_size(c)
+        if kind == "across":
+            x += w + GAP
+        else:
+            y += h + GAP
 
 
 def draw_office(sb: Image.Image, top: int, bottom: int, frame: int) -> None:
@@ -171,58 +211,37 @@ def draw_office(sb: Image.Image, top: int, bottom: int, frame: int) -> None:
     y = top + 28 + 44 + 8
     shadow = load("mods/office-agents/desks/shadow.png", (DESK_W, DESK_H))
     for s in SPACES:
-        color = THEME["ansi"][int(s["color"][4:])]
-        inner = SIDEBAR - 16 - 20
+        color = hexa(s["color"])
+        inner = SIDEBAR - 16 - 14
         rows, row, used = [], [], 0
         for t in s["tabs"]:
-            cols, w, h = cubicle_size(t)
+            tw, th = tree_size(tree_of(t))
+            w, h = tw + 10, 14 + GAP + th + 4 + 1
             if row and used + 6 + w > inner:
                 rows.append(row)
                 row, used = [], 0
-            row.append((t, cols, w, h))
+            row.append((t, w, h))
             used += (6 if used else 0) + w
         rows.append(row)
-        rug_h = 3 + 2 + 1 + 3 + 16 + 5 + sum(max(h for *_, h in r) for r in rows) + 6 * (len(rows) - 1) + 6 + 1 + 2 + 3
+        rug_h = 3 + 15 + 5 + sum(max(h for *_, h in r) for r in rows) + 6 * (len(rows) - 1) + 6 + 1
         rug = [8, y, SIDEBAR - 9, y + rug_h - 1]
-        d.rectangle(rug, fill=mix(color, "#1a2129", 0.6))
-        d.rectangle(rug, outline=mix(color, "#0d1116", 0.62), width=3)
-        d.rectangle([rug[0] + 5, rug[1] + 5, rug[2] - 5, rug[3] - 5], outline=hexa(color, 0xAA))
-        d.rectangle([rug[0] + 10, y + 12, rug[0] + 17, y + 19], fill=hexa(color), outline=(13, 17, 22, 255))
-        d.text((rug[0] + 23, y + 8), s["name"], font=font(11.5, bold=True), fill=(245, 239, 228, 255))
-        py = y + 3 + 2 + 1 + 3 + 16 + 5
+        tint(sb, rug, color[:3] + (0x24,))
+        d.rectangle(rug, outline=color[:3] + (0x66,))
+        d.rectangle([rug[0] + 7, y + 7, rug[0] + 13, y + 13], fill=color)
+        d.text((rug[0] + 19, y + 3), s["name"], font=font(11, bold=True), fill=hexa("foreground"))
+        py = y + 3 + 15 + 5
         for r in rows:
-            px = rug[0] + 10
-            for t, cols, w, h in r:
+            px = rug[0] + 7
+            for t, w, h in r:
                 here = s.get("active") and t.get("active")
-                d.rectangle([px, py, px + w - 1, py + 14], fill=hexa("accent") if here else hexa(PANEL), outline=hexa(PANEL_EDGE))
-                d.rectangle([px, py + 15, px + w - 1, py + 16], fill=hexa(PANEL_TOP))
-                d.rectangle([px, py + 17, px + 2, py + h - 1], fill=hexa(PANEL))
-                d.rectangle([px + w - 3, py + 17, px + w - 1, py + h - 1], fill=hexa(PANEL))
-                d.text((px + 6, py + 1), fit(d, t["name"], font(10, bold=True), w - 12), font=font(10, bold=True), fill=(27, 37, 47, 255))
-                for i, (role, st, title) in enumerate(t["panes"]):
-                    cx = px + 6 + (i % cols) * (SLOT_W + GAP)
-                    cy = py + 20 + (i // cols) * (DESK_H + 1 + LABEL_H + GAP)
-                    dx = cx + (SLOT_W - DESK_W) // 2
-                    sb.alpha_composite(shadow, (dx, cy))
-                    art = (f"mods/office-agents/desks/{role}-{st}.gif" if role else "mods/office-agents/desks/empty.png")
-                    sb.alpha_composite(load(art, (DESK_W, DESK_H), frame), (dx, cy))
-                    ly = cy + DESK_H + 1
-                    if st == "blocked":
-                        tf = font(8.5, bold=True)
-                        tw = d.textlength("NEEDS YOU", font=tf) + 10
-                        tx = cx + SLOT_W / 2 - tw / 2
-                        d.rectangle([tx, ly, tx + tw, ly + LABEL_H], fill=hexa("#c8392f"))
-                        d.text((tx + 5, ly + 1), "NEEDS YOU", font=tf, fill=(255, 240, 230, 255))
-                    else:
-                        lf = font(10)
-                        label = fit(d, title, lf, SLOT_W - 8)
-                        tw = d.textlength(label, font=lf) + 8
-                        tx = cx + SLOT_W / 2 - tw / 2
-                        d.rectangle([tx, ly, tx + tw, ly + LABEL_H], fill=(13, 19, 27, 0xB8))
-                        d.text((tx + 4, ly), label, font=lf, fill=hexa("foreground" if role else "muted"))
+                tint(sb, [px, py, px + w - 1, py + h - 1], (8, 12, 18, 0x70))
+                d.rectangle([px, py, px + w - 1, py + h - 1], outline=hexa("accent") if here else color[:3] + (0x88,))
+                d.text((px + 5, py + 2), fit(d, t["name"], font(10), w - 10), font=font(10),
+                       fill=hexa("accent" if here else "muted"))
+                draw_tree(sb, d, t, tree_of(t), px + 5, py + 1 + 14 + GAP, shadow, frame)
                 px += w + 6
             py += max(h for *_, h in r) + 6
-        y += rug_h + 10
+        y += rug_h + 8
 
 
 def tint(im: Image.Image, box, color) -> None:
@@ -246,7 +265,7 @@ def faces(im: Image.Image, x: int, roles: list[tuple[str, str]]) -> int:
 def main() -> None:
     im = Image.new("RGBA", (W, H), hexa("canvas"))
     im.paste(wallpaper((W, H)), (0, 0))
-    floor = load("mods/office-chrome/floor.png").convert("RGB")
+    floor = load("mods/office-chrome/wallpaper.png").convert("RGB")
     pane = (SIDEBAR + PAD, TABS + PAD, W - PAD, H - 28 - PAD)
     pw, ph = pane[2] - pane[0], pane[3] - pane[1]
     scale = max(pw / floor.width, ph / floor.height)  # the pane background is "cover"
@@ -285,7 +304,7 @@ def main() -> None:
     sd.text((16, H - 34), "Add machine", font=font(13), fill=hexa("dim"))
     im.alpha_composite(sb, (0, 0))
 
-    tint(im, [SIDEBAR, 0, W, TABS], hexa("chrome", 0xC8))
+    tint(im, [SIDEBAR, 0, W, TABS], hexa("chrome", 0x99))
     td = ImageDraw.Draw(im, "RGBA")
     td.line([SIDEBAR, TABS, W, TABS], fill=hexa("border", 0x66))
     x = SIDEBAR + 10

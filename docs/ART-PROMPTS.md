@@ -17,10 +17,9 @@ prompts below. Green screen (`#00FF00`) backgrounds get cut out afterwards.
 | `mods/office-agents/desks/empty.png` | 144x120 | a desk with nobody at it, screen off |
 | `mods/office-agents/desks/shadow.png` | 144x120 | soft shadow drawn under every desk |
 | `mods/office-agents/room/wall.png` | 600x88 | the office's back wall, shown 300x44 pt |
-| `mods/office-agents/room/floor.png` | 600x1600 | wooden floor behind the rugs |
+| `mods/office-agents/room/floor.png` | 600x1600 | dark carpet behind the rugs |
 | `mods/office-tabs/art/<kind>.png` | 256x256 | `files`, `changes`, `inbox`, transparent |
-| `mods/office-chrome/sidebar.png` | 460x1844 | wallpaper behind the sidebar, the work column and the side panel, `cover`-cropped |
-| `mods/office-chrome/floor.png` | 1660x1224 | terminal background, dim wood |
+| `mods/office-chrome/wallpaper.png` | 1840x1844 | night windows behind the sidebar, the work column, the side panel and the terminals, `cover`-cropped |
 | `layouts/office.png` | 640x468 | layout picker thumbnail (from `tools/build-preview.py`) |
 
 Roles: `manager` (Claude Code), `developer`, `designer`, `analyst`, `writer`,
@@ -83,16 +82,16 @@ inbox: Pixel art game icon of one shallow metal inbox tray seen from the front, 
 Wide strip pixel art, 150x22 logical pixels scaled up with hard square pixels, the back wall of a modern office at night: two windows onto a city skyline with lit windows and a moon, a round wall clock, a kanban board with colourful sticky notes, a wooden door under a green exit sign, a water cooler and a tall potted plant, dark slate-blue wall with a wainscot, no characters, no text, no border.
 ```
 
-## Sidebar strip
+## Wallpaper
 
 ```
-Seamless pixel art wallpaper, dark ink-blue vertical stripes with a tiny dot pattern, extremely dark and low contrast so white UI text stays readable on top, no characters, no text, no logo, no border.
+Seamless pixel art night view of an office building facade, a regular grid of dark windows with thin mullions, about one in seven lit by a warm desk lamp and a few by a cool screen, extremely dark and low contrast so white UI text stays readable on top, no characters, no text, no logo, no border. Square.
 ```
 
-## Wooden floor (office floor and terminal floor)
+## Office carpet
 
 ```
-Seamless pixel art wooden floor seen from above, rows of warm oak planks of random length with staggered joints and faint grain, soft pools of ceiling light, no objects, no text, no border. For the terminal floor: the same, much darker and lower contrast.
+Seamless pixel art office carpet tiles seen from above, alternating pile direction per tile, dark blue-grey, very low contrast, no light pools, no objects, no text, no border.
 ```
 
 ## Tuning

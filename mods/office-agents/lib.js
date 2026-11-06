@@ -140,6 +140,76 @@ export function officePlan(spaces, panes, agents) {
     .filter((row) => row.tabs.length > 0);
 }
 
+// Split directions as layout documents write them: side by side, or stacked.
+const ACROSS = new Set(["row", "right", "left", "horizontal", "h", "x"]);
+const STACKED = new Set(["column", "col", "down", "up", "vertical", "v", "y"]);
+
+// Which of `want` a value names anywhere inside it.
+function named(value, want, out = new Set()) {
+  if (typeof value === "string") {
+    if (want.has(value)) out.add(value);
+  } else if (Array.isArray(value)) {
+    for (const v of value) named(v, want, out);
+  } else if (value && typeof value === "object") {
+    for (const v of Object.values(value)) named(v, want, out);
+  }
+  return out;
+}
+
+// The objects right under a node, arrays flattened, in order.
+function kids(node) {
+  const out = [];
+  for (const v of Object.values(node)) {
+    for (const x of Array.isArray(v) ? v : [v]) if (x && typeof x === "object" && !Array.isArray(x)) out.push(x);
+  }
+  return out;
+}
+
+function direction(node) {
+  for (const v of Object.values(node)) {
+    const word = typeof v === "string" ? v.toLowerCase() : "";
+    if (ACROSS.has(word)) return "across";
+    if (STACKED.has(word)) return "stacked";
+  }
+  return null;
+}
+
+// A tab's pane tree, read from Herdr's layout document without relying on its
+// exact shape: the smallest object naming every one of the tab's panes, then
+// down through splits (child objects sharing the panes out between them, with
+// a direction word) to single panes. { pane } or { dir: "across" | "stacked",
+// children }; null when the document doesn't say, and desks keep pane order.
+export function splitTree(doc, paneIds) {
+  const want = new Set((paneIds ?? []).filter((p) => typeof p === "string" && p !== ""));
+  if (want.size === 0 || !doc || typeof doc !== "object") return null;
+  if (named(doc, want).size < want.size) return null;
+  let node = doc;
+  for (let next; (next = kids(node).find((k) => named(k, want).size === want.size)); ) node = next;
+  const build = (n, ids) => {
+    if (ids.size === 1) return { pane: [...ids][0] };
+    const parts = kids(n).map((k) => [k, named(k, ids)]).filter(([, found]) => found.size > 0);
+    if (parts.length === 1 && parts[0][1].size === ids.size) return build(parts[0][0], ids);
+    const dir = direction(n);
+    if (!dir || parts.length < 2 || parts.reduce((sum, [, found]) => sum + found.size, 0) !== ids.size) return null;
+    const children = parts.map(([k, found]) => build(k, found));
+    return children.every(Boolean) ? { dir, children } : null;
+  };
+  return build(node, want);
+}
+
+// How many desks wide a pane tree is.
+export function treeWidth(tree) {
+  if (!tree) return 0;
+  if (tree.pane) return 1;
+  const widths = tree.children.map(treeWidth);
+  return tree.dir === "across" ? widths.reduce((a, b) => a + b, 0) : Math.max(...widths);
+}
+
+// A pane id as its own machine's document writes it: without the "machine/".
+export function localId(id, machine) {
+  return machine && typeof id === "string" && id.startsWith(`${machine}/`) ? id.slice(machine.length + 1) : id;
+}
+
 const clean = (v) => typeof v === "string"
   ? v.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, "").replace(/^[^\p{L}\p{N}]+/u, "").replace(/\s+/g, " ").trim().slice(0, 60)
   : "";

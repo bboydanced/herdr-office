@@ -69,7 +69,7 @@
       "min": 44,
       "max": 480,
       "background": {
-        "image": "mods/office-chrome/sidebar.png",
+        "image": "mods/office-chrome/wallpaper.png",
         "fit": "cover"
       },
       "resizable": false
@@ -108,7 +108,7 @@
                     "position": "top"
                   },
                   "background": {
-                    "image": "mods/office-chrome/floor.png",
+                    "image": "mods/office-chrome/wallpaper.png",
                     "fit": "cover"
                   },
                   "border": {
@@ -172,7 +172,7 @@
               "max": 900,
               "hidden": true,
               "background": {
-                "image": "mods/office-chrome/sidebar.png",
+                "image": "mods/office-chrome/wallpaper.png",
                 "fit": "cover"
               }
             }
@@ -193,7 +193,7 @@
       ],
       "resizable": false,
       "background": {
-        "image": "mods/office-chrome/sidebar.png",
+        "image": "mods/office-chrome/wallpaper.png",
         "fit": "cover"
       }
     }

@@ -58,6 +58,19 @@ ok(main[0].agent.address === "a1" && main[1].agent === null && main[2].agent.add
 ok(main[3].pane === null && main[3].agent.address === "a9", "sub-agent at the end");
 ok(A.officePlan(null, null, null).length === 0, "nothing in, nothing out");
 
+// split trees, from layout documents of either shape
+const rows = { layout: { tabs: [{ id: "t1", focus: "p2", root: { type: "row", children: [{ type: "pane", id: "p1" }, { type: "column", children: [{ type: "pane", id: "p2" }, { type: "pane", id: "p3" }] }] } }] } };
+const bsp = { app: { value: { t1: { root: { split: "down", ratio: 0.5, first: { pane: "p1" }, second: { split: "right", first: { pane: "p2" }, second: { pane: "p3" } } } } } } };
+ok(JSON.stringify(A.splitTree(rows, ["p1","p2","p3"])) === '{"dir":"across","children":[{"pane":"p1"},{"dir":"stacked","children":[{"pane":"p2"},{"pane":"p3"}]}]}', "row/column tree");
+ok(JSON.stringify(A.splitTree(bsp, ["p1","p2","p3"])) === '{"dir":"stacked","children":[{"pane":"p1"},{"dir":"across","children":[{"pane":"p2"},{"pane":"p3"}]}]}', "first/second tree");
+ok(A.treeWidth(A.splitTree(rows, ["p1","p2","p3"])) === 2 && A.treeWidth(A.splitTree(bsp, ["p1","p2","p3"])) === 2, "tree width");
+ok(A.treeWidth({ dir: "across", children: [{ pane: "a" }, { pane: "b" }, { dir: "across", children: [{ pane: "c" }, { pane: "d" }] }] }) === 4, "nested across adds up");
+ok(A.splitTree(rows, ["p1","p9"]) === null, "a pane the document lacks -> no tree");
+ok(A.splitTree({ x: ["p1","p2"] }, ["p1","p2"]) === null, "no direction word -> no tree");
+ok(A.splitTree({ type: "row", children: [{ id: "p1" }, { id: "p2", also: "p1" }] }, ["p1","p2"]) === null, "overlapping halves -> no tree");
+ok(A.splitTree(null, ["p1"]) === null && A.splitTree(rows, []) === null, "nothing to read");
+ok(A.localId("vps/p3", "vps") === "p3" && A.localId("p3", null) === "p3" && A.localId("other/p3", "vps") === "other/p3", "local pane id");
+
 // desk roles: first agent of a tab keeps the tab's role, the rest differ
 const roles = A.deskJobs(spaces, panes, agents, { main: "developer" });
 ok(roles.get("a1") === "developer", "first agent wears the tab's role");

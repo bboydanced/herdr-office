@@ -1,29 +1,29 @@
-// Office: one room for every agent, on a wooden floor under the night windows.
-// Each space is a rug in its Spaces colour and order, each tab a cubicle on it
-// (partition walls, the tab's name on the back one), each pane a desk in the
-// tab's pane order: an agent at work facing you, or an empty desk for a pane with
-// no agent. Click a desk to go to its terminal. Reads jobs.json only - runs no
-// command, opens no connection.
+// Office: one room for every agent. Each space is a rug in its Spaces colour and
+// order, each tab a cubicle on it, each pane a desk placed the way the tab is
+// split (side by side or one above the other, read from Herdr's layout document),
+// else in pane order: an agent at work facing you, or an empty desk for a pane
+// with no agent. Click a desk to go to its terminal. Reads jobs.json and that
+// document only - runs no command, opens no connection.
 import { View, div, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, appHome, layout, panes, readTextFile, run, setAgentOrder, shared, spaces, theme } from "herdr";
-import { DESK_SHADOW, EMPTY_DESK, deskColumns, deskJobs, deskLabel, deskPath, deskTip, mixHex, officePlan, portraitPath, spaceColor, withAlpha } from "./lib.js";
+import { agents, appHome, home, layout, panes, readTextFile, run, setAgentOrder, shared, spaces, theme } from "herdr";
+import { DESK_SHADOW, EMPTY_DESK, deskColumns, deskJobs, deskLabel, deskPath, deskTip, localId, officePlan, portraitPath, spaceColor, splitTree, treeWidth, withAlpha } from "./lib.js";
 
 const JOBS_FILE = `${appHome()}/mods/office-agents/jobs.json`;
+// herdr-core keeps every app's shared documents here, Herdr's layout among them.
+const CORE_DOCS = ".local/state/herdr-core/default/docs.json";
 const WALL = "mods/office-agents/room/wall.png";
 const FLOOR = "mods/office-agents/room/floor.png";
-const WOOD = "#8a6444";
+const CARPET = "#1e2634";
 const TAG = "#c8392f";
-// Cubicle partitions: light fabric panels with a darker frame.
-const PANEL = "#aab3c2";
-const PANEL_TOP = "#c8cfda";
-const PANEL_EDGE = "#5c6576";
 // Desks are 36x30 art pixels at 2 points each, in a slot wide enough for a name.
 const DESK_W = 72;
 const DESK_H = 60;
 const SLOT_W = 80;
 const LABEL_H = 13;
 const GAP = 2;
+// Wider than this many desks, a split tree falls back to rows of desks.
+const MOST_ACROSS = 3;
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -52,6 +52,9 @@ export default class Office extends View {
   init(_props, cx) {
     this.jobs = {};
     this.time = clock();
+    this.docs = {}; // machine ("" here) -> its herdr-core documents
+    this.trees = null; // tab id -> split tree, worked out once per change
+    this.shape = null; // every tab's panes, to notice splits and closes
     cx.spawn(async (cx) => {
       const text = await readTextFile(JOBS_FILE).catch(() => null);
       try {
@@ -65,6 +68,46 @@ export default class Office extends View {
       const now = clock();
       if (now !== this.time) { this.time = now; cx.notify(); }
     });
+  }
+
+  // Each machine's layout document, read whole; a machine away keeps none.
+  loadDocs(cx, machines) {
+    cx.spawn(async (cx) => {
+      const next = {};
+      for (const m of machines) {
+        const text = await readTextFile(m ? CORE_DOCS : `${home()}/${CORE_DOCS}`, m ? { on: m } : undefined).catch(() => null);
+        try { next[m ?? ""] = JSON.parse(text); } catch {}
+      }
+      this.docs = next;
+      this.trees = null;
+      cx.notify();
+    });
+  }
+
+  // A pane set that changed (a split, a close, a move) is read again at once and
+  // a moment later, in case Herdr saves its document after the panes change.
+  watchShape(cx, sp, ps) {
+    const shape = ps.map((p) => `${p.tab}:${p.pane}`).join("|");
+    if (shape === this.shape) return;
+    this.shape = shape;
+    this.trees = null;
+    const machines = [...new Set(sp.map((s) => s.machine ?? null))];
+    this.loadDocs(cx, machines);
+    cx.timer.after(1200, (cx) => this.loadDocs(cx, machines));
+  }
+
+  treesFor(plan) {
+    if (this.trees) return this.trees;
+    this.trees = new Map();
+    for (const row of plan) {
+      const m = row.space.machine ?? null;
+      for (const c of row.tabs) {
+        const ids = c.desks.filter((d) => d.pane).map((d) => localId(d.pane.pane, m));
+        const tree = ids.length > 1 ? splitTree(this.docs[m ?? ""], ids) : null;
+        if (tree && treeWidth(tree) <= MOST_ACROSS) this.trees.set(c.tab.id, tree);
+      }
+    }
+    return this.trees;
   }
 
   desk(row, c, d, roles, t) {
@@ -85,43 +128,60 @@ export default class Office extends View {
       .items_center()
       .gap(1)
       .cursor_pointer()
-      .hover((s) => s.bg("#ffffff1a"))
+      .hover((s) => s.bg(t.hover))
       .tooltip(deskTip({ job, agent: a, pane: d.pane, space, tab: c.tab }))
       .on_click(() => (a ? run("agent.focus", { terminal: a.address }) : goTo(space, c.tab, d.pane)))
       .child(div().relative().w(DESK_W).h(DESK_H).child(picture(DESK_SHADOW)).child(picture(src)))
       .child(label);
   }
 
-  // A cubicle: the tab's name on the back partition, side partitions, open front.
-  cubicle(row, c, roles, t) {
-    const cols = deskColumns(c.desks.length);
+  // Desks the way the tab is split: a row for side by side, a column for stacked.
+  arranged(node, byId, row, c, roles, t) {
+    if (node.pane) return this.desk(row, c, byId.get(node.pane), roles, t);
+    return (node.dir === "across" ? h_flex() : v_flex()).gap(GAP).items_start()
+      .children(node.children.map((child) => this.arranged(child, byId, row, c, roles, t)));
+  }
+
+  cubicle(row, c, roles, color, tree, t) {
+    const m = row.space.machine ?? null;
     const here = row.space.active && c.tab.active;
+    const loose = tree ? c.desks.filter((d) => !d.pane) : c.desks;
+    const cols = tree ? Math.max(treeWidth(tree), Math.min(loose.length, MOST_ACROSS)) : deskColumns(c.desks.length);
     const lines = [];
-    for (let i = 0; i < c.desks.length; i += cols) lines.push(c.desks.slice(i, i + cols));
+    const step = tree ? MOST_ACROSS : cols;
+    for (let i = 0; i < loose.length; i += step) lines.push(loose.slice(i, i + step));
+    const byId = new Map(c.desks.filter((d) => d.pane).map((d) => [localId(d.pane.pane, m), d]));
     return v_flex()
       .id(`cubicle-${c.tab.id}`)
       .flex_none()
-      .child(h_flex().h(15).px(6).items_center().bg(here ? t.accent : PANEL).border(1).border_color(PANEL_EDGE)
-        .child(div().w(cols * SLOT_W + (cols - 1) * GAP - 6).truncate().text_size(10).font_semibold().text_color("#1b252f").child(c.tab.name)))
-      .child(div().h(2).bg(here ? mixHex(t.accent, "#ffffff", 0.4) : PANEL_TOP))
-      .child(v_flex().px(3).pt(3).pb(4).gap(GAP).border_l(3).border_r(3).border_color(PANEL)
-        .children(lines.map((line) => h_flex().gap(GAP).children(line.map((d) => this.desk(row, c, d, roles, t))))));
+      .px(4)
+      .pb(4)
+      .gap(GAP)
+      .bg("#080c1270")
+      .border(1)
+      .border_color(here ? t.accent : withAlpha(color, "88"))
+      .child(div().w(cols * SLOT_W + (cols - 1) * GAP).h(14).pt(1).truncate().text_size(10).text_color(here ? t.accent : t.muted).child(c.tab.name))
+      .when(Boolean(tree), (el) => el.child(this.arranged(tree, byId, row, c, roles, t)))
+      .children(lines.map((line) => h_flex().gap(GAP).children(line.map((d) => this.desk(row, c, d, roles, t)))));
   }
 
-  // A rug in the space's colour: a dark woven border, a thin bright line inside.
-  rug(row, roles, colors, t) {
+  rug(row, roles, colors, trees, t) {
     const color = spaceColor(t, colors, row.space.id);
-    return div()
+    return v_flex()
       .id(`rug-${row.space.id}`)
       .flex_none()
-      .border(3)
-      .border_color(mixHex(color, "#0d1116", 0.62))
-      .bg(mixHex(color, "#1a2129", 0.6))
-      .child(v_flex().m(2).px(4).pt(3).pb(6).gap(5).border(1).border_color(withAlpha(color, "aa"))
-        .child(h_flex().h(16).gap(6).items_center()
-          .child(div().size(8).flex_none().bg(color).border(1).border_color("#0d1116"))
-          .child(div().flex_1().min_w(0).truncate().text_size(11.5).font_semibold().text_color("#f5efe4").child(row.space.name)))
-        .child(h_flex().flex_wrap().items_start().gap(6).children(row.tabs.map((c) => this.cubicle(row, c, roles, t)))));
+      .px(6)
+      .pt(3)
+      .pb(6)
+      .gap(5)
+      .bg(withAlpha(color, "24"))
+      .border(1)
+      .border_color(withAlpha(color, "66"))
+      .child(h_flex().h(15).gap(6).items_center()
+        .child(div().size(7).flex_none().bg(color))
+        .child(div().flex_1().min_w(0).truncate().text_size(11).font_semibold().text_color(t.foreground).child(row.space.name)))
+      .child(h_flex().flex_wrap().items_start().gap(6)
+        .children(row.tabs.map((c) => this.cubicle(row, c, roles, color, trees.get(c.tab.id) ?? null, t))));
   }
 
   // A rail too narrow for desks: one face per agent, framed in its status colour.
@@ -137,17 +197,19 @@ export default class Office extends View {
       }));
   }
 
-  render() {
+  render(cx) {
     const t = theme();
     const list = agents();
     const sp = spaces();
     const ps = panes();
+    this.watchShape(cx, sp, ps);
     const plan = officePlan(sp, ps, list);
     const roles = deskJobs(sp, ps, list, this.jobs);
     // agent.next / agent.prev walk the desks in the order they are drawn.
     setAgentOrder(plan.flatMap((row) => row.tabs.flatMap((c) => c.desks.filter((d) => d.agent).map((d) => d.agent.address))));
     if ((find(layout(), "sidebar")?.size?.px ?? Infinity) < 160) return this.rail(plan, roles, t);
 
+    const trees = this.treesFor(plan);
     const colors = shared("space.colors") ?? {};
     const busy = list.filter((a) => a.status === "working").length;
     const waiting = list.filter((a) => a.status === "blocked").length;
@@ -157,7 +219,7 @@ export default class Office extends View {
       .min_h(0)
       .relative()
       .overflow_hidden()
-      .bg(WOOD)
+      .bg(CARPET)
       .text_color(t.foreground)
       .child(div().absolute().top(0).left(0).child(image(FLOOR).w(300).h(800)))
       .child(h_flex().h(28).flex_none().pl(16).pr(12).gap(6).items_center().bg(t.chrome).text_size(11.5).text_color(t.dim)
@@ -165,8 +227,8 @@ export default class Office extends View {
         .when(waiting > 0, (el) => el.child(div().text_color(t.blocked).child(`${waiting} need${waiting === 1 ? "s" : ""} you ·`)))
         .child(div().text_size(11).child(`${busy}/${list.length} at work · ${this.time}`)))
       .child(div().h(44).flex_none().overflow_hidden().child(image(WALL).w(300).h(44)))
-      .child(v_flex().id("office-floor").flex_1().min_h(0).p(8).gap(10).overflow_y_scrollbar()
-        .children(plan.map((row) => this.rug(row, roles, colors, t)))
-        .when(plan.length === 0, (el) => el.child(div().p(8).bg("#0d131bb8").text_size(12).text_color(t.muted).child("Nobody in yet. Open a space to start."))));
+      .child(v_flex().id("office-floor").flex_1().min_h(0).p(8).gap(8).overflow_y_scrollbar()
+        .children(plan.map((row) => this.rug(row, roles, colors, trees, t)))
+        .when(plan.length === 0, (el) => el.child(div().p(8).text_size(12).text_color(t.dim).child("Nobody in yet. Open a space to start."))));
   }
 }

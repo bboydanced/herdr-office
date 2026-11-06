@@ -32,9 +32,10 @@ H=~/.config/herdr-app
 rsync -a --exclude jobs.json mods/ "$H/mods/"
 ```
 
-An earlier version shipped `mods/office-agents/sprites/`,
-`mods/office-spaces/art/` and `mods/office-spaces/places.json`; nothing reads
-them any more, so delete them from `$H/mods` after updating.
+Earlier versions shipped `mods/office-agents/sprites/`, `mods/office-spaces/art/`,
+`mods/office-spaces/places.json`, `mods/office-chrome/sidebar.png` and
+`mods/office-chrome/floor.png`; nothing reads them any more, so delete them from
+`$H/mods` after updating, and copy `layouts/office.json` again.
 
 Uninstall:
 
@@ -56,22 +57,24 @@ first. Herdr keeps the mod names in its own `seen.json`, which is harmless.
 - **Theme `office-night`:** ink blue background `#101820`, panel `#1b252f`,
   amber accent `#e0a44a`, paper text `#e6dfd2`, muted steel `#5f8fa8`. Square
   corners with thin amber frames.
-- **Terminals** sit on the office's wooden floor, dimmed: the pane `background`
-  is `mods/office-chrome/floor.png` (`cover`), root `terminal_opacity` is `0.62`.
-  The sidebar, the work column (tab bar, panes) and the side panel all sit on the
-  same night wallpaper, `mods/office-chrome/sidebar.png`.
+- **One backdrop everywhere:** night office windows, a few lit by a lamp or a
+  screen, `mods/office-chrome/wallpaper.png` (`cover`). It is the `background`
+  of the sidebar, the work column (behind the translucent tab bar and between
+  the panes), the side panel and every pane, where the terminal draws over it at
+  the root `terminal_opacity` of `0.62`.
 - **Sidebar, 300 px**, two parts (weights 0.62 and 1.38):
   - **Spaces:** a 44 px row per space. A 28 px project folder in the space's
     colour with its initial, the name, the branch when unusual, then one line:
     uncommitted files (`ansi3`), unpushed commits (`ansi2`), repos without a
     remote (`ansi1`), and a dot per agent in the space in its status colour.
   - **Office:** a header (`N need you`, `N/M at work`, the time), the back wall
-    (night windows, clock, kanban board, door, water cooler, plant), then a
-    wooden floor under pools of ceiling light. Each **space is a rug** in its
-    folder's colour, with a woven border, in the Spaces order. On it each **tab
-    is a cubicle**: light partition walls, the tab's name on the back one (amber
-    for the tab you are on). In it each **pane is a desk** in the tab's pane
-    order: up to three in a row, four as two by two. A pane with an agent has
+    (night windows, clock, kanban board, door, water cooler, plant), then the
+    dark carpet. Each **space is a rug** tinted in its folder's colour, in the
+    Spaces order. On it each **tab is a cubicle** with its name (amber for the
+    tab you are on). In it each **pane is a desk, placed the way the tab is
+    split**: panes split right sit side by side, panes split down sit one above
+    the other, so a tab split right and then down on the right shows one desk
+    on the left and two stacked on the right. A pane with an agent has
     its staff member behind the desk facing you, the monitor beside them showing
     the state; any other pane is an empty desk with the screen off, labelled
     `Terminal` for a shell (never the long `user@host:path` title) or its
@@ -83,8 +86,15 @@ first. Herdr keeps the mod names in its own `seen.json`, which is harmless.
   tab's other panes. Faces match the desks in the office. Files, Changes and
   Inbox buttons open the right panel.
 
-Herdr tells mods each tab's panes in order, but not where a split put them, so
-desks follow the pane order rather than the exact split.
+Herdr's mod API gives a tab's panes in order but not where a split put them.
+The office reads that from Herdr's own layout document, which herdr-core keeps
+in `~/.local/state/herdr-core/default/docs.json` (on a remote machine, the same
+path in its home): read only, again whenever a tab's panes change. It looks for
+the part of the document that names the tab's panes and follows its splits down
+by their direction words (`right`/`row`/`horizontal`, `down`/`column`/
+`vertical`). When it can't tell (another `HC_SESSION` or `XDG_STATE_HOME`, a
+document it doesn't understand, or a split more than three desks wide), the
+desks fall back to pane order: up to three in a row, four as two by two.
 
 ### At the desk
 
@@ -124,7 +134,8 @@ column of faces framed in their status colour.
 - `office-spaces` runs `git status`, `git rev-parse` and `hc machine ls` itself,
   in every folder that has a terminal. On connected remote machines Herdr runs
   that `git` there.
-- `office-agents` reads only its own `jobs.json`.
+- `office-agents` reads its own `jobs.json` and herdr-core's `docs.json` (for
+  the splits; it writes nothing and shows nothing else from it).
 - `office-inbox` runs `mkdir`, `find`, `stat` and `open`.
 - No mod opens a network connection of its own or reads credentials.
 - **Do not open a terminal inside a repo you do not trust.** `git status` can run

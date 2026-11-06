@@ -15,10 +15,9 @@ Output (relative to the repo root):
     mods/office-agents/desks/shadow.png   soft shadow under a desk    144x120
     mods/office-agents/art/<role>.png     bust portraits (tab bar)     88x88
     mods/office-agents/room/wall.png      the office's back wall      600x88
-    mods/office-agents/room/floor.png     wooden floor               600x1600
+    mods/office-agents/room/floor.png     office carpet              600x1600
     mods/office-tabs/art/<files|changes|inbox>.png                    256x256
-    mods/office-chrome/sidebar.png        wallpaper (sidebar, tab bar, panel)  460x1844
-    mods/office-chrome/floor.png          terminal backdrop, dim wood        1660x1224
+    mods/office-chrome/wallpaper.png      night windows behind everything   1840x1844
 """
 
 from __future__ import annotations
@@ -961,7 +960,7 @@ def build_portraits() -> None:
 
 def window(a: Art, x: int, y: int, w: int, h: int, seed: int, moon: bool) -> None:
     R = random.Random(seed)
-    frame = (176, 182, 198)
+    frame = (74, 84, 106)
     a.rect(x - 1, y - 1, w + 2, h + 2, frame)
     for j in range(h):
         a.rect(x, y + j, w, 1, mix((12, 18, 42), (34, 42, 82), j / max(1, h - 1)))
@@ -985,7 +984,7 @@ def window(a: Art, x: int, y: int, w: int, h: int, seed: int, moon: bool) -> Non
         bx += bw
     a.rect(x + w // 2, y, 1, h, frame)
     a.rect(x, y + h // 2, w, 1, frame)
-    a.rect(x - 2, y + h + 1, w + 4, 1, (206, 210, 222))
+    a.rect(x - 2, y + h + 1, w + 4, 1, (96, 106, 130))
 
 
 def build_room() -> None:
@@ -993,25 +992,23 @@ def build_room() -> None:
     os.makedirs(out, exist_ok=True)
     W, H = 150, 22
     a = Art(W, H)
-    wall, wall_d = (70, 82, 110), (64, 76, 102)
+    wall, wall_d = (38, 48, 70), (34, 43, 63)
     a.rect(0, 0, W, 14, wall)
     for x in range(3, W, 6):
         a.rect(x, 2, 1, 12, wall_d)
-    a.rect(0, 0, W, 1, (40, 48, 66))
-    a.rect(0, 1, W, 1, (96, 108, 136))
-    # Wood wainscot with a rail and panels, then the skirting.
-    a.rect(0, 14, W, 6, (104, 74, 52))
-    a.rect(0, 14, W, 1, (150, 110, 74))
+    a.rect(0, 0, W, 1, (24, 30, 44))
+    a.rect(0, 1, W, 1, (52, 62, 88))
+    a.rect(0, 14, W, 6, (30, 38, 56))
+    a.rect(0, 14, W, 1, (62, 72, 98))
     for x in range(2, W, 12):
-        a.rect(x, 16, 9, 3, (92, 64, 45))
-        a.rect(x, 16, 9, 1, (82, 56, 40))
-    a.rect(0, 20, W, 2, (56, 40, 30))
+        a.rect(x, 16, 9, 3, (27, 34, 50))
+    a.rect(0, 20, W, 2, (20, 24, 36))
 
     window(a, 5, 2, 30, 10, 7, True)
     window(a, 106, 2, 26, 10, 11, False)
 
     # Clock at ten past ten.
-    a.rect(40, 3, 8, 8, (236, 234, 226))
+    a.rect(40, 3, 8, 8, (230, 228, 220))
     for x, y in ((40, 3), (47, 3), (40, 10), (47, 10)):
         a.dot(x, y, wall)
     a.rect(43, 4, 1, 3, (40, 40, 48))
@@ -1019,7 +1016,7 @@ def build_room() -> None:
     a.dot(44, 7, (200, 60, 60))
 
     # Kanban board with sticky notes.
-    a.rect(52, 2, 22, 10, (228, 232, 238))
+    a.rect(52, 2, 22, 10, (222, 226, 232))
     for x in (59, 66):
         a.rect(x, 3, 1, 8, (190, 196, 206))
     notes = [(53, 3, (250, 214, 90)), (56, 4, (240, 130, 160)), (54, 7, (130, 200, 240)),
@@ -1033,17 +1030,17 @@ def build_room() -> None:
     a.rect(78, 0, 8, 2, (60, 170, 110))
     a.rect(79, 0, 6, 1, (140, 240, 180))
     a.rect(76, 3, 12, 17, (66, 44, 32))
-    a.rect(77, 4, 10, 16, (138, 94, 62))
+    a.rect(77, 4, 10, 16, (128, 86, 58))
     a.rect(78, 5, 8, 4, (30, 40, 60))
     a.dot(79, 5, (70, 90, 120))
-    a.rect(78, 11, 8, 7, (124, 84, 56))
+    a.rect(78, 11, 8, 7, (116, 78, 52))
     a.dot(85, 13, BRASS)
 
     # Water cooler.
     a.rect(93, 6, 5, 5, (110, 176, 230))
     a.rect(94, 6, 1, 4, (190, 226, 250))
-    a.rect(92, 11, 7, 9, (210, 214, 222))
-    a.rect(92, 11, 1, 9, (236, 238, 242))
+    a.rect(92, 11, 7, 9, (200, 206, 216))
+    a.rect(92, 11, 1, 9, (226, 230, 238))
     a.dot(94, 14, (220, 80, 70))
     a.dot(96, 14, (80, 140, 230))
     a.rect(93, 16, 5, 1, (150, 156, 168))
@@ -1066,46 +1063,28 @@ def build_room() -> None:
         ".....g......",
     ], {"G": LEAF, "g": LEAF_D, "l": LEAF_L})
     a.outline()
-    a.rect(0, 20, W, 2, (56, 40, 30))
+    a.rect(0, 20, W, 2, (20, 24, 36))
     a.big().save(os.path.join(out, "wall.png"))
 
-    lights = [(75, y) for y in range(40, 400, 110)]
-    planks(150, 400, (138, 100, 68), seed=3, lights=lights).big().save(os.path.join(out, "floor.png"))
+    carpet(150, 400, (30, 38, 52), seed=3).save(os.path.join(out, "floor.png"))
 
 
-def planks(w: int, h: int, base, seed: int, lights=(), contrast: float = 1.0) -> Art:
-    """A wooden floor: rows of planks of random length with staggered joints,
-    each its own shade, faint grain, lit from above by `lights` (art pixels)."""
+def carpet(w: int, h: int, base, seed: int) -> Image.Image:
+    """Office carpet tiles with alternating pile, quiet enough to sit under text."""
     R = random.Random(seed)
     a = Art(w, h)
-    seam = dark(base, 0.32)
-    for row in range(0, h, 4):
-        x = -R.randrange(0, 30)
-        while x < w:
-            length = R.randint(18, 40)
-            shade = R.uniform(-0.09, 0.09) * contrast
-            tone = light(base, shade) if shade > 0 else dark(base, -shade)
-            for yy in range(row, min(row + 4, h)):
-                for xx in range(max(x, 0), min(x + length, w)):
-                    c = tone
-                    if yy == row:
-                        c = seam
-                    elif yy == row + 1:
-                        c = light(tone, 0.05 * contrast)
-                    elif R.random() < 0.06:
-                        c = dark(tone, 0.08 * contrast)
-                    a.dot(xx, yy, c)
-            if x >= 0:
-                for yy in range(row, min(row + 4, h)):
-                    a.dot(x, yy, seam)
-            x += length
-    for lx, ly in lights:  # pools of light from the ceiling
-        for y in range(max(0, ly - 60), min(h, ly + 60)):
-            for x in range(w):
-                d = ((x - lx) / 90) ** 2 + ((y - ly) / 55) ** 2
-                if d < 1:
-                    a.tint(x, y, (255, 226, 176), 0.16 * (1 - d))
-    return a
+    up, down = light(base, 0.025), dark(base, 0.05)
+    for y in range(h):
+        for x in range(w):
+            tile = ((x // 8) + (y // 8)) % 2
+            stripe = (y % 2 == 0) if tile else (x % 2 == 0)
+            c = up if stripe else base
+            if x % 8 == 0 or y % 8 == 0:
+                c = down
+            if R.random() < 0.02:
+                c = mix(c, (60, 70, 90), 0.15)
+            a.dot(x, y, c)
+    return a.big()
 
 
 # ---- chrome ----------------------------------------------------------------
@@ -1143,25 +1122,26 @@ def build_icons() -> None:
         icon(kind).save(os.path.join(out, f"{kind}.png"))
 
 
-def build_sidebar() -> None:
-    """Wallpaper behind the sidebar, the tab bar and the side panel: a dim
-    striped night wall, quiet enough for text on top."""
-    w, h = 460, 1844
-    a = Art(w // 4, h // 4 + 1)
-    base, alt, dot = (19, 27, 37), (22, 31, 42), (28, 38, 51)
-    for y in range(a.h):
-        for x in range(a.w):
-            c = alt if (x // 4) % 2 else base
-            if (x % 8 == 2) and (y % 8 == 3 or y % 8 == 7 and x % 16 == 10):
-                c = dot
-            a.dot(x, y, c)
-    a.big().crop((0, 0, w, h)).convert("RGB").save(os.path.join(ROOT, "mods/office-chrome/sidebar.png"))
-
-
-def build_floor() -> None:
-    """The terminals' backdrop: the office's wooden floor, dimmed for text."""
-    planks(415, 306, (104, 78, 56), seed=5, lights=[(120, 80), (300, 220)]) \
-        .big().convert("RGB").save(os.path.join(ROOT, "mods/office-chrome/floor.png"))
+def build_wallpaper() -> None:
+    """Night office windows, some lit by a lamp, some by a screen: the backdrop
+    of the sidebar, the work column, the side panel and the terminals. Dim, so
+    text stays readable on top."""
+    R = random.Random(9)
+    w, h = 920, 922  # square-ish, so "cover" scales it alike in tall and wide areas
+    a = Art(w, h)
+    a.rect(0, 0, w, h, (14, 21, 29))
+    for y in range(0, h, 23):
+        for x in range(0, w, 19):
+            a.rect(x + 3, y + 4, 11, 12, (24, 33, 42))
+            lit = R.random()
+            if lit < 0.15:
+                a.rect(x + 4, y + 5, 9, 10, (74, 58, 36))
+                a.rect(x + 4, y + 5, 9, 1, (90, 71, 44))
+            elif lit < 0.22:
+                a.rect(x + 4, y + 5, 9, 10, (28, 44, 60))
+                a.rect(x + 4, y + 5, 9, 1, (36, 56, 76))
+            a.rect(x + 8, y + 4, 1, 12, (18, 26, 34))
+    a.big(2).convert("RGB").save(os.path.join(ROOT, "mods/office-chrome/wallpaper.png"))
 
 
 def main() -> None:
@@ -1169,8 +1149,7 @@ def main() -> None:
     build_portraits()
     build_room()
     build_icons()
-    build_sidebar()
-    build_floor()
+    build_wallpaper()
     print("office art written")
 
 

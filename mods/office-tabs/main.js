@@ -128,7 +128,7 @@ export default class OfficeTabs extends View {
           else { run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
         }).child((icon.endsWith(".svg") ? svg(icon).size(20).text_color(on ? t.foreground : t.muted) : image(icon).size(20)).flex_none()).child(label);
     };
-    return h_flex().size_full().min_w(0).px(10).pl(lightsPadding).gap(3).items_center().bg(`${t.chrome}c8`).border_b(1).border_color(t.border)
+    return h_flex().size_full().min_w(0).px(10).pl(lightsPadding).gap(3).items_center().bg(`${t.chrome}99`).border_b(1).border_color(t.border)
       .on_mouse_up("left", () => { this.pressed = null; })
       .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })
       .child(h_flex().id("tab-scroll").flex_1().min_w(0).h_full().items_center().gap(3).overflow_x_scrollbar().children(shown.map(item)))
