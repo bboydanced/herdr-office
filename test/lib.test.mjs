@@ -134,10 +134,15 @@ ok(A.parseReplies("nope") === A.DEFAULT_REPLIES && A.parseReplies("[]") === A.DE
 ok(A.parseReplies(JSON.stringify(Array.from({ length: 12 }, (_, i) => `r${i}`))).length === 8, "at most eight replies");
 
 // the boss
-const brief = A.bossBrief({ goal: "  add Google\nlogin  ", argv: ["claude"], folder: "/w/web app", space: "web-app", most: 4 });
+const brief = A.bossBrief({ goal: "  add Google\nlogin  ", playbook: "/h/mods/office-agents/boss.md", argv: ["claude"], folder: "/w/web app", space: "web-app", most: 4 });
 ok(brief.endsWith("Goal: add Google login") && !brief.includes("\n"), "brief: one line, goal last");
-ok(brief.includes("--cwd '/w/web app' claude \"<task>\"") && brief.includes("at most 4 at a time") && brief.includes('"web-app"'), "brief: hire command, cap, space");
+ok(brief.includes("--cwd '/w/web app' claude \"<task>\"") && brief.includes("at most 4 agents at a time") && brief.includes('"web-app"'), "brief: hire command, cap, space");
+ok(brief.includes("Read your playbook now and follow it: /h/mods/office-agents/boss.md") && brief.includes("office.say=") && brief.includes("--label office.task="), "brief: playbook and labels");
+ok(!A.bossBrief({ goal: "x" }).includes("playbook") && A.bossBrief({ goal: "x" }).includes("hc --skill"), "brief without a playbook");
 ok(A.bossBrief({ goal: "x", argv: [] }).includes(" claude \"<task>\"") && !A.bossBrief({ goal: "x" }).includes("--cwd"), "brief: defaults");
+ok(A.labelOf({ labels: { "office.say": "Hired 3" } }, "office.say") === "Hired 3" && A.labelOf({ labels: ["office.task=fix nav", "x=y"] }, "office.task") === "fix nav", "labels: map, k=v");
+ok(A.labelOf({ labels: [{ key: "office.say", value: "Planning" }] }, "office.say") === "Planning" && A.labelOf({}, "office.say") === "" && A.labelOf(null, "x") === "", "labels: objects, none");
+ok(A.labelOf({ labels: { "office.say": `a${ESC}[31mb\nmore` } }, "office.say") === "ab" && A.labelOf({ labels: { constructor: "x" } }, "toString") === "", "labels: one clean line, own keys only");
 ok(A.bossBrief({ goal: "x", argv: ["codex", "--model", "o3"] }).includes("codex --model o3 \"<task>\""), "brief: agent argv");
 ok(A.roleFromName("tester-e2e") === "tester" && A.roleFromName("frontend_nav") === "developer" && A.roleFromName("ui.polish") === "designer", "role from name");
 ok(A.roleFromName("bob") === null && A.roleFromName(null) === null && A.roleFromName("x-docs") === "writer", "role from a later word, or none");

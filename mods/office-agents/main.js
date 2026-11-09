@@ -24,19 +24,24 @@
 //
 // The boss: in front of the panel's back wall stands the team lead you give
 // goals to, one per space (a tab named "Boss"). The first goal for a space hires
-// one (tab.new with the agent you pick and bossBrief as its first message); later
-// goals go to it (`hc send`). It hires its staff with `hc run`: they are its
+// one (tab.new with the agent you pick and bossBrief as its first message, which
+// points it at its playbook, boss.md); later goals go to it (`hc send`). It
+// reports in labels: its own office.say is its speech bubble, each hire's
+// office.task the line under its desk. It hires its staff with `hc run`: they are its
 // children, get a desk in its cubicle (and roles from their names), and the
 // sidebar's office seats them in panes beside it while you look at its tab.
 // Above the floor, "Needs you": a waiting agent's question read from its screen,
 // its numbered choices (or Enter / Esc) pressed with `hc keys` when you click.
 import { View, div, image, svg } from "gpui-kit";
 import { Input, InputState, h_flex, v_flex } from "gpui-base";
-import { agents, appHome, focused, hc, home, knownAgents, layout, openOverlay, panes, props, readTextFile, run, setAgentOrder, setShared, shared, spaces, terminals, theme } from "herdr";
-import { DEFAULT_REPLIES, DESK_SHADOW, EMPTY_DESK, ago, bossBrief, deskColumns, deskJobs, deskLabel, deskPath, deskState, deskTip, filterPlan, firstLine, fitAcross, localId, mixHex, officePlan, parsePrompt, parseReplies, portraitPath, roleFromName, screenLines, seatStep, shortPath, spaceColor, speechLine, splitTree, staffOf, tally, treeWidth, withAlpha } from "./lib.js";
+import { agents, appHome, exec, focused, hc, home, knownAgents, layout, openOverlay, panes, props, readTextFile, run, setAgentOrder, setShared, shared, spaces, terminals, theme } from "herdr";
+import { DEFAULT_REPLIES, DESK_SHADOW, EMPTY_DESK, ago, bossBrief, deskColumns, labelOf, deskJobs, deskLabel, deskPath, deskState, deskTip, filterPlan, firstLine, fitAcross, localId, mixHex, officePlan, parsePrompt, parseReplies, portraitPath, roleFromName, screenLines, seatStep, shortPath, spaceColor, speechLine, splitTree, staffOf, tally, treeWidth, withAlpha } from "./lib.js";
 
 const JOBS_FILE = `${appHome()}/mods/office-agents/jobs.json`;
 const REPLIES_FILE = `${appHome()}/mods/office-agents/replies.json`;
+// The boss's playbook; on another machine a copy goes to REMOTE_PLAYBOOK there.
+const PLAYBOOK = `${appHome()}/mods/office-agents/boss.md`;
+const REMOTE_PLAYBOOK = ".config/herdr-office/boss.md";
 // The inspector: its height, how many screen lines it shows, how often the
 // picked terminal's screen is read again while it works.
 const INSPECT_H = 300;
@@ -527,7 +532,8 @@ export default class Office extends View {
     // What the boss of the room in view says.
     const room = this.room(spaces());
     const boss = room ? this.bosses()[room.id] : null;
-    if (boss && !this.bossReading) {
+    const labelled = boss ? labelOf((terminals() ?? []).find((t) => t?.address === boss), "office.say") : "";
+    if (boss && !labelled && !this.bossReading) {
       const agent = list.find((a) => a.address === boss);
       const seq = agent ? `${agent.seq}:${agent.status}` : "";
       const said = this.bossSay;
@@ -746,8 +752,12 @@ export default class Office extends View {
       bosses.set(boss, { space, tab, staff: hires });
       for (const hire of hires) staff.set(hire, { space, tab, boss });
     }
-    const names = new Map(terms.filter((t) => typeof t?.address === "string").map((t) => [t.address, t.name]));
-    return { staff, bosses, names };
+    const byAddress = new Map(terms.filter((t) => typeof t?.address === "string").map((t) => [t.address, t]));
+    const names = new Map([...byAddress].map(([address, t]) => [address, t.name]));
+    // What the bosses say and what their hires do, as they label themselves.
+    const say = new Map([...bosses.keys()].map((boss) => [boss, labelOf(byAddress.get(boss), "office.say")]));
+    const tasks = new Map([...staff.keys()].map((hire) => [hire, labelOf(byAddress.get(hire), "office.task")]));
+    return { staff, bosses, names, say, tasks };
   }
 
   // Sidebar, every tick: while you look at a boss's tab, its next hire without a
@@ -824,10 +834,32 @@ export default class Office extends View {
     const pick = known.find((k) => k.key === this.bossPick) ?? known[0];
     if (!pick) return this.flash("No agent installed to be the boss", "blocked", cx, "bossNote");
     const folder = spaceFolder(room, ps);
-    run("tab.new", { space: room.id, name: "Boss", argv: pick.run, task: bossBrief({ goal, argv: pick.run, folder, space: room.name, most: STAFF_CAP }) });
+    this.busy = true;
     this.bossInput.set_value("");
     this.flash(`Hiring a boss (${pick.name})…`, "done", cx, "bossNote");
+    cx.spawn(async (cx) => {
+      const playbook = await this.playbookFor(room.machine ?? null);
+      run("tab.new", { space: room.id, name: "Boss", argv: pick.run, task: bossBrief({ goal, playbook, argv: pick.run, folder, space: room.name, most: STAFF_CAP }) });
+      this.busy = false;
+      cx.notify();
+    });
     cx.notify();
+  }
+
+  // Where the boss reads its playbook: boss.md here; on another machine, a copy
+  // written to REMOTE_PLAYBOOK there (the text goes as an argument, never
+  // through the shell's parsing). null when there is none: the brief then
+  // carries the rules that matter most on its own.
+  async playbookFor(machine) {
+    const text = await readTextFile(PLAYBOOK).catch(() => null);
+    if (typeof text !== "string" || !text.trim()) return null;
+    if (!machine) return PLAYBOOK;
+    try {
+      const r = await exec("sh", ["-c", 'f="$HOME/$1"; mkdir -p "$(dirname "$f")" && printf "%s" "$2" > "$f" && printf "%s" "$f"', "sh", REMOTE_PLAYBOOK, text], { on: machine });
+      return r.code === 0 && r.stdout.trim() ? r.stdout.trim() : null;
+    } catch {
+      return null;
+    }
   }
 
   readBoss(boss, seq, cx) {
@@ -859,7 +891,8 @@ export default class Office extends View {
     const crew = list.filter((a) => hires.includes(a.address));
     const busy = crew.filter((a) => a.status === "working").length;
     const state = boss?.status ?? "idle";
-    const said = bossAddr && this.bossSay?.key === bossAddr ? this.bossSay.line : "";
+    // What it says: its office.say label, else its screen's last line.
+    const said = (bossAddr && team.say.get(bossAddr)) || (bossAddr && this.bossSay?.key === bossAddr ? this.bossSay.line : "");
     const line = this.bossNote?.text
       ?? (said || (bossAddr ? (boss ? deskLabel({ agent: boss }) : "Getting ready…") : `Tell me what ${room?.name ?? "this space"} needs: I'll hire the team.`));
     const known = this.known[room?.machine ?? ""];
@@ -994,9 +1027,13 @@ export default class Office extends View {
     const paneIds = new Set(ps.map((p) => p.pane));
     const list = agents().map((a) => {
       const at = team.staff.get(a.address);
-      return at && !(a.pane && paneIds.has(a.pane))
-        ? { ...a, tab: at.tab.id, tab_name: at.tab.name, space: at.space.id, space_name: at.space.name }
-        : a;
+      if (!at) return a;
+      // A hire's desk says its task (office.task), when it has one.
+      const task = team.tasks.get(a.address);
+      const hire = task ? { ...a, title: task } : a;
+      return a.pane && paneIds.has(a.pane)
+        ? hire
+        : { ...hire, tab: at.tab.id, tab_name: at.tab.name, space: at.space.id, space_name: at.space.name };
     });
     const plan = officePlan(sp, ps, list);
     const roles = deskJobs(sp, ps, list, { Boss: "manager", ...this.jobs });

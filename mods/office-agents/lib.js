@@ -359,26 +359,42 @@ export function spaceColor(theme, colors, id) {
 // A shell word for the brief: quoted when it has anything but plain characters.
 const word = (w) => (/^[\w./:@%+=,-]+$/.test(w) ? w : `'${String(w).replace(/'/g, "'\\''")}'`);
 
-// What the boss is told when hired: the rules of the job, then the goal. One
-// line, so every agent takes it as one message.
-export function bossBrief({ goal, argv, folder, space, most = 4 } = {}) {
+// What the boss is told when hired: where its playbook is (boss.md, the job in
+// full), the rules that matter most in case it can't read it, then the goal.
+// One line, so every agent takes it as one message.
+export function bossBrief({ goal, playbook, argv, folder, space, most = 4 } = {}) {
   const task = typeof goal === "string" ? goal.replace(/\s+/g, " ").trim() : "";
   const run = (Array.isArray(argv) ? argv : []).filter((a) => typeof a === "string" && a).map(word).join(" ") || "claude";
   const cwd = typeof folder === "string" && folder ? ` --cwd ${word(folder)}` : "";
   return [
-    `You are the boss: the team lead for the space "${space ?? "this space"}" in Herdr${folder ? `, working in ${folder}` : ""}.`,
-    "Do not write the code yourself.",
-    `Split the goal at the end into independent pieces and hire one coding agent per piece, at most ${most} at a time unless the person asks for more.`,
-    "Run `hc --skill` once first to learn hc.",
-    `Hire each one with: hc run --bg --name <role>-<topic>${cwd} ${run} "<task>"`,
-    "(role: developer, designer, tester, analyst, writer, support or intern; a name is 1-32 of a-z 0-9 -;",
-    "the task says exactly what to change, how to check it, and to end with a short summary).",
-    "They get a desk next to you in the office.",
-    "Follow them with hc ls, hc read <name>, hc wait --children any and hc send <name> \"<message>\".",
-    "When they are done, review their changes (git diff) and tell the person what was done, what is left and what needs their decision.",
-    "Ask the person before anything destructive (deleting files, git push, force, resets, installs) and never print secrets.",
+    `You are the boss: the team lead of the space "${space ?? "this space"}" in Herdr${folder ? ` (folder: ${folder})` : ""}.`,
+    typeof playbook === "string" && playbook
+      ? `Read your playbook now and follow it: ${playbook} (read it again whenever your context is compacted). Also run \`hc --skill\` once.`
+      : "Run `hc --skill` once to learn hc.",
+    `In short: do not write code yourself; hire at most ${most} agents at a time, each with`,
+    `hc run --bg --name <role>-<topic> --label office.task="<the task in a few words>"${cwd} ${run} "<task>"`,
+    "(role: developer, designer, tester, analyst, writer, support or intern);",
+    "keep what you are doing in hc label $HC_TERMINAL_ID office.say=\"<one short line>\";",
+    "never approve a hire's permission prompt for the person;",
+    "ask the person before anything destructive (deleting files, git push, force, resets, installs); never print secrets.",
     `Goal: ${task}`,
   ].join(" ");
+}
+
+// A terminal's label (`hc label`), as one clean line; "" when it has none.
+// Labels come as { key: value }, as ["key=value"] or as [{ key, value }].
+export function labelOf(term, key) {
+  const labels = term?.labels;
+  let value = null;
+  if (Array.isArray(labels)) {
+    for (const l of labels) {
+      if (typeof l === "string" && l.startsWith(`${key}=`)) value = l.slice(key.length + 1);
+      else if (l && typeof l === "object" && l.key === key) value = l.value;
+    }
+  } else if (labels && typeof labels === "object" && Object.prototype.hasOwnProperty.call(labels, key)) {
+    value = labels[key];
+  }
+  return typeof value === "string" ? firstLine(value).slice(0, 140) : "";
 }
 
 const ROLE_WORDS = [

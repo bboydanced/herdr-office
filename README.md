@@ -32,12 +32,12 @@ cp -R herdr-git-changes/mods/git-changes "$H/mods/"
 `herdr-app check` must pass for every mod before you switch. Never overwrite your
 own files — rename first if you already have a mod or theme called `office-*`.
 
-Updating overwrites `mods/office-agents/jobs.json` and `replies.json`. Back
-them up first and put them back, or update without them:
+Updating overwrites `mods/office-agents/jobs.json`, `replies.json` and
+`boss.md`. Back them up first and put them back, or update without them:
 
 ```sh
 H=~/.config/herdr-app
-rsync -a --exclude jobs.json --exclude replies.json mods/ "$H/mods/"
+rsync -a --exclude jobs.json --exclude replies.json --exclude boss.md mods/ "$H/mods/"
 ```
 
 Earlier versions shipped `mods/office-agents/sprites/`, `mods/office-spaces/art/`,
@@ -190,12 +190,25 @@ another; `●` marks rooms that have one).
 
 - **The first goal** for a room hires the boss: `Hire ⏎` opens a `Boss` tab in
   that space running the agent you picked (the chips list the agents installed
-  there) with a brief and your goal as its first message. The brief tells it
-  not to write the code itself, to split the goal into independent pieces,
-  to hire one agent per piece with `hc run --bg --name <role>-<topic>` (at most
-  four at a time unless you ask for more), to follow them with `hc ls`, `hc
-  read`, `hc wait --children any` and `hc send`, to review their changes and
-  report back, and to ask you before anything destructive.
+  there) with a short brief and your goal as its first message. The brief
+  points it at its **playbook** and repeats the rules that matter most, in
+  case it can't read it.
+- **The playbook**, `mods/office-agents/boss.md`, is the job in full; edit it
+  to change how your bosses work (it is plain Markdown; write it in your own
+  language if you like). It says: don't write code yourself; understand, plan,
+  hire, follow, review, report; hire one agent per independent piece with `hc
+  run --bg --name <role>-<topic> --label office.task="…"`, at most four at a
+  time unless you ask for more, each in its own git worktree when pieces may
+  touch the same files; follow them with `hc ls`, `hc read`, `hc wait
+  --children any` and `hc send`; never answer a hire's permission prompt for
+  you; ask you before anything destructive; never print secrets; end with a
+  report of what was done, what is left and what needs you. The boss reads it
+  again whenever its context is compacted. For a room on another machine the
+  playbook is copied there first (to `~/.config/herdr-office/boss.md`).
+- **Labels:** the boss keeps what it is doing in its `office.say` label (`hc
+  label $HC_TERMINAL_ID office.say="Waiting for tester-e2e"`), which is its
+  speech bubble; each hire carries `office.task`, the line under its desk.
+  Without labels the office falls back to their screens and titles.
 - **Later goals** go to the boss you already have (`Tell ⏎`, `hc send`).
 - **Its hires** are its children in herdr-core: they get a desk in its
   cubicle at once, with a role from their name (`tester-e2e` is a tester,
@@ -251,9 +264,12 @@ waiting, `Details` picks it in the inspector, `Open ↗` goes to its terminal.
   the agents waiting for you and the boss (only while the panel shows the
   office), `hc send` when you send a message or a goal, `hc keys` when you
   click an answer and `hc interrupt` when you press Stop; what it reads is
-  drawn, never saved. `Hire ⏎` opens a tab running the agent you picked. The
+  drawn, never saved. `Hire ⏎` opens a tab running the agent you picked; for a
+  room on another machine it first writes the playbook there with `sh`
+  (`~/.config/herdr-office/boss.md`, its text passed as an argument). The
   sidebar's office gives the boss's hires panes (`terminal.keep`) while you
-  look at the boss's tab.
+  look at the boss's tab, and reads the bosses' and hires' `office.say` /
+  `office.task` labels.
 - `office-inbox` runs `mkdir`, `find`, `stat` and `open`.
 - `office-add` asks Herdr which agents are installed (`knownAgents`: Herdr looks
   in the shell agents start in, at most once a minute per machine) and runs
