@@ -136,7 +136,7 @@ ok(A.parseReplies(JSON.stringify(Array.from({ length: 12 }, (_, i) => `r${i}`)))
 // the boss
 const brief = A.bossBrief({ goal: "  add Google\nlogin  ", playbook: "/h/mods/office-agents/boss.md", argv: ["claude"], folder: "/w/web app", space: "web-app", most: 4 });
 ok(brief.endsWith("Goal: add Google login") && !brief.includes("\n"), "brief: one line, goal last");
-ok(brief.includes("--cwd '/w/web app' claude \"<task>\"") && brief.includes("at most 4 agents at a time") && brief.includes('"web-app"'), "brief: hire command, cap, space");
+ok(brief.includes("--cwd '/w/web app' claude \"<task>\"") && brief.includes("at most 4 hires working at a time") && brief.includes('"web-app"'), "brief: hire command, cap, space");
 ok(brief.includes("Read your playbook now and follow it: /h/mods/office-agents/boss.md") && brief.includes("office.say=") && brief.includes("--label office.task="), "brief: playbook and labels");
 ok(!A.bossBrief({ goal: "x" }).includes("playbook") && A.bossBrief({ goal: "x" }).includes("hc --skill"), "brief without a playbook");
 ok(A.bossBrief({ goal: "x", argv: [] }).includes(" claude \"<task>\"") && !A.bossBrief({ goal: "x" }).includes("--cwd"), "brief: defaults");
@@ -149,6 +149,7 @@ ok(A.roleFromName("bob") === null && A.roleFromName(null) === null && A.roleFrom
 const terms = [{ address: "t3" }, { address: "t4", parent: "t3" }, { address: "t5", parent: "t3" }, { address: "t6", parent: "t9" },
   { address: "vps/t2", parent: "t1" }, { address: "vps/t1" }];
 ok(A.staffOf(terms, "t3").join() === "t4,t5" && A.staffOf(terms, "vps/t1").join() === "vps/t2" && A.staffOf(terms, "").length === 0, "boss's staff");
+ok(A.staffOf([...terms, { address: "t7", parent: "t3", state: "finished" }], "t3").join() === "t4,t5", "boss's staff: finished hires gone");
 ok(JSON.stringify([1, 2, 3, 4].map(A.seatStep)) === '[{"from":"boss","place":"right"},{"from":"last","place":"down"},{"from":"boss","place":"down"},null]', "seating steps");
 const claudeAsk = ["╭──────────────╮", "│ Bash command │", "│              │", "│   git push origin feat/login │", "│   Push the branch │", "│              │",
   "│ Do you want to proceed? │", "│ ❯ 1. Yes │", "│   2. Yes, and don't ask again for git push │", "│   3. No, and tell Claude what to do differently (esc) │", "╰──────────────╯"];
@@ -160,6 +161,29 @@ ok(plain.options.length === 0 && plain.question.join("|") === "Running tool|Allo
 ok(A.parsePrompt(null).options.length === 0, "nothing to parse");
 ok(A.speechLine(["● Hired tester-e2e and frontend-nav", "", "✻ Waiting for the team… (2m · ↓ 1k tokens · esc to interrupt)", "> ", "? for shortcuts"]) === "✻ Waiting for the team…", "speech: spinner without its hint");
 ok(A.speechLine(["● Done: 3 changes merged", "────", "│ > │"]) === "● Done: 3 changes merged" && A.speechLine([]) === "", "speech: skips the input box");
+ok(A.speechLine(["● Planning the login work", "", "auto mode on (shift+tab to cycle)"]) === "● Planning the login work", "speech: skips the mode line");
+ok(A.speechLine(["● Hired 2", "⏵⏵ plan mode on"]) === "● Hired 2", "speech: skips plan mode");
+
+// finding each space's boss
+ok(A.isBossTab({ name: " Boss " }) && !A.isBossTab({ name: "Bossy" }) && !A.isBossTab(null), "boss tab by name");
+const claudeProg = { agent: true, key: "claude" }, shellProg = { agent: false, shell: true, key: "shell" };
+const bossSpaces = [{ id: "s1", tabs: [{ id: "b1", name: "Boss" }] }, { id: "s2", tabs: [{ id: "b2", name: "boss" }] }, { id: "s3", tabs: [{ id: "x3", name: "Work" }] }];
+const bossPanes = [
+  { tab: "b1", pane: "p1", terminal: "t1", status: "working", program: claudeProg },
+  { tab: "b1", pane: "p2", terminal: "t2", status: "working", program: claudeProg },
+  { tab: "b2", pane: "p3", terminal: "t3", status: null, program: shellProg },
+];
+const bossTerms = [{ address: "t1" }, { address: "t2", parent: "t1" }, { address: "t3", program: shellProg }];
+ok(JSON.stringify(A.findBosses({ spaces: bossSpaces, panes: bossPanes, terminals: bossTerms, agents: [{ address: "t1" }, { address: "t2" }] })) === '{"s1":"t1"}',
+  "boss: the agent nobody started, never a hire or a shell");
+const parked = [{ address: "t9", state: "live", program: claudeProg, labels: { "office.role": "boss", "office.space": "s3" } }];
+ok(A.findBosses({ spaces: bossSpaces, panes: [], terminals: parked, agents: [] }).s3 === "t9", "boss: labelled, found without a pane or a Boss tab");
+ok(A.findBosses({ spaces: bossSpaces, panes: [], terminals: [{ ...parked[0], state: "finished" }], agents: [] }).s3 === undefined, "boss: a finished one is gone");
+ok(A.findBosses({ spaces: bossSpaces, panes: [], terminals: [{ ...parked[0], program: shellProg }], agents: [] }).s3 === undefined, "boss: a labelled shell is not one");
+ok(A.findBosses({ spaces: bossSpaces, panes: [], terminals: [{ ...parked[0], labels: { "office.role": "boss", "office.space": "gone" } }], agents: [] }).s3 === undefined, "boss: label for a space that is gone");
+const twoBosses = [parked[0], { ...parked[0], address: "t8" }];
+ok(A.findBosses({ spaces: bossSpaces, panes: [], terminals: twoBosses, agents: [], prev: { s3: "t8" } }).s3 === "t8", "boss: the last one wins a tie");
+ok(JSON.stringify(A.findBosses({})) === "{}", "boss: nothing given");
 
 // inbox lib
 ok(I.kindOf("a.PNG") === "image", "ext case-insensitive");

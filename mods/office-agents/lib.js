@@ -371,12 +371,12 @@ export function bossBrief({ goal, playbook, argv, folder, space, most = 4 } = {}
     typeof playbook === "string" && playbook
       ? `Read your playbook now and follow it: ${playbook} (read it again whenever your context is compacted). Also run \`hc --skill\` once.`
       : "Run `hc --skill` once to learn hc.",
-    `In short: do not write code yourself; hire at most ${most} agents at a time, each with`,
+    `In short: do not write code yourself; at most ${most} hires working at a time, each hired with`,
     `hc run --bg --name <role>-<topic> --label office.task="<the task in a few words>"${cwd} ${run} "<task>"`,
     "(role: developer, designer, tester, analyst, writer, support or intern);",
     "keep what you are doing in hc label $HC_TERMINAL_ID office.say=\"<one short line>\";",
     "never approve a hire's permission prompt for the person;",
-    "ask the person before anything destructive (deleting files, git push, force, resets, installs); never print secrets.",
+    "ask the person before anything destructive (deleting files, git push, merging, force, resets, installs); never print secrets.",
     `Goal: ${task}`,
   ].join(" ");
 }
@@ -418,15 +418,52 @@ export function roleFromName(name) {
   return null;
 }
 
-// Who the boss hired: the terminals whose parent is the boss (a remote boss's
-// children name their parent without the machine).
+// A tab with this name holds a space's boss.
+export const isBossTab = (tab) => typeof tab?.name === "string" && tab.name.trim().toLowerCase() === "boss";
+
+// Every space's boss: { space id: terminal address }. First a live agent labelled
+// office.role=boss with that space in office.space (labelled once found, so a boss
+// sent back without a pane or a renamed tab keeps it); else the agent nobody
+// started in the space's "Boss" tab. Never a shell: a goal sent to one would run
+// as a command. `prev` (the last answer) wins ties.
+export function findBosses({ spaces, panes, terminals, agents, prev } = {}) {
+  const live = (terminals ?? []).filter((t) => t && typeof t.address === "string" && t.state !== "finished");
+  const byAddress = new Map(live.map((t) => [t.address, t]));
+  const reporting = new Set((agents ?? []).map((a) => a?.address));
+  const isAgent = (address, pane) => reporting.has(address) || byAddress.get(address)?.program?.agent === true
+    || Boolean(pane && (pane.status || pane.program?.agent));
+  const ids = new Set((spaces ?? []).map((s) => s.id));
+  const marked = new Map();
+  for (const t of live) {
+    const space = labelOf(t, "office.space");
+    if (labelOf(t, "office.role") !== "boss" || !ids.has(space) || !isAgent(t.address)) continue;
+    marked.set(space, [...(marked.get(space) ?? []), t.address]);
+  }
+  const out = {};
+  for (const s of spaces ?? []) {
+    const was = prev?.[s.id];
+    const labelled = marked.get(s.id) ?? [];
+    let boss = labelled.find((a) => a === was) ?? labelled[0];
+    if (!boss) {
+      const tab = (s.tabs ?? []).find(isBossTab);
+      const mine = tab ? (panes ?? []).filter((p) => p.tab === tab.id && p.terminal
+        && !byAddress.get(p.terminal)?.parent && isAgent(p.terminal, p)) : [];
+      boss = (mine.find((p) => p.terminal === was) ?? mine[0])?.terminal;
+    }
+    if (boss) out[s.id] = boss;
+  }
+  return out;
+}
+
+// Who the boss hired and still has: the live terminals whose parent is the boss
+// (a remote boss's children name their parent without the machine).
 export function staffOf(terminals, boss) {
   if (typeof boss !== "string" || !boss) return [];
   const cut = boss.lastIndexOf("/");
   const machine = cut > 0 ? boss.slice(0, cut) : null;
   const local = cut > 0 ? boss.slice(cut + 1) : boss;
   return (terminals ?? [])
-    .filter((t) => t && typeof t.address === "string" && t.address !== boss
+    .filter((t) => t && typeof t.address === "string" && t.address !== boss && t.state !== "finished"
       && (t.parent === boss || (machine !== null && t.parent === local && t.address.startsWith(`${machine}/`))))
     .map((t) => t.address);
 }
@@ -463,13 +500,13 @@ export function parsePrompt(lines) {
 }
 
 // The boss's speech bubble: the last line on its screen that says something
-// (not the input box, its hints, or the spinner's "esc to interrupt").
+// (not the input box, its hints and mode line, or the spinner's "esc to interrupt").
 export function speechLine(lines) {
   const list = lines ?? [];
   for (let i = list.length - 1; i >= 0; i--) {
     const line = bare(list[i]).replace(/\s*\([^)]*esc to interrupt[^)]*\)\s*$/i, "").trim();
     if ((line.match(/\p{L}/gu) ?? []).length < 3) continue;
-    if (/^[>?]|for shortcuts|auto-accept|bypass permissions|accept edits|^esc to|ctrl\+/i.test(line)) continue;
+    if (/^[>?]|for shortcuts|auto-accept|auto mode|plan mode|bypass permissions|accept edits|shift\+tab|^esc to|ctrl\+/i.test(line)) continue;
     return line.slice(0, 140);
   }
   return "";

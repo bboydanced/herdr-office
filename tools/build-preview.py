@@ -11,7 +11,7 @@ are rooms (a door with its number, lamp, sticky notes, faces); in the office
 each space is a rug, each tab a cubicle on it, each pane a desk. The panel shows
 the header with the filters, the boss in front of the back wall, a Needs you
 card, the floor (two lines under each desk, an "Add desk" place in each
-cubicle) and the inspector on the picked staff member. A tab with a `tree`
+cubicle) and the inspector bar on the picked staff member. A tab with a `tree`
 shows its split; others, rows.
 """
 
@@ -479,30 +479,32 @@ def draw_panel(im: Image.Image, box, frame: int) -> None:
         d.text((bx + 6, 7), t, font=font(13), fill=hexa("foreground" if on else "muted"))
     d.text((pw - 44, 10), "21:40", font=font(11), fill=hexa("dim"))
 
-    # The boss, in front of the back wall.
-    by = 34
-    d.rectangle([0, by, pw, by + 99], fill=hexa("#1a2230"))
-    wall = load("mods/office-agents/room/wall-wide.png")
-    p.alpha_composite(wall.resize((wall.width // 2, wall.height // 2), Image.NEAREST).crop((0, 0, pw, 44)), (0, by))
-    d.line([0, by + 44, pw, by + 44], fill=hexa("#11161f"))
-    p.alpha_composite(load("mods/office-agents/boss/working.gif", (64, 88), frame), (10, by + 8))
-    d.rectangle([84, by + 6, pw - 11, by + 31], fill=hexa("#f4efe4"), outline=hexa("#cfc5b2"))
-    d.rectangle([80, by + 14, 85, by + 19], fill=hexa("#f4efe4"))
-    team = "team 2 · 2 working"
-    tf = font(10.5)
-    d.text((pw - 19 - d.textlength(team, font=tf), by + 12), team, font=tf, fill=hexa("#55606e"))
-    say = "Hired frontend-nav and design-login; I'll review when they're done."
-    d.text((92, by + 11), fit(d, say, font(11.5), pw - 130 - round(d.textlength(team, font=tf))), font=font(11.5), fill=hexa(INK))
-    x = 84
+    # The boss's band (BAND_H 100), plain so its line reads: the boss on the left;
+    # what it says, the rooms row and the goal box beside it.
+    by, band, left = 34, 100, 88
+    d.rectangle([0, by, pw, by + band - 1], fill=hexa("#1a2230"))
+    d.line([0, by + band - 1, pw, by + band - 1], fill=hexa("#11161f"))
+    p.alpha_composite(load("mods/office-agents/boss/working.gif", (64, 88), frame), (12, by + 6))
+    team = "team 2 · 2/4 working"
+    say = "Hired frontend-nav and design-login"
+    tf, sf = font(10.5), font(11.5)
+    tw = round(d.textlength(team, font=tf))
+    shown = fit(d, say, sf, pw - left - 40 - 8 - tw)
+    d.text((left, by + 11), shown, font=sf, fill=hexa("foreground"))
+    d.text((left + round(d.textlength(shown, font=sf)) + 8, by + 12), team, font=tf, fill=hexa("muted"))
+    d.rectangle([pw - 30, by + 8, pw - 11, by + 27], fill=hexa("#0d131b", 204))
+    d.text((pw - 25, by + 10), "▴", font=font(11), fill=hexa("dim"))
+    x = left
     for name, on, color in (("● web-app", True, "ansi6"), ("api", False, "ansi3"), ("notes", False, "ansi5")):
-        x += chip(d, x, by + 38, name, on, color=color) + 4
-    d.rectangle([84, by + 64, pw - 82, by + 93], fill=hexa("input"), outline=mix("muted", "#161f28", 0.5))
-    d.text((94, by + 71), "Tell the boss what you need…", font=font(12), fill=hexa("dim"))
-    d.rectangle([pw - 76, by + 65, pw - 11, by + 92], fill=hexa("accent"))
-    d.text((pw - 66, by + 71), "Tell ⏎", font=font(12, bold=True), fill=hexa("#101820"))
+        x += chip(d, x, by + 34, name, on, color=color) + 4
+    iy0 = by + 62
+    d.rectangle([left, iy0, pw - 82, iy0 + 29], fill=hexa("input"), outline=mix("muted", "#161f28", 0.5))
+    d.text((left + 10, iy0 + 7), "Tell the boss what you need…", font=font(12), fill=hexa("dim"))
+    d.rectangle([pw - 76, iy0 + 1, pw - 13, iy0 + 28], fill=hexa("accent"))
+    d.text((pw - 66, iy0 + 7), "Tell ⏎", font=font(12, bold=True), fill=hexa("#101820"))
 
     # Needs you: a waiting agent's question and its choices.
-    cy = by + 100 + 8
+    cy = by + band + 8
     ch = 136
     d.rectangle([8, cy, pw - 9, cy + ch], fill=hexa("#2a1f1c"), outline=hexa("blocked"), width=2)
     d.rectangle([16, cy + 8, 46, cy + 38], fill=hexa("raised"), outline=hexa("blocked"))
@@ -510,7 +512,7 @@ def draw_panel(im: Image.Image, box, frame: int) -> None:
     d.text((54, cy + 8), "Needs you · Tester · Claude Code", font=font(12, bold=True), fill=hexa("foreground"))
     d.text((54, cy + 25), "api › tests · waiting 3m", font=font(10.5), fill=hexa("dim"))
     bx = pw - 17
-    for label in ("Open ↗", "Details"):
+    for label in ("Open ↗", "Terminal"):
         w = round(d.textlength(label, font=font(11))) + 16
         bx -= w
         chip(d, bx, cy + 11, label, w=w)
@@ -527,46 +529,29 @@ def draw_panel(im: Image.Image, box, frame: int) -> None:
     fy = cy + ch + 1 + 10
     z = {**SMALL, "wide": True}
     most = max(1, min(6, (pw - 40 + z["gap"]) // (z["slot"] + z["gap"])))
-    inspect = 300
+    inspect = 56
     floor_img = Image.new("RGBA", (pw, ph), (0, 0, 0, 0))
     fd = ImageDraw.Draw(floor_img, "RGBA")
     draw_floor(floor_img, fd, 10, fy, pw - 20, z, most, frame)
     p.alpha_composite(floor_img.crop((0, fy, pw, ph - inspect)), (0, fy))
 
-    # The inspector, on the designer the boss hired.
+    # The inspector, one bar, on the designer the boss hired (a click on a desk
+    # opens their real terminal in a window, not drawn here).
     iy = ph - inspect
     d.rectangle([0, iy, pw, ph], fill=hexa("#121a23"))
     d.rectangle([0, iy, pw, iy + 1], fill=hexa("accent"))
-    d.rectangle([12, iy + 12, 57, iy + 57], fill=hexa("raised"), outline=hexa("working"))
-    p.alpha_composite(load("mods/office-agents/art/designer.png", (44, 44)), (13, iy + 13))
-    d.text((68, iy + 11), "Designer · Claude Code", font=font(13, bold=True), fill=hexa("foreground"))
-    d.text((68, iy + 30), "web-app › Boss · …/code/web-app · feat/login", font=font(10.5), fill=hexa("dim"))
-    d.text((68, iy + 46), "● Working · 12m", font=font(11), fill=bright("working"))
-    d.text((68 + d.textlength("● Working · 12m  ", font=font(11)), iy + 46), "· design-login", font=font(11), fill=hexa("muted"))
-    bx = pw - 36
-    for label in ("Stop", "Peek", "Go to desk"):
+    d.rectangle([12, iy + 10, 47, iy + 45], fill=hexa("raised"), outline=hexa("working"))
+    p.alpha_composite(load("mods/office-agents/art/designer.png", (34, 34)), (13, iy + 11))
+    title = "Designer · Claude Code"
+    d.text((58, iy + 11), title, font=font(12.5, bold=True), fill=hexa("foreground"))
+    d.text((58 + d.textlength(title + "  ", font=font(12.5, bold=True)), iy + 12), "● Working · 12m", font=font(11), fill=bright("working"))
+    d.text((58, iy + 30), "web-app › Boss · …/code/web-app · feat/login", font=font(10.5), fill=hexa("dim"))
+    bx = pw - 12
+    for label in ("Peek", "Go to desk", "Terminal ↗"):
         w = round(d.textlength(label, font=font(11))) + 16
         bx -= w
-        chip(d, bx, iy + 10, label, w=w)
+        chip(d, bx, iy + 17, label, w=w)
         bx -= 5
-    d.text((pw - 24, iy + 6), "▾", font=font(11), fill=hexa("dim"))
-    sy, sh = iy + 70, 150
-    d.rectangle([12, sy, pw - 13, sy + sh], fill=hexa("#0b1016"), outline=mix("muted", "#121a23", 0.8))
-    lines = [("dim", "● Read(src/components/Login.tsx)"), ("dim", "  └ Read 96 lines"),
-             ("foreground", "● The form needs a Google button above the email"),
-             ("foreground", "  field, styled like the rest of the card."),
-             ("done", "● Update(src/components/Login.tsx)"), ("dim", "  └ Updated with 22 additions and 4 removals"),
-             ("working", "✻ Styling the Google button… (1m 12s)")]
-    for i, (k, t) in enumerate(lines):
-        d.text((22, sy + 8 + i * 19), t, font=mono(11.5), fill=hexa(k))
-    ry = sy + sh + 8
-    x = 12
-    for r in ("continue", "run the tests", "commit it", "explain what you changed"):
-        x += chip(d, x, ry, r, size=10.5) + 5
-    d.rectangle([12, ry + 30, pw - 88, ry + 58], fill=hexa("input"), outline=mix("muted", "#161f28", 0.5))
-    d.text((22, ry + 36), "Message…", font=font(12), fill=hexa("dim"))
-    d.rectangle([pw - 80, ry + 31, pw - 13, ry + 57], fill=hexa("accent"))
-    d.text((pw - 70, ry + 36), "Send ⏎", font=font(12, bold=True), fill=hexa("#101820"))
     im.alpha_composite(p, (x0, y0))
 
 

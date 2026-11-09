@@ -147,7 +147,8 @@ bottom:
 1. **The header:** filters with their counts (`All`, `Working`, `Needs you`,
    `Done`, remembered), `−` / `+` for desk size (sidebar size, or half as big
    again once the panel is 480 px wide) and the time.
-2. **The boss**, standing in front of the back wall (see below).
+2. **The boss**, on a plain band so its line reads (see below). `▴` folds it
+   to one line (its face, its latest line, its team), `▾` brings it back.
 3. **Needs you**, while an agent waits for you (see below).
 4. **The floor:** rugs, cubicles and desks. Under each desk a second line: the
    status and for how long (`Working · 12m`, `NEEDS YOU · 3m`, `✓ Done · 5m`;
@@ -161,23 +162,23 @@ bottom:
      first). A desk with an agent starts in its neighbour's folder.
    - **Put away:** tabs put away (`tab.settle`) are listed at the end of the
      floor; click one to bring it back.
-5. **The inspector:** **click a desk** to pick that staff member (a
-   double-click goes to their terminal, as a click does in the sidebar). It
-   shows:
-   - who and where: role and program, space › tab, folder, branch, status and
-     for how long, the task in their title;
-   - **their screen**, the last lines as `hc read` prints them, read again
-     every 2 s while they work and the panel shows the office (on any change
-     otherwise); shown only, never stored;
-   - a **message box**: Enter or `Send ⏎` pastes it into their terminal and
-     presses Enter (`hc send`). Quick replies above it fill the box (they never
-     send on their own) and come from `mods/office-agents/replies.json`, a
-     list of up to eight strings;
-   - `Go to desk`, `Peek` (look over the tab without leaving it) and `Stop`
-     (`hc interrupt`: Esc for an agent, Ctrl+C for anything else).
+5. **The inspector**, one bar under the floor: the staff member you picked,
+   their role and program, space › tab, folder, branch, status and for how
+   long, with `Terminal ↗` (the desk window again), `Go to desk` and `Peek`
+   (look over the tab without leaving it).
 
-   An agent waiting for an answer refuses messages: answer it in Needs you.
-   `▾` folds the inspector away.
+**Click a desk** to pick that staff member and open **their real terminal in
+a window** (a double-click goes to their terminal instead, as a click does in
+the sidebar). It is Herdr's own terminal, drawn like the panes in the main
+area: click into it and type, scroll back, answer its questions. One window
+for every desk: pick someone else and their terminal takes its place, where
+you last dropped it. Its header shows who and where, `Go to desk` (goes there
+and closes the window), `Stop` (`hc interrupt`: Esc for an agent, Ctrl+C for
+anything else), `✕` to close (Esc goes to the terminal, not the window) and the
+**quick replies** from `mods/office-agents/replies.json` (a list of up to eight
+strings): a click sends one and presses Enter (`hc send`); an agent waiting
+for an answer refuses them. Drag the window by its header. It closes by itself
+when the terminal ends, and on a layout switch.
 
 Only the sidebar's office sets the `agent.next` / `agent.prev` order.
 
@@ -197,18 +198,29 @@ another; `●` marks rooms that have one).
   to change how your bosses work (it is plain Markdown; write it in your own
   language if you like). It says: don't write code yourself; understand, plan,
   hire, follow, review, report; hire one agent per independent piece with `hc
-  run --bg --name <role>-<topic> --label office.task="…"`, at most four at a
-  time unless you ask for more, each in its own git worktree when pieces may
-  touch the same files; follow them with `hc ls`, `hc read`, `hc wait
-  --children any` and `hc send`; never answer a hire's permission prompt for
-  you; ask you before anything destructive; never print secrets; end with a
-  report of what was done, what is left and what needs you. The boss reads it
+  run --bg --name <role>-<topic> --label office.task="…"`, at most four
+  working at a time unless you ask for more; what each role is for, and the
+  parts every task has (goal, area, what not to touch, the check to run, the
+  rules, the summary to finish with); when pieces may touch the same files,
+  each gets its own git worktree under `.worktrees/` (kept out of git status
+  with `.git/info/exclude`), merged and removed only with your agreement;
+  follow them with `hc ls`, `hc read`, `hc wait --children any` (waiting
+  again when it comes back with nothing) and `hc send`; never answer a hire's
+  permission prompt for you; ask you before anything destructive, merges
+  included; never print secrets; end with a report of what was done, what is
+  left and what needs you. The boss reads it
   again whenever its context is compacted. For a room on another machine the
   playbook is copied there first (to `~/.config/herdr-office/boss.md`).
 - **Labels:** the boss keeps what it is doing in its `office.say` label (`hc
   label $HC_TERMINAL_ID office.say="Waiting for tester-e2e"`), which is its
   speech bubble; each hire carries `office.task`, the line under its desk.
   Without labels the office falls back to their screens and titles.
+- **Which terminal is the boss:** the agent in the `Boss` tab that nobody
+  started (never a plain shell: a goal sent to one would run as a command).
+  Once found it is labelled `office.role=boss` and `office.space=<space id>`,
+  so it stays the boss when you send it back without a pane or rename its tab.
+  A `Boss` tab with no boss running in it (still starting, or its agent gone)
+  hires nobody new: wait, or close the tab to hire again.
 - **Later goals** go to the boss you already have (`Tell ⏎`, `hc send`).
 - **Its hires** are its children in herdr-core: they get a desk in its
   cubicle at once, with a role from their name (`tester-e2e` is a tester,
@@ -217,15 +229,36 @@ another; `●` marks rooms that have one).
   panes at most), and your focus goes back where it was; elsewhere they work
   at their desks.
 - The boss shows its status (talking with a clipboard, a hand up, a thumbs up,
-  arms crossed), its speech bubble its latest line and the size of its team.
-  Click it for the inspector; double-click for its terminal.
+  arms crossed), its speech bubble its latest line and its team (`team 3 ·
+  2/4 working`: its live hires, and how many work against the cap, red past
+  it).
+  Click it for its terminal in the desk window; double-click to go there.
 - Closing the `Boss` tab ends its hires too (herdr-core ends children with
   their parent).
 
 Every hire is a full agent session, with its own cost. The boss runs `hc`
 through its shell, so its agent asks you before each command unless you allow
-`hc` there (Claude Code: `Bash(hc:*)` in its permissions); those questions show
-up in Needs you.
+it; those questions show up in Needs you. Allow only what the boss needs.
+For Claude Code, in the project's `.claude/settings.json`:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(hc --skill)", "Bash(hc ls:*)", "Bash(hc get:*)", "Bash(hc read:*)",
+      "Bash(hc run:*)", "Bash(hc wait:*)", "Bash(hc send:*)", "Bash(hc label:*)",
+      "Bash(hc interrupt:*)"
+    ]
+  }
+}
+```
+
+Do not allow `Bash(hc:*)`: that also lets the boss run any command with `hc
+exec` (on your other machines too), write files with `hc file`, end terminals
+with `hc kill` and answer a hire's permission prompt with `hc keys`. Left out
+of the list, each of those still asks you first. `hc run` still starts any
+program, so this narrows what the boss can do without asking, it does not
+sandbox it.
 
 #### Needs you
 
@@ -234,7 +267,8 @@ how long it has waited, **its question as its screen shows it**, and its
 numbered choices (`1  Yes`, `2  Yes, and don't ask again…`, `3  No…`); without
 numbered choices, `Enter` and `Esc`. A click presses that key in its terminal
 (`hc keys`); nothing is ever answered for you. `n/m ›` goes to the next one
-waiting, `Details` picks it in the inspector, `Open ↗` goes to its terminal.
+waiting, `Terminal` opens its terminal in the desk window, `Open ↗` goes to
+its terminal.
 
 ## Customize
 
@@ -260,13 +294,14 @@ waiting, `Details` picks it in the inspector, `Open ↗` goes to its terminal.
   that `git` there.
 - `office-agents` reads its own `jobs.json` and `replies.json` and herdr-core's
   `docs.json` (for the splits; it writes nothing and shows nothing else from
-  it). In the Office panel it runs `hc read` on the staff member you picked,
-  the agents waiting for you and the boss (only while the panel shows the
-  office), `hc send` when you send a message or a goal, `hc keys` when you
-  click an answer and `hc interrupt` when you press Stop; what it reads is
-  drawn, never saved. `Hire ⏎` opens a tab running the agent you picked; for a
+  it). In the Office panel it runs `hc read` on the agents waiting for you and
+  the boss (only while the panel shows the office), `hc send` when you send a
+  goal or click a quick reply, `hc keys` when you click an answer and `hc
+  interrupt` when you press Stop; what it reads is drawn, never saved. A click
+  on a desk opens a window (`openOverlay`) showing that terminal itself. `Hire ⏎` opens a tab running the agent you picked; for a
   room on another machine it first writes the playbook there with `sh`
-  (`~/.config/herdr-office/boss.md`, its text passed as an argument). The
+  (`~/.config/herdr-office/boss.md`, its text passed as an argument). It runs
+  `hc label` once on each boss it finds (`office.role`, `office.space`). The
   sidebar's office gives the boss's hires panes (`terminal.keep`) while you
   look at the boss's tab, and reads the bosses' and hires' `office.say` /
   `office.task` labels.

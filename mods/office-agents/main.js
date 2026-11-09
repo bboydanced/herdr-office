@@ -3,7 +3,8 @@
 // split (side by side or one above the other, read from Herdr's layout document),
 // else in pane order: an agent at work facing you, or an empty desk for a pane
 // with no agent. Click a desk to go to its terminal. The sidebar's office reads
-// jobs.json and that document only - runs no command, opens no connection.
+// jobs.json and that document only and opens no connection; the one command it
+// runs is `hc label`, once per boss it finds (see findBosses).
 //
 // With props { wide: true } (the side panel's Office tab) the same office is drawn
 // with more: desks at 2 points an art pixel (3 with "+"), as many across as fit,
@@ -16,13 +17,12 @@
 // sidebar's office tells Spaces who wears which role ("office.faces").
 //
 // The panel is also where you work with them: a click on a desk picks that staff
-// member (a double-click goes to their terminal) and the inspector under the
-// floor shows who and where they are, their screen as `hc read` prints it (read
-// again every 2 s while they work and the panel shows the office, never stored)
-// and a message box (`hc send`), with quick replies from replies.json, Go, Peek
-// and Stop (`hc interrupt`). Nothing is sent without a click or Enter.
+// member (a double-click goes to their terminal) and opens their real terminal
+// in a window (desk.js: a header with Go, Stop and quick replies over a terminal
+// block Herdr draws like any pane); the inspector under the floor says who and
+// where they are. With props { desk } this mod is that window's header.
 //
-// The boss: in front of the panel's back wall stands the team lead you give
+// The boss: in a band at the top of the panel stands the team lead you give
 // goals to, one per space (a tab named "Boss"). The first goal for a space hires
 // one (tab.new with the agent you pick and bossBrief as its first message, which
 // points it at its playbook, boss.md); later goals go to it (`hc send`). It
@@ -34,23 +34,25 @@
 // its numbered choices (or Enter / Esc) pressed with `hc keys` when you click.
 import { View, div, image, svg } from "gpui-kit";
 import { Input, InputState, h_flex, v_flex } from "gpui-base";
-import { agents, appHome, exec, focused, hc, home, knownAgents, layout, openOverlay, panes, props, readTextFile, run, setAgentOrder, setShared, shared, spaces, terminals, theme } from "herdr";
-import { DEFAULT_REPLIES, DESK_SHADOW, EMPTY_DESK, ago, bossBrief, deskColumns, labelOf, deskJobs, deskLabel, deskPath, deskState, deskTip, filterPlan, firstLine, fitAcross, localId, mixHex, officePlan, parsePrompt, parseReplies, portraitPath, roleFromName, screenLines, seatStep, shortPath, spaceColor, speechLine, splitTree, staffOf, tally, treeWidth, withAlpha } from "./lib.js";
+import { agents, appHome, closeOverlay, exec, focused, hc, home, knownAgents, layout, openOverlay, panes, props, readTextFile, run, setAgentOrder, setShared, shared, spaces, terminals, theme } from "herdr";
+import { DESK_SHADOW, EMPTY_DESK, ago, bossBrief, deskColumns, labelOf, deskJobs, deskLabel, deskPath, deskState, deskTip, filterPlan, findBosses, firstLine, fitAcross, isBossTab, localId, mixHex, officePlan, parsePrompt, portraitPath, roleFromName, screenLines, seatStep, shortPath, spaceColor, speechLine, splitTree, staffOf, tally, treeWidth, withAlpha } from "./lib.js";
+import { Desk } from "./desk.js";
 
 const JOBS_FILE = `${appHome()}/mods/office-agents/jobs.json`;
-const REPLIES_FILE = `${appHome()}/mods/office-agents/replies.json`;
 // The boss's playbook; on another machine a copy goes to REMOTE_PLAYBOOK there.
 const PLAYBOOK = `${appHome()}/mods/office-agents/boss.md`;
 const REMOTE_PLAYBOOK = ".config/herdr-office/boss.md";
-// The inspector: its height, how many screen lines it shows, how often the
-// picked terminal's screen is read again while it works.
-const INSPECT_H = 300;
-const SCREEN_LINES = 14;
+// The inspector's height; how often the panel reads the questions of those
+// waiting for you and the boss's screen (and the sidebar seats hires).
+const INSPECT_H = 56;
 const READ_EVERY = 2000;
+// The desk window: one, replaced in place when another desk is picked; its
+// header (this mod with props { desk }) over the terminal itself.
+const DESK_WINDOW = "office-desk";
+const DESK_HEAD_H = 76;
 // herdr-core keeps every app's shared documents here, Herdr's layout among them.
 const CORE_DOCS = ".local/state/herdr-core/default/docs.json";
 const WALL = "mods/office-agents/room/wall.png";
-const WALL_WIDE = "mods/office-agents/room/wall-wide.png";
 // 456 art pixels wide at 2 points each: the sidebar shows its left part.
 const FLOOR = "mods/office-agents/room/floor.png";
 const CARPET = "#1e2634";
@@ -66,12 +68,13 @@ const LARGE_FROM = 480;
 const MOST_ACROSS = 3;
 const FILTERS = [["all", "All"], ["working", "Working"], ["blocked", "Needs you"], ["done", "Done"]];
 // The boss: standing, 32x44 art pixels at 2 points each, one picture per status.
+// Its band, on a plain backing so its words read: the boss on the left; what it
+// says, the rooms row and the goal box beside it; folded, one line.
 const BOSS_DIR = "mods/office-agents/boss";
 const BAND_H = 100;
+const BAND_FOLDED_H = 34;
 // How many hires the boss is told it may have at a time.
 const STAFF_CAP = 4;
-// A tab with this name holds a space's boss.
-const BOSS_TAB = "boss";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -154,6 +157,8 @@ const urgent = (list) => (list.some((a) => a.status === "blocked") ? "blocked" :
 
 export default class Office extends View {
   init(_props, cx) {
+    // The desk window's header: nothing of the office below runs there.
+    if (props()?.desk) { this.deskHead = new Desk(cx); return; }
     this.jobs = {};
     this.time = clock();
     this.docs = {}; // machine ("" here) -> its herdr-core documents
@@ -162,20 +167,14 @@ export default class Office extends View {
     this.filter = localStorage.getItem("office.filter") ?? "all"; // wide only
     this.tried = new Map(); // a hire -> when it was last given a pane (sidebar)
     this.zoom = localStorage.getItem("office.zoom") === "large" ? "large" : "small"; // wide only
+    this.marked = new Set(); // bosses this copy has labelled office.role=boss
     if (props()?.wide) {
       this.selected = localStorage.getItem("office.selected") || null; // a terminal's address
-      this.folded = localStorage.getItem("office.inspector") === "folded";
-      this.screen = null; // { key, seq, at, lines } or { key, seq, at, error }
-      this.reading = false;
-      this.busy = false; // a send or a stop on its way
-      this.note = null; // { text, tone }: what the last send or stop did
-      this.replies = DEFAULT_REPLIES;
-      this.input = InputState.new({ placeholder: "Message…" });
-      this.input.on("submit", (_e, cx) => this.send(cx));
-      cx.spawn(async (cx) => {
-        this.replies = parseReplies(await readTextFile(REPLIES_FILE).catch(() => null));
-        cx.notify();
-      });
+      this.deskWindow = null; // the open desk window's overlay id
+      this.bandFolded = localStorage.getItem("office.bossBand") === "folded";
+      // What is on its way, each on its own so one never silently blocks another.
+      this.bossBusy = false; // a goal to the boss, or a boss being hired
+      this.answering = false; // a key pressed for "Needs you"
       this.bossRoom = localStorage.getItem("office.bossRoom") || null; // a space id
       this.bossPick = localStorage.getItem("office.bossAgent") || null; // a program key
       this.known = {}; // machine ("" here) -> installed agents (knownAgents)
@@ -289,10 +288,11 @@ export default class Office extends View {
       .gap(1)
       .cursor_pointer()
       .hover((s) => s.bg(t.hover))
-      .tooltip(`${deskTip({ job, agent: a, pane: d.pane, space, tab: c.tab })}\n${this.wide && terminal ? "Click: details · Double-click: go there · " : ""}Right-click: menu${terminal ? " · Middle-click: peek" : ""}`)
+      .tooltip(`${deskTip({ job, agent: a, pane: d.pane, space, tab: c.tab })}\n${this.wide && terminal ? "Click: their terminal in a window · Double-click: go there · " : ""}Right-click: menu${terminal ? " · Middle-click: peek" : ""}`)
       .on_click((e, cx) => {
-        // In the panel a click picks them (the inspector shows them); a double-click, or a click in the sidebar, goes there.
+        // In the panel a click picks them (the desk window opens); a double-click, or a click in the sidebar, goes there.
         if (this.wide && terminal && e.click_count < 2) return this.pick(terminal, cx);
+        if (this.wide) this.closeDesk();
         if (a) run("agent.focus", { terminal: a.address });
         else goTo(space, c.tab, d.pane);
       })
@@ -474,21 +474,40 @@ export default class Office extends View {
 
   // ---- the inspector (wide only) ----
 
+  // A desk picked: the inspector shows them and their terminal opens in the
+  // desk window.
   pick(terminal, cx) {
     if (this.selected !== terminal) {
       this.selected = terminal;
-      this.screen = null;
-      this.note = null;
       localStorage.setItem("office.selected", terminal);
     }
-    if (this.folded) this.fold(false);
-    this.poll(cx);
+    this.openDesk(terminal);
     cx.notify();
   }
 
-  fold(folded) {
-    this.folded = folded;
-    localStorage.setItem("office.inspector", folded ? "folded" : "open");
+  // Their real terminal in a window over everything: the header (this mod with
+  // props { desk }) over a terminal block Herdr draws like any pane. One window:
+  // picking someone else replaces it in place, where you last dropped it.
+  openDesk(terminal) {
+    this.deskWindow = openOverlay({
+      kind: "window",
+      key: DESK_WINDOW,
+      width: 760,
+      height: 540,
+      layout: {
+        id: "office-desk",
+        type: "column",
+        children: [
+          { id: "office-desk-head", type: "block", content: { mod: "office-agents", props: { desk: terminal, job: this.roles?.get(terminal) ?? null } }, size: { px: DESK_HEAD_H } },
+          { id: "office-desk-terminal", type: "block", content: { terminal }, size: { weight: 1 } },
+        ],
+      },
+    });
+  }
+
+  closeDesk() {
+    if (this.deskWindow) closeOverlay(this.deskWindow);
+    this.deskWindow = null;
   }
 
   // The panel shows the office (the stack's "office" child, the panel open).
@@ -499,7 +518,7 @@ export default class Office extends View {
   }
 
   // The picked terminal: its agent (if it is one), pane, space and tab; null
-  // when it is gone. `seq` changes whenever what it shows could have.
+  // when it is gone.
   target() {
     const key = this.selected;
     if (!key) return null;
@@ -510,19 +529,13 @@ export default class Office extends View {
     const tabId = agent?.tab ?? pane?.tab;
     const space = spaces().find((s) => (s.tabs ?? []).some((c) => c.id === tabId)) ?? null;
     const tab = space?.tabs?.find((c) => c.id === tabId) ?? null;
-    return { key, agent, pane, space, tab, seq: agent ? `${agent.seq}:${agent.status}` : `${pane?.title}:${pane?.status}` };
+    return { key, agent, pane, space, tab };
   }
 
-  // Read the picked screen again: when it may have changed, and every tick while
-  // it works (a plain terminal: every tick). Only while the panel shows it.
+  // While the panel shows the office: the questions of those waiting for you and
+  // what the boss says, read from their screens.
   poll(cx) {
     if (!this.wide || !this.shown()) return;
-    const target = !this.folded && !this.reading ? this.target() : null;
-    if (target) {
-      const stale = !this.screen || this.screen.key !== target.key || this.screen.seq !== target.seq;
-      const live = target.agent ? target.agent.status === "working" : true;
-      if (stale || live || Date.now() - this.screen.at > 15000) this.read(target, cx);
-    }
     const list = agents();
     // The questions of those waiting for you, one read a tick.
     if (!this.askReading) {
@@ -541,73 +554,10 @@ export default class Office extends View {
     }
   }
 
-  read(target, cx) {
-    this.reading = true;
-    cx.spawn(async (cx) => {
-      let got;
-      try {
-        const r = await hc(["read", target.key, "--lines", "60", "--json"]);
-        if (r.code !== 0) got = { error: firstLine(r.stderr) || firstLine(r.stdout) || "hc read failed" };
-        else {
-          let text = r.stdout;
-          try { text = JSON.parse(r.stdout)?.text ?? ""; } catch {}
-          got = { lines: screenLines(text, SCREEN_LINES) };
-        }
-      } catch (e) {
-        got = { error: firstLine(String(e?.message ?? e)) || "hc read failed" };
-      }
-      this.reading = false;
-      if (this.selected !== target.key) return;
-      const same = this.screen && this.screen.key === target.key && JSON.stringify(this.screen.lines ?? this.screen.error) === JSON.stringify(got.lines ?? got.error);
-      this.screen = { key: target.key, seq: target.seq, at: Date.now(), ...got };
-      if (!same) cx.notify();
-    });
-  }
-
-  flash(text, tone, cx, slot = "note") {
+  flash(text, tone, cx, slot) {
     const note = { text, tone };
     this[slot] = note;
     cx.timer.after(5000, (cx) => { if (this[slot] === note) { this[slot] = null; cx.notify(); } });
-  }
-
-  // `hc send`: pasted, then Enter. Refused while it waits for an answer.
-  send(cx, text = this.input?.value()) {
-    const target = this.target();
-    const message = typeof text === "string" ? text.trim() : "";
-    if (!target || !message || this.busy) return;
-    this.busy = true;
-    cx.spawn(async (cx) => {
-      try {
-        const r = await hc(["send", target.key, "--", message]);
-        if (r.code === 0) { this.input.set_value(""); this.flash("Sent", "done", cx); }
-        else this.flash(firstLine(r.stderr) || firstLine(r.stdout) || "Couldn't send", "blocked", cx);
-      } catch (e) {
-        this.flash(firstLine(String(e?.message ?? e)) || "Couldn't send", "blocked", cx);
-      }
-      this.busy = false;
-      if (this.screen) this.screen.seq = null;
-      cx.notify();
-      cx.timer.after(800, (cx) => this.poll(cx));
-    });
-  }
-
-  // `hc interrupt`: the stop key (esc for agents, else ctrl+c), and what it did.
-  stop(cx) {
-    const target = this.target();
-    if (!target || this.busy) return;
-    this.busy = true;
-    cx.spawn(async (cx) => {
-      try {
-        const r = await hc(["interrupt", target.key, "--json"]);
-        let outcome = firstLine(r.stdout);
-        try { outcome = JSON.parse(r.stdout)?.outcome ?? outcome; } catch {}
-        this.flash(r.code === 0 ? `Stop: ${String(outcome).replace(/_/g, " ")}` : firstLine(r.stderr) || "Couldn't stop", r.code === 0 ? "done" : "blocked", cx);
-      } catch (e) {
-        this.flash(firstLine(String(e?.message ?? e)) || "Couldn't stop", "blocked", cx);
-      }
-      this.busy = false;
-      cx.notify();
-    });
   }
 
   small(id, label, tip, t, action, tone) {
@@ -617,23 +567,15 @@ export default class Office extends View {
       .tooltip(tip).on_click(action).child(div().min_w(0).truncate().child(label));
   }
 
-  // The picked staff member: who and where, their screen, a message box.
-  inspector(roles, t, mono) {
+  // The picked staff member, in one bar: who and where, their status, and the
+  // ways to their terminal (the desk window, their desk, a peek over the tab).
+  inspector(roles, t) {
     const target = this.target();
-    const head = (el) => el.child(div().id("inspector-fold").absolute().top(4).right(8).size(20).flex().items_center().justify_center()
-      .text_size(11).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.foreground))
-      .tooltip(this.folded ? "Show the inspector" : "Hide the inspector")
-      .on_click((_e, cx) => { this.fold(!this.folded); cx.notify(); cx.timer.after(50, (cx) => this.poll(cx)); })
-      .child(this.folded ? "▴" : "▾"));
-    const frame = v_flex().id("office-inspector").relative().flex_none().bg("#121a23").border_t(2).border_color(t.accent);
-    if (this.folded) {
-      const who = target ? (target.agent ? deskLabel({ agent: target.agent }) : deskLabel({ pane: target.pane })) : "Nobody picked";
-      return head(frame.h(28).px(14).justify_center().child(div().text_size(11.5).text_color(t.muted).truncate().child(`Inspector · ${who}`)));
-    }
+    const frame = h_flex().id("office-inspector").h(INSPECT_H).flex_none().px(12).gap(10).items_center()
+      .bg("#121a23").border_t(2).border_color(t.accent);
     if (!target) {
-      return head(frame.h(INSPECT_H).items_center().justify_center().gap(6)
-        .child(div().text_size(12.5).text_color(t.muted).child("Click a desk to see what they are doing"))
-        .child(div().text_size(11).text_color(t.dim).child("and talk to them from here. Double-click goes to their terminal.")));
+      return frame.child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.dim)
+        .child("Click a desk: their terminal opens in a window. Double-click goes to it."));
     }
     const { key, agent: a, pane, space, tab } = target;
     const job = a ? roles.get(a.address) : null;
@@ -642,39 +584,22 @@ export default class Office extends View {
     const title = a ? `${job ? cap(job) : "Agent"} · ${a.program?.name ?? "Agent"}` : deskLabel({ pane });
     const place = [`${space?.name ?? ""} › ${tab?.name ?? ""}`, shortPath(pane?.cwd), pane?.branch].filter(Boolean).join(" · ");
     const tone = { working: mixHex(t.working, "#ffffff", 0.3), blocked: t.blocked, done: t.done }[state?.status] ?? t.dim;
-    const screen = this.screen?.key === key ? this.screen : null;
-    const lines = screen?.lines ?? [];
-    const go = () => (a ? run("agent.focus", { terminal: a.address }) : space && tab && pane && goTo(space, tab, pane));
-    return head(frame.h(INSPECT_H).px(12).pt(10).pb(10).gap(8)
-      .child(h_flex().gap(10).items_start().pr(24)
-        .child(div().size(46).flex_none().border(1).border_color(state ? t[state.status] ?? t.dim : t.dim).bg(t.raised)
-          .when(Boolean(src), (el) => el.child(image(src).size(44))))
-        .child(v_flex().flex_1().min_w(0).gap(2)
-          .child(div().truncate().text_size(13).font_semibold().text_color(t.foreground).child(title))
-          .child(div().truncate().text_size(10.5).text_color(t.dim).child(place))
-          .child(h_flex().gap(6).items_center()
-            .child(div().text_size(11).text_color(tone).child(state ? state.text : "Terminal"))
-            .when(Boolean(a?.title), (el) => el.child(div().min_w(0).truncate().text_size(11).text_color(t.muted).child(`· ${deskLabel({ agent: a })}`)))))
-        .child(h_flex().flex_none().gap(5)
-          .child(this.small("inspect-go", "Go to desk", "Their terminal, in its space and tab", t, go))
-          .child(this.small("inspect-peek", "Peek", "Look over the tab without leaving it", t, () => run("terminal.peek", { terminal: key })))
-          .child(this.small("inspect-stop", "Stop", "The stop key: Esc for an agent, else Ctrl+C", t, (_e, cx) => this.stop(cx), t.blocked))))
-      // The newest lines are at the bottom: when they don't all fit, the top ones go.
-      .child(v_flex().id("inspect-screen").flex_1().min_h(0).justify_end().px(10).py(6).bg("#0b1016").border(1).border_color(withAlpha(t.muted, "30")).overflow_hidden()
-        .when(lines.length === 0, (el) => el.child(div().text_size(11).text_color(screen?.error ? t.blocked : t.dim)
-          .child(screen?.error ? `Can't read the screen: ${screen.error}` : screen ? "(empty screen)" : "Reading…")))
-        .children(lines.map((line, i) => div().id(`screen-${i}`).h(16).flex_none().truncate().font_family(mono).text_size(11.5)
-          .text_color(/^\s/.test(line) ? t.muted : t.foreground).child(line || " "))))
-      .child(h_flex().gap(5).items_center()
-        .children(this.replies.map((r, i) => this.small(`reply-${i}`, r, "Put it in the message box", t, () => { this.input.set_value(r); this.input.focus(); })))
-        .child(div().flex_1())
-        .when(Boolean(this.note), (el) => el.child(div().flex_none().text_size(11).text_color(t[this.note.tone] ?? t.muted).child(this.note.text))))
-      .child(h_flex().gap(6).items_center()
-        .child(div().flex_1().min_w(0).child(Input.new(this.input)))
-        .child(div().id("inspect-send").h(28).px(14).flex().flex_none().items_center().bg(this.busy ? t.raised : t.accent)
-          .text_size(12).font_bold().text_color(t.accent_foreground ?? "#101820").cursor_pointer()
-          .tooltip(a?.status === "blocked" ? "It waits for an answer to its question: answer it in its terminal" : "Paste it into their terminal and press Enter")
-          .on_click((_e, cx) => this.send(cx)).child("Send ⏎"))));
+    const go = () => {
+      this.closeDesk();
+      if (a) run("agent.focus", { terminal: a.address });
+      else if (space && tab && pane) goTo(space, tab, pane);
+    };
+    return frame
+      .child(div().size(36).flex_none().border(1).border_color(state ? t[state.status] ?? t.dim : t.dim).bg(t.raised)
+        .when(Boolean(src), (el) => el.child(image(src).size(34))))
+      .child(v_flex().flex_1().min_w(0).gap(1)
+        .child(h_flex().gap(6).items_center()
+          .child(div().min_w(0).truncate().text_size(12.5).font_semibold().text_color(t.foreground).child(title))
+          .child(div().flex_none().text_size(11).text_color(tone).child(state ? state.text : "Terminal")))
+        .child(div().truncate().text_size(10.5).text_color(t.dim).child(place)))
+      .child(this.small("inspect-open", "Terminal ↗", "Their terminal in a window", t, () => this.openDesk(key)))
+      .child(this.small("inspect-go", "Go to desk", "Their terminal, in its space and tab", t, go))
+      .child(this.small("inspect-peek", "Peek", "Look over the tab without leaving it", t, () => run("terminal.peek", { terminal: key })));
   }
 
   setFilter(filter, cx) {
@@ -723,20 +648,18 @@ export default class Office extends View {
     return map && typeof map === "object" && !Array.isArray(map) ? map : {};
   }
 
-  // Sidebar: each space's boss is the terminal in its "Boss" tab that nobody
-  // started (the hires there have the boss as parent). Shared when it changes.
-  findBosses(sp, ps, terms) {
+  // Every copy (sidebar or panel, whichever the layout shows) works out each
+  // space's boss (findBosses) and shares it when it changes. A boss found by its
+  // tab is labelled office.role=boss once, so it stays found without a pane.
+  shareBosses(found, terms, cx) {
     const now = this.bosses();
-    const parent = new Map(terms.map((t) => [t?.address, t?.parent ?? null]));
-    const next = {};
-    for (const s of sp) {
-      const tab = (s.tabs ?? []).find((c) => typeof c.name === "string" && c.name.trim().toLowerCase() === BOSS_TAB);
-      if (!tab) continue;
-      const mine = ps.filter((p) => p.tab === tab.id && p.terminal);
-      const boss = mine.find((p) => p.terminal === now[s.id]) ?? mine.find((p) => !parent.get(p.terminal)) ?? null;
-      if (boss) next[s.id] = boss.terminal;
+    if (JSON.stringify(found) !== JSON.stringify(now)) setShared("office.bosses", found);
+    for (const [space, addr] of Object.entries(found)) {
+      const term = terms.find((t) => t?.address === addr);
+      if (this.marked.has(addr) || labelOf(term, "office.role") === "boss") continue;
+      this.marked.add(addr);
+      cx.spawn(async () => { await hc(["label", addr, "office.role=boss", `office.space=${space}`]).catch(() => null); });
     }
-    if (JSON.stringify(next) !== JSON.stringify(now)) setShared("office.bosses", next);
   }
 
   // Each boss's tab and hires, and where every hire sits: in the boss's tab.
@@ -745,7 +668,9 @@ export default class Office extends View {
     const bosses = new Map(); // boss -> { space, tab, staff }
     for (const [spaceId, boss] of Object.entries(this.bosses())) {
       const space = sp.find((s) => s.id === spaceId);
-      const tabId = ps.find((p) => p.terminal === boss)?.tab ?? list.find((a) => a.address === boss)?.tab;
+      // A boss sent back without a pane still leads from its space's Boss tab.
+      const tabId = ps.find((p) => p.terminal === boss)?.tab ?? list.find((a) => a.address === boss)?.tab
+        ?? space?.tabs?.find(isBossTab)?.id;
       const tab = space?.tabs?.find((c) => c.id === tabId);
       if (!tab) continue;
       const hires = staffOf(terms, boss);
@@ -804,18 +729,22 @@ export default class Office extends View {
 
   // A goal for the room's boss: sent to it, or, with no boss yet, a boss hired
   // in a new "Boss" tab with the brief and the goal as its first message.
+  // Worked out afresh rather than read from what was last shared, so a goal never
+  // goes to a boss that is gone and never hires a second one.
   assign(cx) {
     const goal = (this.bossInput?.value() ?? "").replace(/\s+/g, " ").trim();
-    if (!goal || this.busy) return;
+    if (!goal || this.bossBusy) return;
+    const sp = spaces();
     const ps = panes();
-    const room = this.room(spaces());
+    const list = agents();
+    const room = this.room(sp);
     if (!room) return this.flash("Open a space first", "blocked", cx, "bossNote");
-    const boss = this.bosses()[room.id];
-    if (boss && ps.some((p) => p.terminal === boss)) {
-      if (agents().find((a) => a.address === boss)?.status === "blocked") {
+    const boss = findBosses({ spaces: sp, panes: ps, terminals: terminals() ?? [], agents: list, prev: this.bosses() })[room.id];
+    if (boss) {
+      if (list.find((a) => a.address === boss)?.status === "blocked") {
         return this.flash("The boss waits for your answer first", "blocked", cx, "bossNote");
       }
-      this.busy = true;
+      this.bossBusy = true;
       cx.spawn(async (cx) => {
         try {
           const r = await hc(["send", boss, "--", goal]);
@@ -824,23 +753,33 @@ export default class Office extends View {
         } catch (e) {
           this.flash(firstLine(String(e?.message ?? e)) || "Couldn't reach the boss", "blocked", cx, "bossNote");
         }
-        this.busy = false;
+        this.bossBusy = false;
         cx.notify();
       });
       return;
+    }
+    // A Boss tab with no boss found in it is one still starting, or one whose
+    // agent is gone: hiring now would make a second.
+    if ((room.tabs ?? []).some(isBossTab)) {
+      return this.flash("The Boss tab has no boss running yet: wait, or close it to hire again", "blocked", cx, "bossNote");
     }
     const known = this.known[room.machine ?? ""];
     if (!known) return this.flash("Looking for agents…", "muted", cx, "bossNote");
     const pick = known.find((k) => k.key === this.bossPick) ?? known[0];
     if (!pick) return this.flash("No agent installed to be the boss", "blocked", cx, "bossNote");
     const folder = spaceFolder(room, ps);
-    this.busy = true;
-    this.bossInput.set_value("");
+    this.bossBusy = true;
     this.flash(`Hiring a boss (${pick.name})…`, "done", cx, "bossNote");
     cx.spawn(async (cx) => {
       const playbook = await this.playbookFor(room.machine ?? null);
-      run("tab.new", { space: room.id, name: "Boss", argv: pick.run, task: bossBrief({ goal, playbook, argv: pick.run, folder, space: room.name, most: STAFF_CAP }) });
-      this.busy = false;
+      // The goal stays in the box until the tab is open.
+      try {
+        run("tab.new", { space: room.id, name: "Boss", argv: pick.run, task: bossBrief({ goal, playbook, argv: pick.run, folder, space: room.name, most: STAFF_CAP }) });
+        this.bossInput.set_value("");
+      } catch (e) {
+        this.flash(firstLine(String(e?.message ?? e)) || "Couldn't open the Boss tab", "blocked", cx, "bossNote");
+      }
+      this.bossBusy = false;
       cx.notify();
     });
     cx.notify();
@@ -881,20 +820,49 @@ export default class Office extends View {
     });
   }
 
-  // The band in front of the back wall: the boss, what it says, where goals go,
-  // and the box to give it one.
+  foldBand(folded) {
+    this.bandFolded = folded;
+    localStorage.setItem("office.bossBand", folded ? "folded" : "open");
+  }
+
+  // The boss's band: the boss standing on the left; beside it what it says,
+  // where goals go and the box to give it one, each on its own row. Folded: its
+  // face and its line.
   bossBand(t, sp, list, team) {
     const room = this.room(sp);
-    const bossAddr = room ? this.bosses()[room.id] ?? null : null;
+    const bosses = this.bosses();
+    const bossAddr = room ? bosses[room.id] ?? null : null;
     const boss = bossAddr ? list.find((a) => a.address === bossAddr) ?? null : null;
     const hires = bossAddr ? team.bosses.get(bossAddr)?.staff ?? [] : [];
     const crew = list.filter((a) => hires.includes(a.address));
     const busy = crew.filter((a) => a.status === "working").length;
+    // The cap counts hires at work; past it the count turns red.
+    const crewText = hires.length ? `team ${hires.length} · ${busy}/${STAFF_CAP} working` : "";
+    const over = busy > STAFF_CAP;
     const state = boss?.status ?? "idle";
     // What it says: its office.say label, else its screen's last line.
     const said = (bossAddr && team.say.get(bossAddr)) || (bossAddr && this.bossSay?.key === bossAddr ? this.bossSay.line : "");
     const line = this.bossNote?.text
       ?? (said || (bossAddr ? (boss ? deskLabel({ agent: boss }) : "Getting ready…") : `Tell me what ${room?.name ?? "this space"} needs: I'll hire the team.`));
+    const tip = bossAddr ? "The boss · click for details, double-click for its terminal" : "The boss: give it a goal and it hires the team";
+    const onBoss = (e, cx) => {
+      if (bossAddr) return e.click_count >= 2 ? run("agent.focus", { terminal: bossAddr }) : this.pick(bossAddr, cx);
+      if (this.bandFolded) { this.foldBand(false); cx.notify(); }
+      this.bossInput.focus();
+    };
+    const fold = div().id("boss-fold").size(20).flex().flex_none().items_center().justify_center().bg("#0d131bcc")
+      .text_size(11).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.foreground))
+      .tooltip(this.bandFolded ? "Show the boss" : "Fold the boss away")
+      .on_click((_e, cx) => { this.foldBand(!this.bandFolded); cx.notify(); })
+      .child(this.bandFolded ? "▾" : "▴");
+    if (this.bandFolded) {
+      return h_flex().id("boss-band").h(BAND_FOLDED_H).flex_none().px(10).gap(8).items_center().bg("#1a2230").border_b(1).border_color("#11161f")
+        .child(div().id("boss").size(24).flex_none().border(1).border_color(t[state] ?? t.dim).bg(t.raised).cursor_pointer().tooltip(tip).on_click(onBoss)
+          .child(image(portraitPath("manager")).size(22)))
+        .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(this.bossNote ? t[this.bossNote.tone] ?? t.foreground : t.foreground).child(line))
+        .when(Boolean(crewText), (el) => el.child(div().flex_none().text_size(10.5).text_color(over ? t.blocked : t.dim).child(crewText)))
+        .child(fold);
+    }
     const known = this.known[room?.machine ?? ""];
     const pick = known?.find((k) => k.key === this.bossPick) ?? known?.[0] ?? null;
     const chip = (id, label, on, tip, action, color) => h_flex().id(id).h(22).px(7).gap(5).flex_none().items_center().max_w(130)
@@ -902,37 +870,27 @@ export default class Office extends View {
       .text_color(on ? t.foreground : t.muted).cursor_pointer().hover((s) => s.bg(t.hover)).tooltip(tip).on_click(action)
       .child(div().min_w(0).truncate().child(label));
     const colors = shared("space.colors") ?? {};
-    return div().id("boss-band").relative().h(BAND_H).flex_none().overflow_hidden().bg("#1a2230")
-      .child(div().absolute().top(0).left(0).child(image(WALL_WIDE).w(900).h(44)))
-      .child(div().absolute().top(44).left(0).right(0).h(1).bg("#11161f"))
-      .child(div().id("boss").absolute().left(10).bottom(4).w(64).h(88).cursor_pointer()
-        .tooltip(bossAddr ? "The boss · click for details, double-click for its terminal" : "The boss: give it a goal and it hires the team")
-        .on_click((e, cx) => {
-          if (!bossAddr) return this.bossInput.focus();
-          if (e.click_count >= 2) run("agent.focus", { terminal: bossAddr });
-          else this.pick(bossAddr, cx);
-        })
+    // The rows start right of the boss; its line leaves room for the fold.
+    const left = 88;
+    return div().id("boss-band").relative().h(BAND_H).flex_none().overflow_hidden().bg("#1a2230").border_b(1).border_color("#11161f")
+      .child(div().id("boss").absolute().left(12).top(6).w(64).h(88).cursor_pointer().tooltip(tip).on_click(onBoss)
         .child(image(`${BOSS_DIR}/${["working", "blocked", "done"].includes(state) ? state : "idle"}.gif`).w(64).h(88)))
-      // What it says, and its team.
-      .child(h_flex().absolute().left(84).right(10).top(6).h(26).px(8).gap(8).items_center().bg("#f4efe4").border(1).border_color("#cfc5b2")
-        .child(div().flex_1().min_w(0).truncate().text_size(11.5)
-          .text_color(this.bossNote ? (this.bossNote.tone === "blocked" ? "#a3352b" : "#2f6b3a") : "#1d2733").child(line))
-        .when(hires.length > 0, (el) => el.child(div().flex_none().text_size(10.5).text_color("#55606e")
-          .child(`team ${hires.length}${busy ? ` · ${busy} working` : ""}`))))
-      .child(div().absolute().left(80).top(14).size(6).bg("#f4efe4"))
-      // Where the goal goes, and (with no boss there yet) who to hire as the boss.
-      .child(h_flex().absolute().left(84).right(10).top(38).h(22).gap(4).items_center().overflow_hidden()
-        .children(sp.slice(0, 6).map((s) => chip(`room-${s.id}`, `${this.bosses()[s.id] ? "● " : ""}${s.name}`, s.id === room?.id,
-          this.bosses()[s.id] ? `${s.name}: has a boss` : `${s.name}: no boss yet`,
+      .child(h_flex().absolute().left(left).right(40).top(8).h(20).gap(8).items_center()
+        .child(div().min_w(0).truncate().text_size(11.5).text_color(this.bossNote ? t[this.bossNote.tone] ?? t.foreground : t.foreground).child(line))
+        .when(Boolean(crewText), (el) => el.child(div().flex_none().text_size(10.5).text_color(over ? t.blocked : t.muted).child(crewText))))
+      .child(div().absolute().top(8).right(10).child(fold))
+      .child(h_flex().absolute().left(left).right(12).top(34).h(22).gap(4).items_center().overflow_hidden()
+        .children(sp.slice(0, 6).map((s) => chip(`room-${s.id}`, `${bosses[s.id] ? "● " : ""}${s.name}`, s.id === room?.id,
+          bosses[s.id] ? `${s.name}: has a boss` : `${s.name}: no boss yet`,
           (_e, cx) => { this.bossRoom = s.id; localStorage.setItem("office.bossRoom", s.id); cx.notify(); }, spaceColor(t, colors, s.id))))
         .child(div().flex_1())
         .when(!bossAddr && known === undefined, (el) => el.child(div().flex_none().text_size(10.5).text_color(t.dim).child("Looking for agents…")))
         .when(!bossAddr && Array.isArray(known), (el) => el.children(known.slice(0, 3).map((k) => chip(`hire-${k.key}`, k.name, k.key === pick?.key,
           `Hire ${k.name} as the boss`, (_e, cx) => { this.bossPick = k.key; localStorage.setItem("office.bossAgent", k.key); cx.notify(); })
           .child(programIcon(k, t, 12))))))
-      .child(h_flex().absolute().left(84).right(10).bottom(6).h(30).gap(6).items_center()
+      .child(h_flex().absolute().left(left).right(12).top(62).h(30).gap(6).items_center()
         .child(div().flex_1().min_w(0).child(Input.new(this.bossInput)))
-        .child(div().id("boss-assign").h(28).px(12).flex().flex_none().items_center().bg(this.busy ? t.raised : t.accent)
+        .child(div().id("boss-assign").h(28).px(12).flex().flex_none().items_center().bg(this.bossBusy ? t.raised : t.accent)
           .text_size(12).font_bold().text_color(t.accent_foreground ?? "#101820").cursor_pointer()
           .tooltip(bossAddr ? "Send the goal to the boss" : `Hire ${pick?.name ?? "an agent"} as the boss with this goal`)
           .on_click((_e, cx) => this.assign(cx)).child(bossAddr ? "Tell ⏎" : "Hire ⏎")));
@@ -961,8 +919,8 @@ export default class Office extends View {
 
   // `hc keys`: the choice you clicked, pressed in its terminal.
   answer(agent, key, cx) {
-    if (this.busy) return;
-    this.busy = true;
+    if (this.answering) return;
+    this.answering = true;
     const seq = `${agent.seq}`;
     cx.spawn(async (cx) => {
       try {
@@ -972,7 +930,7 @@ export default class Office extends View {
       } catch (e) {
         this.flash(firstLine(String(e?.message ?? e)) || "Couldn't answer", "blocked", cx, "askNote");
       }
-      this.busy = false;
+      this.answering = false;
       cx.notify();
     });
   }
@@ -1002,7 +960,7 @@ export default class Office extends View {
           .child(div().truncate().text_size(10.5).text_color(t.dim).child(`${a.space_name} › ${a.tab_name}${since ? ` · waiting ${since}` : ""}`)))
         .when(waiting.length > 1, (el) => el.child(this.small("ask-next", `${this.card + 1}/${waiting.length} ›`, "The next one waiting", t,
           (_e, cx) => { this.card = (this.card + 1) % waiting.length; cx.notify(); })))
-        .child(this.small("ask-details", "Details", "Show it in the inspector", t, (_e, cx) => this.pick(a.address, cx)))
+        .child(this.small("ask-details", "Terminal", "Its terminal in a window, to answer there", t, (_e, cx) => this.pick(a.address, cx)))
         .child(this.small("ask-open", "Open ↗", "Its terminal", t, () => run("agent.focus", { terminal: a.address }))))
       .child(v_flex().px(8).py(4).bg("#11161d")
         .children(question.map((q, i) => div().id(`ask-q-${i}`).truncate().font_family(mono).text_size(11.5).text_color(t.foreground).child(q))))
@@ -1014,6 +972,7 @@ export default class Office extends View {
   }
 
   render(cx) {
+    if (this.deskHead) return this.deskHead.render(cx);
     const t = theme();
     const sp = spaces();
     const ps = panes();
@@ -1021,11 +980,12 @@ export default class Office extends View {
     this.wide = Boolean(props()?.wide);
     this.hot = shared("office.hover") ?? null;
     this.watchShape(cx, sp, ps);
-    if (!this.wide) this.findBosses(sp, ps, terms);
+    const live = agents();
+    this.shareBosses(findBosses({ spaces: sp, panes: ps, terminals: terms, agents: live, prev: this.bosses() }), terms, cx);
     // A boss's hires without a pane of their own sit in the boss's tab.
-    const team = this.team(sp, ps, agents(), terms);
+    const team = this.team(sp, ps, live, terms);
     const paneIds = new Set(ps.map((p) => p.pane));
-    const list = agents().map((a) => {
+    const list = live.map((a) => {
       const at = team.staff.get(a.address);
       if (!at) return a;
       // A hire's desk says its task (office.task), when it has one.
@@ -1042,6 +1002,7 @@ export default class Office extends View {
       const role = roleFromName(team.names.get(hire));
       if (role && roles.has(hire)) roles.set(hire, role);
     }
+    this.roles = roles; // the desk window's header wears the same face
     if (!this.wide) {
       // agent.next / agent.prev walk the desks in the order they are drawn.
       setAgentOrder(plan.flatMap((row) => row.tabs.flatMap((c) => c.desks.filter((d) => d.agent).map((d) => d.agent.address))));
@@ -1093,6 +1054,6 @@ export default class Office extends View {
         .when(shown.length === 0, (el) => el.child(div().p(8).text_size(12).text_color(t.dim).child(empty ?? "Nobody here.")))
         .when(Boolean(away), (el) => el.child(away))
         .when(this.wide, (el) => el.child(h_flex().flex_none().child(this.button("office-new-space", "+ New space", "A new space on this computer", t, () => run("space.new"))))))
-      .when(this.wide, (el) => el.child(this.inspector(roles, t, mono)));
+      .when(this.wide, (el) => el.child(this.inspector(roles, t)));
   }
 }
