@@ -16,9 +16,11 @@ prompts below. Green screen (`#00FF00`) backgrounds get cut out afterwards.
 | `mods/office-agents/desks/<role>-<state>.gif` | 144x120 | `state` = `working` \| `blocked` \| `done` \| `idle`, transparent, looping, shown at 72x60 pt |
 | `mods/office-agents/desks/empty.png` | 144x120 | a desk with nobody at it, screen off |
 | `mods/office-agents/desks/shadow.png` | 144x120 | soft shadow drawn under every desk |
+| `mods/office-agents/boss/<state>.gif` | 128x176 | the boss standing, `state` = `working` \| `blocked` \| `done` \| `idle`, transparent, looping, shown at 64x88 pt |
 | `mods/office-agents/room/wall.png` | 600x88 | the office's back wall, shown 300x44 pt |
-| `mods/office-agents/room/floor.png` | 600x1600 | dark carpet behind the rugs |
-| `mods/office-tabs/art/<kind>.png` | 256x256 | `files`, `changes`, `inbox`, transparent |
+| `mods/office-agents/room/wall-wide.png` | 1800x88 | the Office panel's back wall, shown 900x44 pt and cut to the panel; its kanban board (x 104-200 pt) keeps three empty columns for the live counts |
+| `mods/office-agents/room/floor.png` | 1824x1600 | dark carpet behind the rugs, shown 912x800 pt; the sidebar shows its left part |
+| `mods/office-tabs/art/<kind>.png` | 256x256 | `files`, `changes`, `inbox`, `office`, transparent |
 | `mods/office-chrome/wallpaper.png` | 1840x1844 | night windows behind the sidebar, the work column, the side panel and the terminals, `cover`-cropped |
 | `layouts/office.png` | 640x468 | layout picker thumbnail (from `tools/build-preview.py`) |
 
@@ -82,6 +84,14 @@ files: Pixel art game icon of one manila document folder with a few sheets stick
 changes: Pixel art game icon of two overlapping sheets of paper with a small curved arrow between them, bold simple silhouette, large and centered, few details, visible square pixels, plain solid pure green background (#00FF00), no text, no border.
 
 inbox: Pixel art game icon of one shallow metal inbox tray seen from the front, a single sheet inside, bold simple silhouette, large and centered, few details, visible square pixels, plain solid pure green background (#00FF00), no text, no border.
+
+office: Pixel art game icon of one computer monitor on a small wooden desk, two lines of amber text on the screen, bold simple silhouette, large and centered, few details, visible square pixels, plain solid pure green background (#00FF00), no text, no border.
+```
+
+## The boss
+
+```
+Pixel art chibi office boss standing, full body, 32x44 logical pixels scaled up with hard square pixels, big head, short brown hair, navy suit with a white collar and a gold tie, soft warm-brown outlines, pastel palette, four looping states: talking and pointing with a clipboard in the other hand; one hand raised with a white speech bubble holding a red exclamation mark; a clear thumbs up with a small sparkle; arms crossed, blinking. Transparent background, no text, no border, no floor.
 ```
 
 ## Back wall
@@ -89,6 +99,10 @@ inbox: Pixel art game icon of one shallow metal inbox tray seen from the front, 
 ```
 Wide strip pixel art, 150x22 logical pixels scaled up with hard square pixels, the back wall of a modern office at night: two windows onto a city skyline with lit windows and a moon, a round wall clock, a kanban board with colourful sticky notes, a wooden door under a green exit sign, a water cooler and a tall potted plant, dark slate-blue wall with a wainscot, no characters, no text, no border.
 ```
+
+The panel's wall is the same strip at 450x22: more windows, bookshelves and
+filing cabinets, and a bigger kanban board with three empty columns headed
+blue, orange and green (no sticky notes: the office writes the counts there).
 
 ## Wallpaper
 

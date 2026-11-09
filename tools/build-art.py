@@ -807,6 +807,126 @@ def build_portraits() -> None:
         bust(role).big().save(os.path.join(out, f"{role}.png"))
 
 
+# ---- the boss: standing in the middle of the office --------------------------
+# The team lead the Office panel talks to: the manager's head over a navy suit,
+# standing, 32x44. working: talking, a clipboard in one hand, pointing with the
+# other; blocked: a hand up and a "!" bubble; done: a thumbs up; idle: arms
+# crossed, blinking now and then.
+
+BW, BH = 32, 44
+NAVY, NAVY_L, NAVY_D = (66, 80, 128), (92, 108, 160), (46, 56, 92)
+TROUSERS, SHOE = (56, 60, 78), (64, 46, 40)
+
+
+def boss_body(arms_down: bool = True) -> Art:
+    r = ROLES["manager"]
+    skin = r["skin"]
+    a = Art(BW, BH)
+    a.rect(15, 11, 2, 1, dark(skin, 0.14))                  # neck
+    a.rect(12, 12, 8, 1, NAVY_L)                             # shoulders
+    a.rect(11, 13, 10, 12, NAVY)                             # jacket
+    a.rect(11, 13, 1, 12, NAVY_L)
+    a.rect(20, 13, 1, 12, NAVY_D)
+    a.rect(15, 12, 2, 2, WHITE)                              # collar
+    a.rect(15, 14, 2, 7, r["acc"])                           # tie
+    a.rect(15, 14, 2, 1, dark(r["acc"], 0.25))
+    a.dot(15, 21, dark(r["acc"], 0.2))
+    for y in (14, 15, 16):                                   # lapels
+        a.dot(14, y, NAVY_D)
+        a.dot(17, y, NAVY_D)
+    a.dot(16, 23, (214, 186, 120))                           # a button
+    a.rect(11, 25, 10, 1, (40, 40, 52))                      # belt
+    a.rect(15, 25, 2, 1, BRASS)
+    a.rect(11, 26, 10, 2, TROUSERS)
+    a.rect(11, 28, 4, 10, TROUSERS)
+    a.rect(17, 28, 4, 10, TROUSERS)
+    a.rect(14, 28, 1, 10, dark(TROUSERS, 0.2))
+    a.rect(20, 28, 1, 10, dark(TROUSERS, 0.2))
+    a.rect(10, 38, 5, 2, SHOE)                               # shoes
+    a.rect(17, 38, 5, 2, SHOE)
+    a.rect(10, 38, 5, 1, light(SHOE, 0.25))
+    a.rect(17, 38, 5, 1, light(SHOE, 0.25))
+    if arms_down:
+        for x in (9, 21):
+            a.rect(x, 13, 2, 10, NAVY)
+            a.rect(x + 1, 13, 1, 10, NAVY_D if x == 21 else NAVY)
+            a.rect(x, 23, 2, 2, skin)
+    return a
+
+
+def boss_frame(state: str, f: int) -> Art:
+    r = ROLES["manager"]
+    skin = r["skin"]
+    a = Art(BW, BH)
+    body = boss_body(arms_down=state not in ("idle", "working", "blocked", "done"))
+    arms = Art(BW, BH)
+    if state == "idle":  # arms crossed over the chest
+        for x in (9, 21):
+            arms.rect(x, 13, 2, 5, NAVY)
+        arms.rect(10, 17, 12, 3, NAVY)
+        arms.rect(10, 17, 12, 1, NAVY_L)
+        arms.rect(10, 18, 2, 2, skin)
+        arms.rect(20, 17, 2, 1, skin)
+    elif state == "working":  # a clipboard on the left, pointing with the right
+        arms.rect(9, 13, 2, 6, NAVY)
+        arms.rect(3, 15, 7, 10, PAPER)                       # the clipboard
+        arms.rect(3, 15, 7, 1, (150, 110, 70))
+        arms.rect(5, 14, 3, 2, BRASS)
+        for y in (18, 20, 22):
+            arms.rect(4, y, 5, 1, PAPER_D)
+        arms.rect(8, 19, 3, 2, skin)
+        if f % 2 == 0:  # pointing up and out
+            arms.rect(21, 13, 2, 3, NAVY)
+            arms.rect(22, 11, 2, 3, NAVY)
+            arms.rect(23, 9, 2, 3, NAVY)
+            arms.rect(24, 7, 2, 2, skin)
+            arms.dot(25, 6, skin)
+        else:  # the hand coming down
+            arms.rect(21, 13, 2, 6, NAVY)
+            arms.rect(23, 17, 2, 2, NAVY)
+            arms.rect(25, 17, 2, 2, skin)
+    elif state == "blocked":  # a hand up, waving, and a "!" bubble
+        wave = f % 2
+        arms.rect(9, 13, 2, 10, NAVY)
+        arms.rect(9, 23, 2, 2, skin)
+        arms.rect(21, 7, 2, 7, NAVY)
+        arms.rect(21 + wave, 3, 3, 4, skin)
+        arms.dot(20 + wave, 4, skin)
+        arms.rect(2, 1, 7, 8, WHITE)                         # the bubble
+        arms.rect(5, 2, 2, 4, (220, 64, 56))
+        arms.rect(5, 7, 2, 1, (220, 64, 56))
+        arms.rect(7, 9, 2, 1, WHITE)
+    elif state == "done":  # a thumbs up
+        arms.rect(9, 13, 2, 10, NAVY)
+        arms.rect(9, 23, 2, 2, skin)
+        arms.rect(21, 13, 2, 5, NAVY)
+        arms.rect(23, 15, 2, 3, NAVY)
+        arms.rect(23, 11, 5, 4, skin)                        # the fist, sideways
+        for y in (12, 13):                                   # folded fingers
+            arms.rect(25, y, 3, 1, dark(skin, 0.16))
+        arms.rect(23, 8 - (f % 2), 2, 3 + (f % 2), skin)     # the thumb, up
+        arms.dot(24, 8 - (f % 2), light(skin, 0.2))
+    mood = {"working": "open" if f % 2 else "front", "blocked": "open", "done": "happy"}.get(state, "blink" if f == 5 else "front")
+    face = head("manager", mood)
+    a.over(soft_outline(body))
+    a.im.alpha_composite(face.im, dest=(0, 0), source=(6, 0, 6 + BW, 30))
+    a.over(soft_outline(arms))
+    if state == "done" and f % 2:  # a sparkle
+        for dx, dy in ((0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)):
+            a.dot(26 + dx, 4 + dy, (255, 236, 150))
+    return a
+
+
+BOSS_STATES = {"working": (4, 260), "blocked": (2, 360), "done": (2, 520), "idle": (6, 600)}
+
+
+def build_boss() -> None:
+    out = os.path.join(ROOT, "mods/office-agents/boss")
+    os.makedirs(out, exist_ok=True)
+    for state, (n, ms) in BOSS_STATES.items():
+        write_gif(os.path.join(out, f"{state}.gif"), [boss_frame(state, f).big() for f in range(n)], ms)
+
+
 # ---- the room --------------------------------------------------------------
 
 
@@ -839,12 +959,9 @@ def window(a: Art, x: int, y: int, w: int, h: int, seed: int, moon: bool) -> Non
     a.rect(x - 2, y + h + 1, w + 4, 1, (96, 106, 130))
 
 
-def build_room() -> None:
-    out = os.path.join(ROOT, "mods/office-agents/room")
-    os.makedirs(out, exist_ok=True)
-    W, H = 150, 22
-    a = Art(W, H)
-    wall, wall_d = (38, 48, 70), (34, 43, 63)
+def wall_base(W: int) -> Art:
+    a = Art(W, 22)
+    wall, wall_d = WALL, (34, 43, 63)
     a.rect(0, 0, W, 14, wall)
     for x in range(3, W, 6):
         a.rect(x, 2, 1, 12, wall_d)
@@ -855,52 +972,79 @@ def build_room() -> None:
     for x in range(2, W, 12):
         a.rect(x, 16, 9, 3, (27, 34, 50))
     a.rect(0, 20, W, 2, (20, 24, 36))
+    return a
 
-    window(a, 5, 2, 30, 10, 7, True)
-    window(a, 106, 2, 26, 10, 11, False)
 
-    # Clock at ten past ten.
-    a.rect(40, 3, 8, 8, (230, 228, 220))
-    for x, y in ((40, 3), (47, 3), (40, 10), (47, 10)):
-        a.dot(x, y, wall)
-    a.rect(43, 4, 1, 3, (40, 40, 48))
-    a.rect(44, 6, 2, 1, (40, 40, 48))
-    a.dot(44, 7, (200, 60, 60))
+WALL = (38, 48, 70)
 
-    # Kanban board with sticky notes.
-    a.rect(52, 2, 22, 10, (222, 226, 232))
-    for x in (59, 66):
-        a.rect(x, 3, 1, 8, (190, 196, 206))
-    notes = [(53, 3, (250, 214, 90)), (56, 4, (240, 130, 160)), (54, 7, (130, 200, 240)),
-             (60, 3, (130, 220, 150)), (63, 6, (250, 214, 90)), (61, 8, (240, 130, 160)),
-             (67, 3, (130, 200, 240)), (70, 5, (130, 220, 150))]
-    for x, y, c in notes:
-        a.rect(x, y, 2, 2, c)
-    a.rect(52, 12, 22, 1, (120, 128, 142))
 
-    # Door with a lit exit sign.
-    a.rect(78, 0, 8, 2, (60, 170, 110))
-    a.rect(79, 0, 6, 1, (140, 240, 180))
-    a.rect(76, 3, 12, 17, (66, 44, 32))
-    a.rect(77, 4, 10, 16, (128, 86, 58))
-    a.rect(78, 5, 8, 4, (30, 40, 60))
-    a.dot(79, 5, (70, 90, 120))
-    a.rect(78, 11, 8, 7, (116, 78, 52))
-    a.dot(85, 13, BRASS)
+def clock(a: Art, x: int) -> None:
+    """At ten past ten."""
+    a.rect(x, 3, 8, 8, (230, 228, 220))
+    for dx, y in ((0, 3), (7, 3), (0, 10), (7, 10)):
+        a.dot(x + dx, y, WALL)
+    a.rect(x + 3, 4, 1, 3, (40, 40, 48))
+    a.rect(x + 4, 6, 2, 1, (40, 40, 48))
+    a.dot(x + 4, 7, (200, 60, 60))
 
-    # Water cooler.
-    a.rect(93, 6, 5, 5, (110, 176, 230))
-    a.rect(94, 6, 1, 4, (190, 226, 250))
-    a.rect(92, 11, 7, 9, (200, 206, 216))
-    a.rect(92, 11, 1, 9, (226, 230, 238))
-    a.dot(94, 14, (220, 80, 70))
-    a.dot(96, 14, (80, 140, 230))
-    a.rect(93, 16, 5, 1, (150, 156, 168))
 
-    # A tall plant in the corner.
-    a.rect(138, 16, 7, 4, TERRA)
-    a.rect(137, 16, 9, 1, TERRA_L)
-    a.rows(135, 4, [
+def kanban(a: Art, x: int) -> None:
+    """A small board with sticky notes."""
+    a.rect(x, 2, 22, 10, (222, 226, 232))
+    for dx in (7, 14):
+        a.rect(x + dx, 3, 1, 8, (190, 196, 206))
+    notes = [(1, 3, (250, 214, 90)), (4, 4, (240, 130, 160)), (2, 7, (130, 200, 240)),
+             (8, 3, (130, 220, 150)), (11, 6, (250, 214, 90)), (9, 8, (240, 130, 160)),
+             (15, 3, (130, 200, 240)), (18, 5, (130, 220, 150))]
+    for dx, y, c in notes:
+        a.rect(x + dx, y, 2, 2, c)
+    a.rect(x, 12, 22, 1, (120, 128, 142))
+
+
+# The wide wall's board: three empty columns (working, blocked, done in the
+# theme's colours) for the office to write its live counts on. KANBAN_X and the
+# column width are mirrored in mods/office-agents/main.js.
+KANBAN_X, KANBAN_COL = 52, 16
+KANBAN_HEADS = [(127, 168, 207), (224, 139, 74), (143, 191, 138)]
+
+
+def kanban_live(a: Art, x: int) -> None:
+    w = KANBAN_COL * 3
+    a.rect(x, 2, w, 10, (222, 226, 232))
+    for i, c in enumerate(KANBAN_HEADS):
+        a.rect(x + i * KANBAN_COL + 1, 3, KANBAN_COL - 2, 1, c)
+        if i:
+            a.rect(x + i * KANBAN_COL, 3, 1, 8, (190, 196, 206))
+    a.rect(x, 12, w, 1, (120, 128, 142))
+
+
+def door(a: Art, x: int) -> None:
+    """With a lit exit sign."""
+    a.rect(x + 2, 0, 8, 2, (60, 170, 110))
+    a.rect(x + 3, 0, 6, 1, (140, 240, 180))
+    a.rect(x, 3, 12, 17, (66, 44, 32))
+    a.rect(x + 1, 4, 10, 16, (128, 86, 58))
+    a.rect(x + 2, 5, 8, 4, (30, 40, 60))
+    a.dot(x + 3, 5, (70, 90, 120))
+    a.rect(x + 2, 11, 8, 7, (116, 78, 52))
+    a.dot(x + 9, 13, BRASS)
+
+
+def cooler(a: Art, x: int) -> None:
+    a.rect(x + 1, 6, 5, 5, (110, 176, 230))
+    a.rect(x + 2, 6, 1, 4, (190, 226, 250))
+    a.rect(x, 11, 7, 9, (200, 206, 216))
+    a.rect(x, 11, 1, 9, (226, 230, 238))
+    a.dot(x + 2, 14, (220, 80, 70))
+    a.dot(x + 4, 14, (80, 140, 230))
+    a.rect(x + 1, 16, 5, 1, (150, 156, 168))
+
+
+def plant(a: Art, x: int) -> None:
+    """A tall one, for a corner."""
+    a.rect(x + 3, 16, 7, 4, TERRA)
+    a.rect(x + 2, 16, 9, 1, TERRA_L)
+    a.rows(x, 4, [
         "....G.......",
         "..GlG..G....",
         ".GgGG.GlG...",
@@ -914,11 +1058,79 @@ def build_room() -> None:
         ".....g......",
         ".....g......",
     ], {"G": LEAF, "g": LEAF_D, "l": LEAF_L})
+
+
+def cabinet(a: Art, x: int) -> None:
+    """A three-drawer filing cabinet."""
+    a.rect(x, 8, 10, 12, METAL)
+    a.rect(x, 8, 10, 1, light(METAL, 0.3))
+    a.rect(x + 9, 9, 1, 11, METAL_D)
+    for y in (12, 16):
+        a.rect(x + 1, y, 8, 1, METAL_D)
+    for y in (10, 14, 18):
+        a.rect(x + 4, y, 2, 1, (210, 214, 222))
+    a.rect(x + 2, 6, 5, 2, PAPER)
+    a.rect(x + 3, 5, 4, 1, PAPER_D)
+
+
+def shelf(a: Art, x: int) -> None:
+    """A low bookshelf, books in a few colours and a mug on top."""
+    R = random.Random(x)
+    a.rect(x, 9, 16, 11, WOOD_DK)
+    for y in (10, 15):
+        a.rect(x + 1, y, 14, 4, (52, 38, 30))
+        bx = x + 1
+        while bx < x + 14:
+            bw = R.choice((1, 1, 2))
+            bh = R.choice((3, 4, 4))
+            a.rect(bx, y + 4 - bh, bw, bh, R.choice([(186, 98, 64), (127, 168, 207), (224, 164, 74), (143, 191, 138), (180, 142, 196), PAPER_D]))
+            bx += bw + R.choice((0, 0, 1))
+    a.rect(x, 9, 16, 1, WOOD)
+    a.rect(x + 11, 6, 3, 3, (230, 228, 220))
+    a.rect(x + 11, 6, 3, 1, (196, 190, 176))
+
+
+def build_room() -> None:
+    out = os.path.join(ROOT, "mods/office-agents/room")
+    os.makedirs(out, exist_ok=True)
+
+    # The sidebar's wall, 300 points wide.
+    a = wall_base(150)
+    window(a, 5, 2, 30, 10, 7, True)
+    window(a, 106, 2, 26, 10, 11, False)
+    clock(a, 40)
+    kanban(a, 52)
+    door(a, 76)
+    cooler(a, 92)
+    plant(a, 135)
     a.outline()
-    a.rect(0, 20, W, 2, (20, 24, 36))
+    a.rect(0, 20, 150, 2, (20, 24, 36))
     a.big().save(os.path.join(out, "wall.png"))
 
-    carpet(150, 400, (30, 38, 52), seed=3).save(os.path.join(out, "floor.png"))
+    # The side panel's wall, 900 points wide (cut to the panel's width), with a
+    # bigger board for the live counts.
+    a = wall_base(450)
+    window(a, 5, 2, 30, 10, 7, True)
+    clock(a, 40)
+    kanban_live(a, KANBAN_X)
+    door(a, 106)
+    cooler(a, 123)
+    window(a, 138, 2, 30, 10, 11, False)
+    shelf(a, 176)
+    window(a, 200, 2, 30, 10, 13, False)
+    cabinet(a, 238)
+    window(a, 256, 2, 30, 10, 17, False)
+    window(a, 296, 2, 30, 10, 19, True)
+    cabinet(a, 334)
+    shelf(a, 350)
+    window(a, 374, 2, 30, 10, 23, False)
+    plant(a, 436)
+    a.outline()
+    a.rect(0, 20, 450, 2, (20, 24, 36))
+    a.big().save(os.path.join(out, "wall-wide.png"))
+
+    # Wide enough for the side panel too; the sidebar shows its left part.
+    carpet(456, 400, (30, 38, 52), seed=3).save(os.path.join(out, "floor.png"))
 
 
 def carpet(w: int, h: int, base, seed: int) -> Image.Image:
@@ -960,6 +1172,15 @@ def icon(kind: str, scale: int = 256) -> Image.Image:
         r(5, 4, 8, 10, (196, 188, 172))
         r(7, 7, 4, 1, INK)
         r(7, 9, 4, 1, INK)
+    elif kind == "office":
+        r(3, 2, 10, 8, steel)
+        r(4, 3, 8, 6, (36, 52, 70))
+        r(5, 4, 4, 1, gold)
+        r(5, 6, 6, 1, paper)
+        r(7, 10, 2, 2, steel)
+        r(1, 12, 14, 2, gold)
+        r(2, 14, 1, 2, gold)
+        r(13, 14, 1, 2, gold)
     else:
         r(2, 8, 12, 6, steel)
         r(2, 8, 12, 1, paper)
@@ -970,7 +1191,7 @@ def icon(kind: str, scale: int = 256) -> Image.Image:
 def build_icons() -> None:
     out = os.path.join(ROOT, "mods/office-tabs/art")
     os.makedirs(out, exist_ok=True)
-    for kind in ("files", "changes", "inbox"):
+    for kind in ("files", "changes", "inbox", "office"):
         icon(kind).save(os.path.join(out, f"{kind}.png"))
 
 
@@ -999,6 +1220,7 @@ def build_wallpaper() -> None:
 def main() -> None:
     build_desks()
     build_portraits()
+    build_boss()
     build_room()
     build_icons()
     build_wallpaper()

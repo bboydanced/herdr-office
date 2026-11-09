@@ -5,10 +5,14 @@ reviewed without Herdr. Not part of the mods - nothing reads this file.
     python3 tools/build-preview.py     # writes preview.png and layouts/office.png
 
 The mock follows layouts/office.json and the sizes the mods ask for: a 300 px
-sidebar (46 header, Spaces, the office, 69 footer), 58 px tab bar, 8 px padding.
-In the office each space is a rug, each tab a cubicle on it, each pane a desk;
-the sidebar, the work column, the side panel and the terminals sit on one
-night-windows wallpaper. A tab with a `tree` shows its split; others, rows.
+sidebar (46 header, Spaces, the office, 69 footer), 58 px tab bar, 8 px padding,
+and the side panel open on the Office tab at its first width, 640 px. Spaces
+are rooms (a door with its number, lamp, sticky notes, faces); in the office
+each space is a rug, each tab a cubicle on it, each pane a desk. The panel shows
+the header with the filters, the boss in front of the back wall, a Needs you
+card, the floor (two lines under each desk, an "Add desk" place in each
+cubicle) and the inspector on the picked staff member. A tab with a `tree`
+shows its split; others, rows.
 """
 
 from __future__ import annotations
@@ -19,14 +23,17 @@ import os
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-W, H = 1280, 800
+W, H = 1600, 900
 SIDEBAR = 300
 TABS = 58
 PAD = 8
 SPACES_H = 200
+PANEL = 640
 
 THEME = json.load(open(os.path.join(ROOT, "themes/office-night.json")))
 C = THEME["colors"]
+INK = "#1d2733"
+TAG = "#c8392f"
 
 
 def hexa(key: str, alpha: int = 255) -> tuple[int, int, int, int]:
@@ -38,6 +45,11 @@ def hexa(key: str, alpha: int = 255) -> tuple[int, int, int, int]:
         v = C[key]
     v = v.lstrip("#")
     return (int(v[0:2], 16), int(v[2:4], 16), int(v[4:6], 16), alpha)
+
+
+def mono(size: float):
+    path = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
+    return ImageFont.truetype(path, round(size)) if os.path.exists(path) else font(size)
 
 
 def font(size: float, bold: bool = False):
@@ -64,33 +76,48 @@ def fit(d: ImageDraw.ImageDraw, text: str, f, width: int) -> str:
     return text + "…"
 
 
-# Sample window: three spaces (projects), their tabs and panes.
+# Sample window: three spaces (projects), their tabs and panes. `since`: how
+# long the tab has been in its state; `away`: tabs put away.
 SPACES = [
-    {"name": "web-app", "color": "ansi6", "active": True, "tail": "feat/login ↑1",
-     "git": [("ansi3", "2 changed"), ("ansi2", "1 unpushed")],
+    {"name": "web-app", "color": "ansi6", "active": True, "tail": "feat/login ↑1", "branch": "feat/login",
+     "git": [("ansi11", "2 changed"), ("ansi10", "↑1 unpushed")],
      "tabs": [
-         {"name": "main", "active": True, "tree": ("across", [0, ("stacked", [1, 2])]), "panes": [
-             ("manager", "working", "Plan sprint"), ("designer", "working", "Navbar"),
-             ("developer", "blocked", "Fix login")]},
-         {"name": "review", "panes": [("analyst", "done", "PR #42")]},
+         {"name": "Boss", "active": True, "since": "12m", "tree": ("across", [0, ("stacked", [1, 2])]), "panes": [
+             ("manager", "working", "Hiring the team"), ("developer", "working", "frontend-nav"),
+             ("designer", "working", "design-login")]},
+         {"name": "review", "since": "5m", "panes": [("analyst", "done", "PR #42")]},
      ]},
-    {"name": "api", "color": "ansi3", "tail": "",
-     "git": [("ansi3", "4 changed")],
+    {"name": "api", "color": "ansi3", "tail": "", "branch": "",
+     "git": [("ansi11", "4 changed")], "away": ["old"],
      "tabs": [
-         {"name": "tests", "panes": [("tester", "working", "e2e suite"), (None, None, "Terminal")]},
-         {"name": "deploy", "panes": [("support", "idle", "Rollout")]},
+         {"name": "tests", "since": "3m", "panes": [("tester", "blocked", "Push branch"), (None, None, "Terminal")]},
+         {"name": "deploy", "since": "1h 5m", "panes": [("support", "idle", "Rollout")]},
      ]},
-    {"name": "notes", "color": "ansi5", "tail": "",
-     "git": [],
-     "tabs": [{"name": "docs", "panes": [("writer", "working", "README"), ("intern", "idle", "Typos")]}]},
+    {"name": "notes", "color": "ansi5", "tail": "", "branch": "",
+     "git": [("ansi9", "no remote")],
+     "tabs": [{"name": "docs", "since": "40m", "panes": [("writer", "working", "README"), ("intern", "idle", "Typos")]}]},
 ]
 
-DESK_W, DESK_H, SLOT_W, LABEL_H, GAP = 72, 60, 80, 13, 6
-SLOT_H = DESK_H + 1 + LABEL_H
+# Desk sizes as office-agents draws them: the sidebar at 2 points an art pixel,
+# the wide panel at 3 with a second line under each desk.
+SMALL = {"dw": 72, "dh": 60, "slot": 80, "label": 13, "text": 10, "gap": 6, "cp": 4, "wide": False}
+LARGE = {"dw": 108, "dh": 90, "slot": 120, "label": 16, "text": 11.5, "gap": 8, "cp": 5, "wide": True}
+
+
+def slot_h(z) -> int:
+    return z["dh"] + 1 + z["label"] + (1 + z["label"] - 3 if z["wide"] else 0)
 
 
 def grid(n: int) -> int:
     return n if n <= 3 else 2 if n == 4 else 3
+
+
+def staff(s) -> list[tuple[str, str]]:
+    return [(role, st) for t in s["tabs"] for role, st, _ in t["panes"] if st]
+
+
+def urgent(sts) -> str | None:
+    return "blocked" if "blocked" in sts else "working" if "working" in sts else None
 
 
 def wallpaper(size: tuple[int, int]) -> Image.Image:
@@ -99,70 +126,103 @@ def wallpaper(size: tuple[int, int]) -> Image.Image:
     return paper.resize((int(paper.width * scale) + 1, int(paper.height * scale) + 1)).crop((0, 0, *size))
 
 
+def darken(key: str, k: float) -> tuple[int, int, int, int]:
+    c = hexa(key)
+    return tuple(round(v * (1 - k)) for v in c[:3]) + (255,)
+
+
+def door(sb, d, x, y, number, color, status, occupied) -> None:
+    """A room's door, as office-spaces draws it: 26x32, lamp on top."""
+    def box(top, left, w, h, fill):
+        if len(fill) == 4 and fill[3] < 255:
+            tint(sb, [x + left, y + top, x + left + w - 1, y + top + h - 1], fill)
+        else:
+            d.rectangle([x + left, y + top, x + left + w - 1, y + top + h - 1], fill=fill)
+    if status == "working":
+        box(0, 5, 16, 6, hexa("working", 0x50))
+    box(0, 8, 10, 3, hexa(status) if status else hexa("#3a4250"))
+    box(4, 0, 26, 28, darken(color, 0.45))
+    box(5, 2, 22, 27, hexa(color))
+    box(8, 5, 16, 6, hexa("#f0c06e") if occupied else hexa("#16202b"))
+    box(8, 12, 2, 6, darken(color, 0.3))
+    box(17, 5, 15, 10, hexa("#efe6d2"))
+    f = font(8, bold=True)
+    d.text((x + 5 + 7.5 - d.textlength(number, font=f) / 2, y + 17), number, font=f, fill=hexa(INK))
+    box(23, 21, 2, 2, hexa("#e8ba62"))
+
+
 def draw_spaces(sb: Image.Image, d: ImageDraw.ImageDraw, top: int) -> None:
     d.text((16, top + 9), "Spaces", font=font(11.5), fill=hexa("dim"))
     d.text((SIDEBAR - 28, top + 5), "+", font=font(15), fill=hexa("dim"))
     y = top + 31
-    for s in SPACES:
+    for n, s in enumerate(SPACES):
         box = [8, y, SIDEBAR - 8, y + 44]
         if s.get("active"):
             tint(sb, box, hexa("surface", 0xC8))
+            tint(sb, box, hexa("accent", 0x12))
             d.rectangle([box[0], box[1], box[0] + 1, box[3]], fill=hexa("accent"))
-        sts = [st for t in s["tabs"] for _, st, _ in t["panes"] if st]
-        status = "blocked" if "blocked" in sts else "working" if "working" in sts else None
+        people = staff(s)
+        status = urgent([st for _, st in people])
         if status == "working":
             tint(sb, box, hexa("working", 0x2E))
             d.rectangle(box, outline=hexa("working"))
         elif status == "blocked":
             tint(sb, box, hexa("blocked", 0x30))
             d.rectangle(box, outline=hexa("blocked"), width=2)
-        col = hexa(s["color"])
-        bx, by = box[0] + 10, y + 9
-        d.rectangle([bx, by, bx + 11, by + 3], fill=col)
-        d.rectangle([bx, by + 3, bx + 27, by + 25], fill=col)
-        d.rectangle([bx, by + 4, bx + 27, by + 4], fill=(255, 255, 255, 70))
-        letter = s["name"][0].upper()
-        f = font(13, bold=True)
-        d.text((bx + 14 - d.textlength(letter, font=f) / 2, by + 7), letter, font=f, fill=hexa("canvas"))
-        tx = bx + 38
-        d.text((tx, y + 7), s["name"], font=font(13), fill=hexa("foreground"))
+        door(sb, d, box[0] + 10, y + 6, f"{n + 1:02d}", s["color"], status, bool(people))
+        tx = box[0] + 10 + 26 + 10
+        d.text((tx, y + 6), s["name"], font=font(13), fill=hexa("foreground"))
         if status == "blocked":
-            nx = tx + d.textlength(s["name"], font=font(13)) + 8
-            d.rectangle([nx, y + 8, nx + 10, y + 21], fill=hexa("#c8392f"))
+            nx = tx + d.textlength(s["name"], font=font(13)) + 9
+            d.rectangle([nx, y + 8, nx + 10, y + 21], fill=hexa(TAG))
             d.text((nx + 3, y + 7), "!", font=font(11, bold=True), fill=(255, 255, 255, 255))
         if s["tail"]:
             tf = font(11.5)
-            d.text((box[2] - 10 - d.textlength(s["tail"], font=tf), y + 9), s["tail"], font=tf, fill=hexa("dim"))
+            d.text((box[2] - 10 - d.textlength(s["tail"], font=tf), y + 8), s["tail"], font=tf, fill=hexa("dim"))
         x = tx
-        for i, (color, text) in enumerate(s["git"]):
-            if i:
-                d.text((x, y + 25), "·", font=font(11), fill=hexa("dim"))
-                x += 10
-            d.text((x, y + 25), text, font=font(11), fill=hexa(color))
-            x += d.textlength(text, font=font(11)) + 4
-        dots = [st for t in s["tabs"] for _, st, _ in t["panes"] if st]
-        dx = box[2] - 10 - len(dots) * 9
-        for st in dots:
-            d.ellipse([dx, y + 29, dx + 5, y + 34], fill=hexa(st))
-            dx += 9
+        nf = font(9.5, bold=True)
+        for color, text in s["git"]:
+            w = round(d.textlength(text, font=nf)) + 8
+            d.rectangle([x, y + 26, x + w - 1, y + 38], fill=hexa(color))
+            d.rectangle([x + w - 3, y + 36, x + w - 1, y + 38], fill=darken(color, 0.19))
+            d.text((x + 4, y + 26), text, font=nf, fill=hexa(INK))
+            x += w + 4
+        fx = box[2] - 8 - min(5, len(people)) * 16 + 2
+        for role, st in people[:5]:
+            d.rectangle([fx, y + 25, fx + 13, y + 38], fill=hexa("raised"), outline=hexa(st))
+            sb.alpha_composite(load(f"mods/office-agents/art/{role}.png", (12, 12)), (fx + 1, y + 26))
+            fx += 16
         y += 46
 
 
-def tree_of(t):
-    """The tab's split tree as (dir, children) / pane index, else rows of desks."""
+def width_of(node) -> int:
+    if not isinstance(node, tuple):
+        return 1
+    kind, children = node
+    ws = [width_of(c) for c in children]
+    return sum(ws) if kind == "across" else max(ws)
+
+
+def tab_node(t, z, most):
+    """The tab's desks as office-agents places them: its split (wide: with the
+    Add desk place beside it when there is room, else under it), else rows."""
     if "tree" in t:
-        return t["tree"]
-    n, cols = len(t["panes"]), grid(len(t["panes"]))
-    rows = [("across", list(range(i, min(i + cols, n)))) for i in range(0, n, cols)]
+        tree = t["tree"]
+        if not z["wide"]:
+            return tree
+        return ("across", [tree, "g"]) if width_of(tree) < most else ("stacked", [tree, ("across", ["g"])])
+    items = list(range(len(t["panes"]))) + (["g"] if z["wide"] else [])
+    cols = min(most, grid(len(items)))
+    rows = [("across", items[i:i + cols]) for i in range(0, len(items), cols)]
     return rows[0] if len(rows) == 1 else ("stacked", rows)
 
 
-def tree_size(node) -> tuple[int, int]:
-    if isinstance(node, int):
-        return SLOT_W, SLOT_H
+def tree_size(node, z) -> tuple[int, int]:
+    if not isinstance(node, tuple):
+        return z["slot"], slot_h(z)
     kind, children = node
-    sizes = [tree_size(c) for c in children]
-    gaps = GAP * (len(children) - 1)
+    sizes = [tree_size(c, z) for c in children]
+    gaps = z["gap"] * (len(children) - 1)
     if kind == "across":
         return sum(w for w, _ in sizes) + gaps, max(h for _, h in sizes)
     return max(w for w, _ in sizes), sum(h for _, h in sizes) + gaps
@@ -190,44 +250,175 @@ def busy_marks(sb, d, box, status, ring):
         d.rectangle([x0 - 2, y0 - 2, x1 + 2, y1 + 2], outline=hexa("blocked"), width=2)
 
 
-def draw_desk(sb, d, t, i, cx, cy, shadow, frame):
+def label(sb, d, cx, ly, z, text, color, back=True, tag=False):
+    """A line under a desk, centred in its slot."""
+    f = font(z["text"] - (1.5 if tag else 0), bold=tag)
+    h = z["label"] if back or tag else z["label"] - 3
+    text = fit(d, text, f, z["slot"] - 10)
+    tw = d.textlength(text, font=f) + (10 if tag else 8)
+    tx = cx + z["slot"] / 2 - tw / 2
+    if tag:
+        d.rectangle([tx, ly, tx + tw, ly + h - 1], fill=hexa(TAG))
+    elif back:
+        tint(sb, [round(tx), ly, round(tx + tw), ly + h - 1], (13, 19, 27, 0xB8))
+    d.text((tx + (5 if tag else 4), ly + (h - f.size) / 2 - 1), text, font=f, fill=color)
+
+
+def draw_desk(sb, d, t, i, cx, cy, z, shadow, frame):
     role, st, title = t["panes"][i]
-    busy_marks(sb, d, [cx, cy, cx + SLOT_W - 1, cy + SLOT_H - 1], st, True)
-    dx = cx + (SLOT_W - DESK_W) // 2
+    busy_marks(sb, d, [cx, cy, cx + z["slot"] - 1, cy + slot_h(z) - 1], st, True)
+    dx = cx + (z["slot"] - z["dw"]) // 2
     sb.alpha_composite(shadow, (dx, cy))
     art = f"mods/office-agents/desks/{role}-{st}.gif" if role else "mods/office-agents/desks/empty.png"
-    sb.alpha_composite(load(art, (DESK_W, DESK_H), frame), (dx, cy))
-    ly = cy + DESK_H + 1
-    if st == "blocked":
-        tf = font(8.5, bold=True)
-        tw = d.textlength("NEEDS YOU", font=tf) + 10
-        tx = cx + SLOT_W / 2 - tw / 2
-        d.rectangle([tx, ly, tx + tw, ly + LABEL_H], fill=hexa("#c8392f"))
-        d.text((tx + 5, ly + 1), "NEEDS YOU", font=tf, fill=(255, 240, 230, 255))
-        bx, by = cx + SLOT_W - 10, cy - 7
-        d.rectangle([bx, by, bx + 14, by + 14], fill=hexa("#c8392f"), outline=(255, 240, 230, 255))
-        d.text((bx + 5, by), "!", font=font(11, bold=True), fill=(255, 255, 255, 255))
+    sb.alpha_composite(load(art, (z["dw"], z["dh"]), frame), (dx, cy))
+    ly = cy + z["dh"] + 1
+    paper = (255, 240, 230, 255)
+    if not z["wide"]:
+        if st == "blocked":
+            label(sb, d, cx, ly, z, "NEEDS YOU", paper, tag=True)
+        else:
+            label(sb, d, cx, ly, z, title, hexa("foreground" if role else "muted"))
     else:
-        lf = font(10)
-        label = fit(d, title, lf, SLOT_W - 8)
-        tw = d.textlength(label, font=lf) + 8
-        tx = cx + SLOT_W / 2 - tw / 2
-        tint(sb, [round(tx), ly, round(tx + tw), ly + LABEL_H], (13, 19, 27, 0xB8))
-        d.text((tx + 4, ly), label, font=lf, fill=hexa("foreground" if role else "muted"))
+        label(sb, d, cx, ly, z, title, hexa("foreground" if role else "muted"))
+        ly += z["label"] + 1
+        since = t.get("since", "")
+        if role is None:
+            label(sb, d, cx, ly, z, f"…/{t['name']}", hexa("dim"), back=False)
+        elif st == "blocked":
+            label(sb, d, cx, ly, z, f"NEEDS YOU · {since}", paper, tag=True)
+        else:
+            text = {"working": f"● Working · {since}", "done": f"✓ Done · {since}"}.get(st, f"Idle · {since}")
+            color = {"working": bright("working"), "done": hexa("done")}.get(st, hexa("dim"))
+            label(sb, d, cx, ly, z, text, color, back=False)
+    if st == "blocked":
+        bx, by = cx + z["slot"] - 10, cy - 7
+        d.rectangle([bx, by, bx + 14, by + 14], fill=hexa(TAG), outline=paper)
+        d.text((bx + 5, by), "!", font=font(11, bold=True), fill=(255, 255, 255, 255))
 
 
-def draw_tree(sb, d, t, node, x, y, shadow, frame):
+def draw_ghost(sb, d, cx, cy, z):
+    """The faded Add desk place of a wide cubicle."""
+    dx = cx + (z["slot"] - z["dw"]) // 2
+    d.rectangle([dx, cy, dx + z["dw"] - 1, cy + z["dh"] - 1], outline=mix("muted", "#1e2634", 0.72))
+    empty = load("mods/office-agents/desks/empty.png", (z["dw"], z["dh"]))
+    empty.putalpha(empty.getchannel("A").point(lambda a: round(a * 0.25)))
+    sb.alpha_composite(empty, (dx, cy))
+    f = font(round(z["dh"] * 0.4))
+    d.text((dx + z["dw"] / 2 - d.textlength("+", font=f) / 2, cy + z["dh"] / 2 - f.size * 0.62), "+", font=f, fill=hexa("muted"))
+    label(sb, d, cx, cy + z["dh"] + 1, z, "Add desk", hexa("dim"), back=False)
+
+
+def draw_node(sb, d, t, node, x, y, z, shadow, frame):
+    if node == "g":
+        draw_ghost(sb, d, x, y, z)
+        return
     if isinstance(node, int):
-        draw_desk(sb, d, t, node, x, y, shadow, frame)
+        draw_desk(sb, d, t, node, x, y, z, shadow, frame)
         return
     kind, children = node
     for c in children:
-        draw_tree(sb, d, t, c, x, y, shadow, frame)
-        w, h = tree_size(c)
+        draw_node(sb, d, t, c, x, y, z, shadow, frame)
+        w, h = tree_size(c, z)
         if kind == "across":
-            x += w + GAP
+            x += w + z["gap"]
         else:
-            y += h + GAP
+            y += h + z["gap"]
+
+
+def button(d, x, y, text, color="muted") -> int:
+    """A small framed button (+ Tab, + New space); returns its width."""
+    f = font(10.5)
+    w = round(d.textlength(text, font=f)) + 14
+    d.rectangle([x, y, x + w - 1, y + 19], fill=hexa("#0d131b"), outline=mix("muted", "#1e2634", 0.6))
+    d.text((x + 7, y + 3), text, font=f, fill=hexa(color))
+    return w
+
+
+def draw_floor(sb, d, x0, y, width, z, most, frame) -> int:
+    """The rugs, from `y`, within `width` points from `x0`; returns where they end."""
+    shadow = load("mods/office-agents/desks/shadow.png", (z["dw"], z["dh"]))
+    wide = z["wide"]
+    rp, hdr, cgap = (8, 18, 8) if wide else (6, 15, 6)
+    th_h = round(z["text"] + 4)
+    for s in SPACES:
+        color = hexa(s["color"])
+        inner = width - 2 * rp - 2
+        rows, row, used = [], [], 0
+        for t in s["tabs"]:
+            node = tab_node(t, z, most)
+            tw, th = tree_size(node, z)
+            w, h = tw + 2 * z["cp"] + 2, th_h + z["gap"] + th + z["cp"] + 2
+            if row and used + cgap + w > inner:
+                rows.append(row)
+                row, used = [], 0
+            row.append((t, node, w, h))
+            used += (cgap if used else 0) + w
+        rows.append(row)
+        top_pad, gap5 = (5, 7) if wide else (3, 5)
+        rug_h = top_pad + hdr + gap5 + sum(max(h for *_, h in r) for r in rows) + cgap * (len(rows) - 1) + (8 if wide else 6) + 1
+        rug = [x0, y, x0 + width - 1, y + rug_h - 1]
+        tint(sb, rug, color[:3] + (0x24,))
+        d.rectangle(rug, outline=color[:3] + (0x66,))
+        sts = [st for _, st in staff(s)]
+        status = urgent(sts)
+        busy_marks(sb, d, rug, status, False)
+        sq = 9 if wide else 7
+        hy = y + top_pad
+        d.rectangle([rug[0] + rp + 1, hy + (hdr - sq) // 2, rug[0] + rp + sq, hy + (hdr - sq) // 2 + sq - 1], fill=color)
+        nf = font(12.5 if wide else 11, bold=True)
+        d.text((rug[0] + rp + sq + 7, hy), s["name"], font=nf, fill=hexa("foreground"))
+        if wide and s.get("branch"):
+            d.text((rug[0] + rp + sq + 14 + d.textlength(s["name"], font=nf), hy + 2), s["branch"], font=font(10.5), fill=hexa("dim"))
+        right = rug[2] - rp
+        if wide:
+            button(d, right - 52, hy - 1, "+ Tab")
+            right -= 52 + 6
+        if status:
+            n = sts.count(status)
+            text = f"! {n} need{'s' if n == 1 else ''} you" if status == "blocked" else f"● {n} working"
+            tf = font(10, bold=status == "blocked")
+            tx = right - d.textlength(text, font=tf)
+            if status == "blocked":
+                d.rectangle([tx - 4, hy + 1, right + 3, hy + 14], fill=hexa(TAG))
+            d.text((tx, hy + 1), text, font=tf, fill=(255, 255, 255, 255) if status == "blocked" else bright("working"))
+        py = hy + hdr + gap5
+        for r in rows:
+            px = rug[0] + rp + 1
+            for t, node, w, h in r:
+                here = s.get("active") and t.get("active")
+                tint(sb, [px, py, px + w - 1, py + h - 1], (8, 12, 18, 0x70))
+                d.rectangle([px, py, px + w - 1, py + h - 1], outline=hexa("accent") if here else color[:3] + (0x88,))
+                d.text((px + z["cp"] + 1, py + 2), fit(d, t["name"], font(z["text"]), w - 12), font=font(z["text"]),
+                       fill=hexa("accent" if here else "muted"))
+                draw_node(sb, d, t, node, px + z["cp"] + 1, py + 1 + th_h + z["gap"], z, shadow, frame)
+                px += w + cgap
+            py += max(h for *_, h in r) + cgap
+        y += rug_h + (10 if wide else 8)
+    return y
+
+
+def office_header(sb, d, x0, y, width, wide) -> None:
+    people = [st for s in SPACES for _, st in staff(s)]
+    busy, waiting = people.count("working"), people.count("blocked")
+    h = 32 if wide else 28
+    d.rectangle([x0, y, x0 + width - 1, y + h - 1], fill=hexa("chrome"))
+    if wide:
+        d.text((x0 + 16, y + 8), "Office", font=font(12.5, bold=True), fill=hexa("foreground"))
+    else:
+        d.text((x0 + 16, y + 8), "Office", font=font(11.5), fill=hexa("dim"))
+    right = x0 + width - 12
+    if wide and waiting:
+        bf = font(10.5, bold=True)
+        bw = round(d.textlength("Next waiting →", font=bf)) + 14
+        d.rectangle([right - bw, y + 6, right, y + 25], fill=hexa(TAG))
+        d.text((right - bw + 7, y + 9), "Next waiting →", font=bf, fill=(255, 255, 255, 255))
+        right -= bw + 6
+    info = f"{busy}/{len(people)} at work · 21:40"
+    d.text((right - d.textlength(info, font=font(11)), y + (10 if wide else 8)), info, font=font(11), fill=hexa("dim"))
+    if waiting:
+        need = f"{waiting} need{'s' if waiting == 1 else ''} you ·"
+        d.text((right - 4 - d.textlength(info, font=font(11)) - d.textlength(need, font=font(11.5)), y + (10 if wide else 8)),
+               need, font=font(11.5), fill=hexa("blocked"))
 
 
 def draw_office(sb: Image.Image, top: int, bottom: int, frame: int) -> None:
@@ -235,67 +426,153 @@ def draw_office(sb: Image.Image, top: int, bottom: int, frame: int) -> None:
     floor = load("mods/office-agents/room/floor.png")
     floor = floor.resize((floor.width // 2, floor.height // 2), Image.NEAREST)
     sb.paste(floor.crop((0, 0, SIDEBAR, bottom - top)), (0, top))
-    d.rectangle([0, top, SIDEBAR, top + 28], fill=hexa("chrome"))
-    d.text((16, top + 8), "Office", font=font(11.5), fill=hexa("dim"))
-    agents = [st for s in SPACES for t in s["tabs"] for _, st, _ in t["panes"] if st]
-    busy = sum(1 for st in agents if st == "working")
-    info = f"{busy}/{len(agents)} at work · 21:40"
-    d.text((SIDEBAR - 12 - d.textlength(info, font=font(11)), top + 8), info, font=font(11), fill=hexa("dim"))
-    need = "1 needs you ·"
-    d.text((SIDEBAR - 16 - d.textlength(info, font=font(11)) - d.textlength(need, font=font(11.5)), top + 8),
-           need, font=font(11.5), fill=hexa("blocked"))
+    office_header(sb, d, 0, top, SIDEBAR, False)
     wall = load("mods/office-agents/room/wall.png")
     sb.alpha_composite(wall.resize((wall.width // 2, wall.height // 2), Image.NEAREST), (0, top + 28))
-    y = top + 28 + 44 + 8
-    shadow = load("mods/office-agents/desks/shadow.png", (DESK_W, DESK_H))
-    for s in SPACES:
-        color = hexa(s["color"])
-        inner = SIDEBAR - 16 - 14
-        rows, row, used = [], [], 0
-        for t in s["tabs"]:
-            tw, th = tree_size(tree_of(t))
-            w, h = tw + 10, 14 + GAP + th + 4 + 1
-            if row and used + 6 + w > inner:
-                rows.append(row)
-                row, used = [], 0
-            row.append((t, w, h))
-            used += (6 if used else 0) + w
-        rows.append(row)
-        rug_h = 3 + 15 + 5 + sum(max(h for *_, h in r) for r in rows) + 6 * (len(rows) - 1) + 6 + 1
-        rug = [8, y, SIDEBAR - 9, y + rug_h - 1]
-        tint(sb, rug, color[:3] + (0x24,))
-        d.rectangle(rug, outline=color[:3] + (0x66,))
-        sts = [st for t in s["tabs"] for _, st, _ in t["panes"] if st]
-        status = "blocked" if "blocked" in sts else "working" if "working" in sts else None
-        busy_marks(sb, d, rug, status, False)
-        d.rectangle([rug[0] + 7, y + 7, rug[0] + 13, y + 13], fill=color)
-        d.text((rug[0] + 19, y + 3), s["name"], font=font(11, bold=True), fill=hexa("foreground"))
-        if status:
-            n = sts.count(status)
-            text = f"! {n} need{'s' if n == 1 else ''} you" if status == "blocked" else f"● {n} working"
-            tf = font(10, bold=status == "blocked")
-            tx = rug[2] - 8 - d.textlength(text, font=tf)
-            if status == "blocked":
-                d.rectangle([tx - 4, y + 4, rug[2] - 4, y + 17], fill=hexa("#c8392f"))
-            d.text((tx, y + 4), text, font=tf, fill=(255, 255, 255, 255) if status == "blocked" else bright("working"))
-        py = y + 3 + 15 + 5
-        for r in rows:
-            px = rug[0] + 7
-            for t, w, h in r:
-                here = s.get("active") and t.get("active")
-                tint(sb, [px, py, px + w - 1, py + h - 1], (8, 12, 18, 0x70))
-                d.rectangle([px, py, px + w - 1, py + h - 1], outline=hexa("accent") if here else color[:3] + (0x88,))
-                d.text((px + 5, py + 2), fit(d, t["name"], font(10), w - 10), font=font(10),
-                       fill=hexa("accent" if here else "muted"))
-                draw_tree(sb, d, t, tree_of(t), px + 5, py + 1 + 14 + GAP, shadow, frame)
-                px += w + 6
-            py += max(h for *_, h in r) + 6
-        y += rug_h + 8
+    draw_floor(sb, d, 8, top + 28 + 44 + 8, SIDEBAR - 16, SMALL, 3, frame)
+
+
+def chip(d, x, y, text, on=False, size=11, color=None, w=None) -> int:
+    """A framed chip or button as the panel draws them; returns its width."""
+    f = font(size)
+    w = w or round(d.textlength(text, font=f)) + 16
+    d.rectangle([x, y, x + w - 1, y + 21], fill=hexa("#3a3527") if on else hexa("#0d131b"),
+                outline=hexa("accent") if on else mix(color or "muted", "#161f28", 0.55))
+    d.text((x + 8, y + 3), fit(d, text, f, w - 14), font=f, fill=hexa("foreground" if on else "muted"))
+    return w
+
+
+def draw_panel(im: Image.Image, box, frame: int) -> None:
+    """The side panel on its Office tab: header, the boss, Needs you, the floor
+    (desks at sidebar size, two lines under each) and the inspector."""
+    x0, y0, x1, y1 = box
+    pw, ph = x1 - x0, y1 - y0
+    p = Image.new("RGBA", (pw, ph), hexa("#1e2634"))
+    floor = load("mods/office-agents/room/floor.png")
+    floor = floor.resize((floor.width // 2, floor.height // 2), Image.NEAREST)
+    p.paste(floor.crop((0, 0, pw, min(ph, floor.height))), (0, 0))
+    d = ImageDraw.Draw(p, "RGBA")
+    people = [st for s in SPACES for _, st in staff(s)]
+
+    # Header: the filters, desk size, the time.
+    d.rectangle([0, 0, pw, 33], fill=hexa("chrome"))
+    d.text((14, 9), "Office", font=font(12.5, bold=True), fill=hexa("foreground"))
+    x = 72
+    for key, name in (("all", "All"), ("working", "Working"), ("blocked", "Needs you"), ("done", "Done")):
+        count = len(people) if key == "all" else people.count(key)
+        f = font(11)
+        w = round(d.textlength(f"{name}  {count}", font=f)) + 16 + (11 if key != "all" else 0)
+        on = key == "all"
+        d.rectangle([x, 6, x + w - 1, 27], fill=hexa("#3a3527") if on else hexa("chrome"),
+                    outline=hexa("accent") if on else mix("muted", "#161f28", 0.75))
+        tx = x + 8
+        if key != "all":
+            d.rectangle([tx, 14, tx + 5, 19], fill=hexa(key))
+            tx += 11
+        d.text((tx, 9), name, font=f, fill=hexa("foreground" if on else "muted"))
+        d.text((tx + d.textlength(name + "  ", font=f), 9), str(count), font=f,
+               fill=hexa("blocked") if key == "blocked" else hexa("dim"))
+        x += w + 5
+    for i, (t, on) in enumerate((("−", True), ("+", False))):
+        bx = pw - 98 + i * 26
+        d.rectangle([bx, 6, bx + 21, 27], outline=hexa("accent") if on else mix("muted", "#161f28", 0.75))
+        d.text((bx + 6, 7), t, font=font(13), fill=hexa("foreground" if on else "muted"))
+    d.text((pw - 44, 10), "21:40", font=font(11), fill=hexa("dim"))
+
+    # The boss, in front of the back wall.
+    by = 34
+    d.rectangle([0, by, pw, by + 99], fill=hexa("#1a2230"))
+    wall = load("mods/office-agents/room/wall-wide.png")
+    p.alpha_composite(wall.resize((wall.width // 2, wall.height // 2), Image.NEAREST).crop((0, 0, pw, 44)), (0, by))
+    d.line([0, by + 44, pw, by + 44], fill=hexa("#11161f"))
+    p.alpha_composite(load("mods/office-agents/boss/working.gif", (64, 88), frame), (10, by + 8))
+    d.rectangle([84, by + 6, pw - 11, by + 31], fill=hexa("#f4efe4"), outline=hexa("#cfc5b2"))
+    d.rectangle([80, by + 14, 85, by + 19], fill=hexa("#f4efe4"))
+    team = "team 2 · 2 working"
+    tf = font(10.5)
+    d.text((pw - 19 - d.textlength(team, font=tf), by + 12), team, font=tf, fill=hexa("#55606e"))
+    say = "Hired frontend-nav and design-login; I'll review when they're done."
+    d.text((92, by + 11), fit(d, say, font(11.5), pw - 130 - round(d.textlength(team, font=tf))), font=font(11.5), fill=hexa(INK))
+    x = 84
+    for name, on, color in (("● web-app", True, "ansi6"), ("api", False, "ansi3"), ("notes", False, "ansi5")):
+        x += chip(d, x, by + 38, name, on, color=color) + 4
+    d.rectangle([84, by + 64, pw - 82, by + 93], fill=hexa("input"), outline=mix("muted", "#161f28", 0.5))
+    d.text((94, by + 71), "Tell the boss what you need…", font=font(12), fill=hexa("dim"))
+    d.rectangle([pw - 76, by + 65, pw - 11, by + 92], fill=hexa("accent"))
+    d.text((pw - 66, by + 71), "Tell ⏎", font=font(12, bold=True), fill=hexa("#101820"))
+
+    # Needs you: a waiting agent's question and its choices.
+    cy = by + 100 + 8
+    ch = 136
+    d.rectangle([8, cy, pw - 9, cy + ch], fill=hexa("#2a1f1c"), outline=hexa("blocked"), width=2)
+    d.rectangle([16, cy + 8, 46, cy + 38], fill=hexa("raised"), outline=hexa("blocked"))
+    p.alpha_composite(load("mods/office-agents/art/tester.png", (28, 28)), (17, cy + 9))
+    d.text((54, cy + 8), "Needs you · Tester · Claude Code", font=font(12, bold=True), fill=hexa("foreground"))
+    d.text((54, cy + 25), "api › tests · waiting 3m", font=font(10.5), fill=hexa("dim"))
+    bx = pw - 17
+    for label in ("Open ↗", "Details"):
+        w = round(d.textlength(label, font=font(11))) + 16
+        bx -= w
+        chip(d, bx, cy + 11, label, w=w)
+        bx -= 5
+    qy = cy + 46
+    d.rectangle([16, qy, pw - 17, qy + 52], fill=hexa("#11161d"))
+    for i, q in enumerate(("git push origin feat/tests", "Push the branch", "Do you want to proceed?")):
+        d.text((24, qy + 3 + i * 16), q, font=mono(11.5), fill=hexa("foreground"))
+    x = 16
+    for label in ("1  Yes", "2  Yes, and don't ask again for git push", "3  No, and tell Claude what…"):
+        x += chip(d, x, qy + 60, label) + 5
+
+    # The floor, at sidebar size with two lines under each desk.
+    fy = cy + ch + 1 + 10
+    z = {**SMALL, "wide": True}
+    most = max(1, min(6, (pw - 40 + z["gap"]) // (z["slot"] + z["gap"])))
+    inspect = 300
+    floor_img = Image.new("RGBA", (pw, ph), (0, 0, 0, 0))
+    fd = ImageDraw.Draw(floor_img, "RGBA")
+    draw_floor(floor_img, fd, 10, fy, pw - 20, z, most, frame)
+    p.alpha_composite(floor_img.crop((0, fy, pw, ph - inspect)), (0, fy))
+
+    # The inspector, on the designer the boss hired.
+    iy = ph - inspect
+    d.rectangle([0, iy, pw, ph], fill=hexa("#121a23"))
+    d.rectangle([0, iy, pw, iy + 1], fill=hexa("accent"))
+    d.rectangle([12, iy + 12, 57, iy + 57], fill=hexa("raised"), outline=hexa("working"))
+    p.alpha_composite(load("mods/office-agents/art/designer.png", (44, 44)), (13, iy + 13))
+    d.text((68, iy + 11), "Designer · Claude Code", font=font(13, bold=True), fill=hexa("foreground"))
+    d.text((68, iy + 30), "web-app › Boss · …/code/web-app · feat/login", font=font(10.5), fill=hexa("dim"))
+    d.text((68, iy + 46), "● Working · 12m", font=font(11), fill=bright("working"))
+    d.text((68 + d.textlength("● Working · 12m  ", font=font(11)), iy + 46), "· design-login", font=font(11), fill=hexa("muted"))
+    bx = pw - 36
+    for label in ("Stop", "Peek", "Go to desk"):
+        w = round(d.textlength(label, font=font(11))) + 16
+        bx -= w
+        chip(d, bx, iy + 10, label, w=w)
+        bx -= 5
+    d.text((pw - 24, iy + 6), "▾", font=font(11), fill=hexa("dim"))
+    sy, sh = iy + 70, 150
+    d.rectangle([12, sy, pw - 13, sy + sh], fill=hexa("#0b1016"), outline=mix("muted", "#121a23", 0.8))
+    lines = [("dim", "● Read(src/components/Login.tsx)"), ("dim", "  └ Read 96 lines"),
+             ("foreground", "● The form needs a Google button above the email"),
+             ("foreground", "  field, styled like the rest of the card."),
+             ("done", "● Update(src/components/Login.tsx)"), ("dim", "  └ Updated with 22 additions and 4 removals"),
+             ("working", "✻ Styling the Google button… (1m 12s)")]
+    for i, (k, t) in enumerate(lines):
+        d.text((22, sy + 8 + i * 19), t, font=mono(11.5), fill=hexa(k))
+    ry = sy + sh + 8
+    x = 12
+    for r in ("continue", "run the tests", "commit it", "explain what you changed"):
+        x += chip(d, x, ry, r, size=10.5) + 5
+    d.rectangle([12, ry + 30, pw - 88, ry + 58], fill=hexa("input"), outline=mix("muted", "#161f28", 0.5))
+    d.text((22, ry + 36), "Message…", font=font(12), fill=hexa("dim"))
+    d.rectangle([pw - 80, ry + 31, pw - 13, ry + 57], fill=hexa("accent"))
+    d.text((pw - 70, ry + 36), "Send ⏎", font=font(12, bold=True), fill=hexa("#101820"))
+    im.alpha_composite(p, (x0, y0))
 
 
 def tint(im: Image.Image, box, color) -> None:
     """A translucent fill blended over what is there (ImageDraw on RGBA replaces)."""
-    im.alpha_composite(Image.new("RGBA", (box[2] - box[0] + 1, box[3] - box[1] + 1), color), (box[0], box[1]))
+    im.alpha_composite(Image.new("RGBA", (round(box[2] - box[0]) + 1, round(box[3] - box[1]) + 1), color), (round(box[0]), round(box[1])))
 
 
 def faces(im: Image.Image, x: int, roles: list[tuple[str, str]]) -> int:
@@ -315,7 +592,8 @@ def main() -> None:
     im = Image.new("RGBA", (W, H), hexa("canvas"))
     im.paste(wallpaper((W, H)), (0, 0))
     floor = load("mods/office-chrome/wallpaper.png").convert("RGB")
-    pane = (SIDEBAR + PAD, TABS + PAD, W - PAD, H - 28 - PAD)
+    panel = (W - PAD - PANEL, TABS + PAD, W - PAD, H - 28 - PAD)
+    pane = (SIDEBAR + PAD, TABS + PAD, panel[0] - PAD, H - 28 - PAD)
     pw, ph = pane[2] - pane[0], pane[3] - pane[1]
     scale = max(pw / floor.width, ph / floor.height)  # the pane background is "cover"
     im.paste(floor.resize((int(floor.width * scale) + 1, int(floor.height * scale) + 1)).crop((0, 0, pw, ph)), pane[:2])
@@ -323,15 +601,15 @@ def main() -> None:
     tint(im, [pane[0], pane[1], pane[2], pane[1] + 30], hexa("chrome", 0xC8))
     d = ImageDraw.Draw(im, "RGBA")
     d.rectangle(pane, outline=hexa("accent", 0x99))
-    d.text((pane[0] + 12, pane[1] + 8), "web-app / main — Fix login", font=font(13), fill=hexa("muted"))
+    d.text((pane[0] + 12, pane[1] + 8), "web-app / Boss — Hiring the team", font=font(13), fill=hexa("muted"))
     lines = [
         ("accent", "$ herdr-app do layout.switch '{\"name\":\"office\"}'"),
         ("foreground", "switched to office (office-night)"),
         ("dim", ""),
-        ("working", "● 3 spaces · 7 agents at their desks"),
-        ("foreground", "web-app  main    manager · designer · developer"),
+        ("working", "● 3 spaces · 8 agents at their desks"),
+        ("foreground", "web-app  Boss    manager · developer · designer"),
         ("foreground", "web-app  review  analyst"),
-        ("blocked", "needs you  developer: allow `git push`?"),
+        ("blocked", "needs you  tester: allow `git push`?"),
     ]
     y = pane[1] + 46
     for key, text in lines:
@@ -357,7 +635,7 @@ def main() -> None:
     td = ImageDraw.Draw(im, "RGBA")
     td.line([SIDEBAR, TABS, W, TABS], fill=hexa("border", 0x66))
     x = SIDEBAR + 10
-    tabs = [([("manager", "working"), ("designer", "working"), ("developer", "blocked")], "main", True, 0),
+    tabs = [([("manager", "working"), ("developer", "working"), ("designer", "working")], "Boss", True, 0),
             ([("analyst", "done")], "review", False, 0)]
     for people, name, active, others in tabs:
         tw = 210 if len(people) > 1 else 150
@@ -367,13 +645,16 @@ def main() -> None:
         td.text((x + 14 + fw, 21), name, font=font(13), fill=hexa("foreground" if active else "muted"))
         x += tw + 3
     td.text((x + 8, 20), "+", font=font(16), fill=hexa("dim"))
-    bx = W - 300
-    for i, (kind, label) in enumerate((("files", "Files"), ("changes", "Changes"), ("inbox", "Inbox"))):
-        icon = load(f"mods/office-tabs/art/{kind}.png", (20, 20))
-        im.alpha_composite(icon, (bx + i * 98, 19))
-        td.text((bx + i * 98 + 26, 22), label, font=font(12), fill=hexa("muted"))
+    bx = W - 10 - 4 * 96
+    for i, (kind, name) in enumerate((("files", "Files"), ("changes", "Changes"), ("inbox", "Inbox"), ("office", "Office"))):
+        on = kind == "office"
+        if on:
+            td.rectangle([bx + i * 96 - 8, 16, bx + i * 96 + 82, 41], fill=hexa("#3a3527"))
+        im.alpha_composite(load(f"mods/office-tabs/art/{kind}.png", (20, 20)), (bx + i * 96, 19))
+        td.text((bx + i * 96 + 26, 22), name, font=font(12), fill=hexa("foreground" if on else "muted"))
+    draw_panel(im, panel, frame=0)
     td.rectangle([SIDEBAR, H - 28, W, H], fill=hexa("chrome"))
-    td.text((SIDEBAR + 14, H - 22), "office · 3 spaces · 7 agents", font=font(11), fill=hexa("dim"))
+    td.text((SIDEBAR + 14, H - 22), "office · 3 spaces · 8 agents", font=font(11), fill=hexa("dim"))
 
     out = im.convert("RGB")
     out.save(os.path.join(ROOT, "preview.png"))

@@ -140,6 +140,91 @@ export function officePlan(spaces, panes, agents) {
     .filter((row) => row.tabs.length > 0);
 }
 
+const FILTERS = new Set(["working", "blocked", "done"]);
+
+// The plan narrowed to desks whose agent is in `status` (working, blocked or
+// done); anything else keeps it whole. Cubicles and rugs left empty go.
+export function filterPlan(plan, status) {
+  if (!FILTERS.has(status)) return plan ?? [];
+  return (plan ?? [])
+    .map((row) => ({
+      ...row,
+      tabs: row.tabs
+        .map((c) => ({ ...c, desks: c.desks.filter((d) => d.agent?.status === status) }))
+        .filter((c) => c.desks.length > 0),
+    }))
+    .filter((row) => row.tabs.length > 0);
+}
+
+// How many agents are in each status.
+export function tally(agents) {
+  const out = { working: 0, blocked: 0, done: 0, idle: 0 };
+  for (const a of agents ?? []) out[a.status in out ? a.status : "idle"]++;
+  return out;
+}
+
+// How many desks of `slot` points fit side by side in `width`, `gap` apart.
+export function fitAcross(width, slot, gap) {
+  if (!(width > 0) || !(slot > 0)) return 1;
+  return Math.max(1, Math.min(6, Math.floor((width + gap) / (slot + gap))));
+}
+
+// How long ago `since` (ms since the epoch; seconds are taken too) was, short:
+// "now", "4m", "2h 5m", "3d". Nothing for nothing.
+export function ago(since, now) {
+  if (typeof since !== "number" || !Number.isFinite(since) || since <= 0 || typeof now !== "number") return "";
+  const at = since < 1e12 ? since * 1000 : since;
+  const m = Math.floor(Math.max(0, now - at) / 60000);
+  if (m < 1) return "now";
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return m % 60 ? `${h}h ${m % 60}m` : `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+}
+
+// The second line under a wide desk: the agent's status and for how long (the
+// tab's: working since, else last changed). null for a desk with nobody.
+export function deskState(agent, tab, now) {
+  if (!agent) return null;
+  const status = agent.status in STATUS ? agent.status : "idle";
+  const when = ago(status === "working" ? tab?.working_since : tab?.changed_at, now);
+  return { status, text: when ? `${STATUS[status]} · ${when}` : STATUS[status] };
+}
+
+// A terminal's screen as `hc read` prints it, made safe to draw: escape
+// sequences, control and bidi characters out, tabs as spaces, trailing blanks
+// and empty lines at the end dropped; the last `n` lines, each at most `width`.
+export function screenLines(text, n = 14, width = 240) {
+  if (typeof text !== "string" || n <= 0) return [];
+  const lines = text
+    .replace(/\u001b\[[0-9;?]*[ -\/]*[@-~]/g, "")
+    .replace(/\u001b\][^\u0007\u001b]*(\u0007|\u001b\\)/g, "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\t/g, "    ")
+    .replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, "")
+    .split("\n")
+    .map((line) => line.replace(/\s+$/, "").slice(0, width));
+  while (lines.length && lines[lines.length - 1] === "") lines.pop();
+  return lines.slice(-n);
+}
+
+// The first non-empty line of a command's output, cleaned, for a short note.
+export function firstLine(text) {
+  return screenLines(typeof text === "string" ? text.split("\n").find((l) => l.trim()) ?? "" : "", 1, 120)[0]?.trim() ?? "";
+}
+
+export const DEFAULT_REPLIES = ["continue", "run the tests", "commit it", "explain what you changed"];
+
+// replies.json: the quick replies under the message box, a list of strings
+// (at most eight, each at most 80 characters); anything else keeps the defaults.
+export function parseReplies(text) {
+  let list;
+  try { list = JSON.parse(text); } catch { return DEFAULT_REPLIES; }
+  if (!Array.isArray(list)) return DEFAULT_REPLIES;
+  const out = list.filter((r) => typeof r === "string").map((r) => r.replace(/\s+/g, " ").trim()).filter((r) => r && r.length <= 80);
+  return out.length ? out.slice(0, 8) : DEFAULT_REPLIES;
+}
+
 // Split directions as layout documents write them: side by side, or stacked.
 const ACROSS = new Set(["row", "right", "left", "horizontal", "h", "x"]);
 const STACKED = new Set(["column", "col", "down", "up", "vertical", "v", "y"]);
@@ -267,4 +352,109 @@ export function mixHex(a, b, t) {
 export function spaceColor(theme, colors, id) {
   const key = colors && typeof colors === "object" ? colors[id] : null;
   return (typeof key === "string" && typeof theme?.[key] === "string" && theme[key]) || theme?.muted || theme?.accent;
+}
+
+// ---- the boss ---------------------------------------------------------------
+
+// A shell word for the brief: quoted when it has anything but plain characters.
+const word = (w) => (/^[\w./:@%+=,-]+$/.test(w) ? w : `'${String(w).replace(/'/g, "'\\''")}'`);
+
+// What the boss is told when hired: the rules of the job, then the goal. One
+// line, so every agent takes it as one message.
+export function bossBrief({ goal, argv, folder, space, most = 4 } = {}) {
+  const task = typeof goal === "string" ? goal.replace(/\s+/g, " ").trim() : "";
+  const run = (Array.isArray(argv) ? argv : []).filter((a) => typeof a === "string" && a).map(word).join(" ") || "claude";
+  const cwd = typeof folder === "string" && folder ? ` --cwd ${word(folder)}` : "";
+  return [
+    `You are the boss: the team lead for the space "${space ?? "this space"}" in Herdr${folder ? `, working in ${folder}` : ""}.`,
+    "Do not write the code yourself.",
+    `Split the goal at the end into independent pieces and hire one coding agent per piece, at most ${most} at a time unless the person asks for more.`,
+    "Run `hc --skill` once first to learn hc.",
+    `Hire each one with: hc run --bg --name <role>-<topic>${cwd} ${run} "<task>"`,
+    "(role: developer, designer, tester, analyst, writer, support or intern; a name is 1-32 of a-z 0-9 -;",
+    "the task says exactly what to change, how to check it, and to end with a short summary).",
+    "They get a desk next to you in the office.",
+    "Follow them with hc ls, hc read <name>, hc wait --children any and hc send <name> \"<message>\".",
+    "When they are done, review their changes (git diff) and tell the person what was done, what is left and what needs their decision.",
+    "Ask the person before anything destructive (deleting files, git push, force, resets, installs) and never print secrets.",
+    `Goal: ${task}`,
+  ].join(" ");
+}
+
+const ROLE_WORDS = [
+  ["developer", ["developer", "dev", "frontend", "backend", "fe", "be", "api", "code", "coder", "engineer", "fix", "impl", "build"]],
+  ["designer", ["designer", "design", "ui", "ux", "css", "style", "layout"]],
+  ["tester", ["tester", "test", "tests", "qa", "e2e", "spec"]],
+  ["analyst", ["analyst", "review", "reviewer", "research", "data", "audit", "plan"]],
+  ["writer", ["writer", "docs", "doc", "readme", "write", "copy"]],
+  ["support", ["support", "ops", "deploy", "devops", "infra", "ci", "release"]],
+  ["intern", ["intern", "helper", "misc"]],
+];
+
+// A hired agent's role from its name ("tester-e2e", "frontend_nav"): the first
+// word that names one; null when none does.
+export function roleFromName(name) {
+  if (typeof name !== "string") return null;
+  for (const token of name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)) {
+    const hit = ROLE_WORDS.find(([, words]) => words.includes(token));
+    if (hit) return hit[0];
+  }
+  return null;
+}
+
+// Who the boss hired: the terminals whose parent is the boss (a remote boss's
+// children name their parent without the machine).
+export function staffOf(terminals, boss) {
+  if (typeof boss !== "string" || !boss) return [];
+  const cut = boss.lastIndexOf("/");
+  const machine = cut > 0 ? boss.slice(0, cut) : null;
+  const local = cut > 0 ? boss.slice(cut + 1) : boss;
+  return (terminals ?? [])
+    .filter((t) => t && typeof t.address === "string" && t.address !== boss
+      && (t.parent === boss || (machine !== null && t.parent === local && t.address.startsWith(`${machine}/`))))
+    .map((t) => t.address);
+}
+
+// Where the next hire sits in the boss's tab, by how many panes it has: beside
+// the boss, under that, under the boss; past four panes, at a desk only.
+export function seatStep(panes) {
+  return { 1: { from: "boss", place: "right" }, 2: { from: "last", place: "down" }, 3: { from: "boss", place: "down" } }[panes] ?? null;
+}
+
+// A screen line without a box around it.
+const bare = (line) => (typeof line === "string" ? line.replace(/^[\s│┃|╭╰╮╯─━┌└┐┘]+/, "").replace(/[\s│┃|╭╰╮╯─━┌└┐┘]+$/, "") : "");
+const OPTION = /^(?:[❯›>▶➜→]\s*)?(\d)[.)]\s+(.+)$/;
+
+// A waiting agent's question, from the end of its screen: the numbered choices
+// it offers (1. Yes / 2. ... / 3. No) and the last three lines above them. Without
+// numbered choices, its last two lines and no options.
+export function parsePrompt(lines) {
+  const shown = (lines ?? []).map(bare);
+  let end = -1;
+  for (let i = shown.length - 1; i >= 0 && i >= shown.length - 20; i--) if (OPTION.test(shown[i])) { end = i; break; }
+  if (end < 0) {
+    return { question: shown.filter((l) => /\p{L}.*\p{L}/u.test(l)).slice(-2), options: [] };
+  }
+  let start = end;
+  while (start > 0 && OPTION.test(shown[start - 1])) start--;
+  const options = shown.slice(start, end + 1).map((l) => {
+    const [, key, label] = l.match(OPTION);
+    return { key, label: label.trim().slice(0, 80) };
+  });
+  const question = shown.slice(Math.max(0, start - 8), start)
+    .filter((l) => /\p{L}|\p{N}/u.test(l)).slice(-3).map((l) => l.trim().slice(0, 160));
+  return { question, options };
+}
+
+// The boss's speech bubble: the last line on its screen that says something
+// (not the input box, its hints, or the spinner's "esc to interrupt").
+export function speechLine(lines) {
+  const list = lines ?? [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const line = bare(list[i]).replace(/\s*\([^)]*esc to interrupt[^)]*\)\s*$/i, "").trim();
+    if ((line.match(/\p{L}/gu) ?? []).length < 3) continue;
+    if (/^[>?]|for shortcuts|auto-accept|bypass permissions|accept edits|^esc to|ctrl\+/i.test(line)) continue;
+    return line.slice(0, 140);
+  }
+  return "";
 }

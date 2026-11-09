@@ -104,6 +104,58 @@ ok(A.spaceColor({ ansi6: "#6fb6ad", accent: "#e0a44a" }, { s1: "ansi6" }, "s1") 
 ok(A.spaceColor({ muted: "#b0a894", accent: "#e0a44a" }, { s1: "ansi6" }, "s1") === "#b0a894", "unknown key -> muted");
 ok(A.spaceColor({ accent: "#e0a44a" }, null, "s1") === "#e0a44a", "no colours, no muted -> accent");
 
+// wide office: filters, counts, fit, times
+ok(A.filterPlan(plan, "all") === plan && A.filterPlan(null, "working").length === 0, "no filter keeps the plan");
+const busyPlan = A.filterPlan(plan, "working");
+ok(busyPlan.length === 1 && busyPlan[0].tabs.length === 1 && busyPlan[0].tabs[0].desks.map((d) => d.agent.address).join() === "a1,a9", "working filter keeps working desks only");
+ok(A.filterPlan(plan, "blocked").flatMap((r) => r.tabs.flatMap((c) => c.desks.map((d) => d.agent.address))).join() === "a3,a6", "blocked filter across rugs");
+ok(A.filterPlan(plan, "done").length === 0, "nothing done -> empty office");
+ok(JSON.stringify(A.tally(agents)) === '{"working":2,"blocked":2,"done":0,"idle":0}' && A.tally([{ status: "odd" }]).idle === 1, "tally");
+ok(A.fitAcross(590, 120, 8) === 4 && A.fitAcross(260, 80, 6) === 3 && A.fitAcross(50, 120, 8) === 1 && A.fitAcross(9000, 120, 8) === 6, "desks across");
+const now = 1_700_000_000_000;
+ok(A.ago(now - 20_000, now) === "now" && A.ago(now - 4 * 60_000, now) === "4m", "ago minutes");
+ok(A.ago(now - 125 * 60_000, now) === "2h 5m" && A.ago(now - 120 * 60_000, now) === "2h" && A.ago(now - 50 * 3_600_000, now) === "2d", "ago hours, days");
+ok(A.ago((now - 4 * 60_000) / 1000, now) === "4m", "ago takes seconds");
+ok(A.ago(null, now) === "" && A.ago(0, now) === "" && A.ago(now + 60_000, now) === "now", "ago edge cases");
+ok(JSON.stringify(A.deskState({ status: "working" }, { working_since: now - 12 * 60_000 }, now)) === '{"status":"working","text":"Working · 12m"}', "working state");
+ok(A.deskState({ status: "blocked" }, { changed_at: now - 3 * 60_000 }, now).text === "Needs you · 3m", "blocked state");
+ok(A.deskState({ status: "weird" }, {}, now).text === "Idle" && A.deskState(null, {}, now) === null, "unknown state, no agent");
+
+// screens read with hc, replies
+const ESC = String.fromCharCode(27), RLO = String.fromCharCode(0x202e);
+ok(JSON.stringify(A.screenLines(`a${ESC}[31mred${ESC}[0m\n\nlast  \n\n`, 5)) === '["ared","","last"]', "escapes out, trailing blanks dropped");
+ok(A.screenLines("1\n2\n3\n4", 2).join() === "3,4", "last n lines");
+ok(A.screenLines(`x${RLO}y\tz\r\nw`).join("|") === "xy    z|w", "bidi out, tabs, CRLF");
+ok(A.screenLines(null).length === 0 && A.screenLines("a", 0).length === 0, "nothing to read");
+ok(A.screenLines("a".repeat(300), 1, 10)[0].length === 10, "long lines cut");
+ok(A.firstLine("\n  error: no such terminal t9\nmore") === "error: no such terminal t9" && A.firstLine(null) === "", "first line");
+ok(A.parseReplies(JSON.stringify(["go on", " ", 5, "x".repeat(81), "  run   it "])).join("|") === "go on|run it", "replies cleaned");
+ok(A.parseReplies("nope") === A.DEFAULT_REPLIES && A.parseReplies("[]") === A.DEFAULT_REPLIES && A.parseReplies("{}") === A.DEFAULT_REPLIES, "bad replies -> defaults");
+ok(A.parseReplies(JSON.stringify(Array.from({ length: 12 }, (_, i) => `r${i}`))).length === 8, "at most eight replies");
+
+// the boss
+const brief = A.bossBrief({ goal: "  add Google\nlogin  ", argv: ["claude"], folder: "/w/web app", space: "web-app", most: 4 });
+ok(brief.endsWith("Goal: add Google login") && !brief.includes("\n"), "brief: one line, goal last");
+ok(brief.includes("--cwd '/w/web app' claude \"<task>\"") && brief.includes("at most 4 at a time") && brief.includes('"web-app"'), "brief: hire command, cap, space");
+ok(A.bossBrief({ goal: "x", argv: [] }).includes(" claude \"<task>\"") && !A.bossBrief({ goal: "x" }).includes("--cwd"), "brief: defaults");
+ok(A.bossBrief({ goal: "x", argv: ["codex", "--model", "o3"] }).includes("codex --model o3 \"<task>\""), "brief: agent argv");
+ok(A.roleFromName("tester-e2e") === "tester" && A.roleFromName("frontend_nav") === "developer" && A.roleFromName("ui.polish") === "designer", "role from name");
+ok(A.roleFromName("bob") === null && A.roleFromName(null) === null && A.roleFromName("x-docs") === "writer", "role from a later word, or none");
+const terms = [{ address: "t3" }, { address: "t4", parent: "t3" }, { address: "t5", parent: "t3" }, { address: "t6", parent: "t9" },
+  { address: "vps/t2", parent: "t1" }, { address: "vps/t1" }];
+ok(A.staffOf(terms, "t3").join() === "t4,t5" && A.staffOf(terms, "vps/t1").join() === "vps/t2" && A.staffOf(terms, "").length === 0, "boss's staff");
+ok(JSON.stringify([1, 2, 3, 4].map(A.seatStep)) === '[{"from":"boss","place":"right"},{"from":"last","place":"down"},{"from":"boss","place":"down"},null]', "seating steps");
+const claudeAsk = ["╭──────────────╮", "│ Bash command │", "│              │", "│   git push origin feat/login │", "│   Push the branch │", "│              │",
+  "│ Do you want to proceed? │", "│ ❯ 1. Yes │", "│   2. Yes, and don't ask again for git push │", "│   3. No, and tell Claude what to do differently (esc) │", "╰──────────────╯"];
+const asked = A.parsePrompt(claudeAsk);
+ok(asked.options.map((o) => o.key).join() === "1,2,3" && asked.options[0].label === "Yes" && asked.options[2].label.startsWith("No, and tell"), "prompt options");
+ok(asked.question.join("|") === "git push origin feat/login|Push the branch|Do you want to proceed?", "prompt question");
+const plain = A.parsePrompt(["Running tool", "", "Allow write to config? [y/n]"]);
+ok(plain.options.length === 0 && plain.question.join("|") === "Running tool|Allow write to config? [y/n]", "no numbered choices");
+ok(A.parsePrompt(null).options.length === 0, "nothing to parse");
+ok(A.speechLine(["● Hired tester-e2e and frontend-nav", "", "✻ Waiting for the team… (2m · ↓ 1k tokens · esc to interrupt)", "> ", "? for shortcuts"]) === "✻ Waiting for the team…", "speech: spinner without its hint");
+ok(A.speechLine(["● Done: 3 changes merged", "────", "│ > │"]) === "● Done: 3 changes merged" && A.speechLine([]) === "", "speech: skips the input box");
+
 // inbox lib
 ok(I.kindOf("a.PNG") === "image", "ext case-insensitive");
 ok(I.kindOf(".hidden.png") === null, "hidden file rejected");

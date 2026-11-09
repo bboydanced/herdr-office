@@ -1,12 +1,16 @@
 // Office tab bar: the built-in tabs with the faces of every agent in the tab
 // (the same people as at its desks in the office) and a terminal mark for its
-// other panes, square corners and image buttons for the side panels.
+// other panes, square corners and image buttons for the side panels (Office: the
+// whole office, wider).
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { agents, spaces, panes, run, openOverlay, theme, window, shared, layout, settings, appHome, readTextFile } from "herdr";
 import { deskJobs, portraitPath, tabDesks } from "./lib.js";
 
 const JOBS_FILE = `${appHome()}/mods/office-agents/jobs.json`;
+// The Office panel opens this wide the first time (the others keep the width
+// the panel had); dragged, each remembers its own, up to the layout's max.
+const OFFICE_PX = 640;
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -27,6 +31,35 @@ export default class OfficeTabs extends View {
       cx.notify();
     });
     this.panels = JSON.parse(localStorage.getItem("panels") ?? "{}");
+    this.widths = JSON.parse(localStorage.getItem("panel.widths") ?? "{}"); // "office" | "other" -> px
+    this.kind = null; // which of them the panel last showed
+    this.fit = null; // a resize on its way: { px, until }
+  }
+
+  // Office and the other panels each keep their own width: switching between
+  // them puts the panel back to the one's last width, dragging it records it.
+  fitPanel(panel, body) {
+    const px = panel?.size?.px;
+    if (!panel || panel.hidden || typeof px !== "number") return;
+    const kind = body?.active === "office" ? "office" : "other";
+    // Until the resize lands (or something else won), the old width isn't a choice.
+    if (this.fit) {
+      if (px !== this.fit.px && Date.now() < this.fit.until) return;
+      this.fit = null;
+    }
+    const keep = (w) => {
+      if (this.widths[kind] === w) return;
+      this.widths[kind] = w;
+      localStorage.setItem("panel.widths", JSON.stringify(this.widths));
+    };
+    if (kind === this.kind) return keep(px);
+    this.kind = kind;
+    const want = this.widths[kind] ?? (kind === "office" ? OFFICE_PX : px);
+    keep(want);
+    if (want !== px) {
+      this.fit = { px: want, until: Date.now() + 1000 };
+      run("layout.resize", { id: "panel", px: want });
+    }
   }
 
   // The side panel is remembered per space: switching shows that space's choice
@@ -63,7 +96,13 @@ export default class OfficeTabs extends View {
     const shown = space?.tabs ?? [];
     const sp = spaces(), ps = panes(), list = agents();
     const desks = tabDesks(sp, ps, list);
-    const roles = deskJobs(sp, ps, list, this.jobs);
+    // The office's own faces when it has shared them (they know the boss and its
+    // hires); else the same reckoning here, with a "Boss" tab as the manager.
+    const roles = deskJobs(sp, ps, list, { Boss: "manager", ...this.jobs });
+    const sharedFaces = shared("office.faces");
+    if (sharedFaces && typeof sharedFaces === "object" && !Array.isArray(sharedFaces)) {
+      for (const [address, job] of Object.entries(sharedFaces)) if (typeof job === "string") roles.set(address, job);
+    }
     const stop = (_e, cx) => cx.stop_propagation();
     const button = (id, label, action) => div().id(id).size(26).flex_none().flex().items_center().justify_center().text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
       .on_mouse_down("left", stop).on_click(action).child(label);
@@ -116,8 +155,9 @@ export default class OfficeTabs extends View {
       ? Math.max(10, (root.traffic_lights[0] + 64) / settings().zoom - (sidebar?.hidden ? 0 : sidebar?.size?.px ?? 0))
       : 10;
     const panel = find(root, "panel"), body = find(root, "panel-body");
-    const enabled = [...(shared("workspace.panels") ?? ["files", "changes"]), "inbox"];
+    const enabled = [...(shared("workspace.panels") ?? ["files", "changes"]), "inbox", "office"];
     this.syncPanel(space, panel, body, enabled);
+    this.fitPanel(panel, body);
     const panelButton = (id, label, icon) => {
       const on = panel && !panel.hidden && body?.active === id;
       return h_flex().id(`panel-${id}`).h(26).px(8).gap(5).flex_none().items_center()
@@ -136,6 +176,7 @@ export default class OfficeTabs extends View {
       .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", "mods/office-tabs/art/files.png")))
       .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/office-tabs/art/changes.png")))
       .child(panelButton("inbox", "Inbox", "mods/office-tabs/art/inbox.png"))
+      .child(panelButton("office", "Office", "mods/office-tabs/art/office.png"))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg("mods/office-tabs/win-min.svg").size(16) : "−", () => run("window.minimize")))
         .child(button("maximize", w.platform === "windows" ? svg(`mods/office-tabs/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))
         .child(button("close-window", w.platform === "windows" ? svg("mods/office-tabs/win-close.svg").size(16) : svg("mods/pane/close.svg").size(13), () => run("window.close"))));

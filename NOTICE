@@ -12,7 +12,7 @@ equivalents; mods/office-agents started as one and has since been rewritten.
 
 Changes: fantasy RPG theme replaced with a modern office theme; roles, data
 paths, image paths and mod names renamed from traveler-* to office-*; comments
-translated to English; spaces drawn as project folders; the agent cards and
+translated to English; spaces drawn as rooms (a door per space); the agent cards and
 their HP/SP status line replaced by one shared office with a desk per pane.
 
 The shared-office idea is inspired by herdr-office-layout

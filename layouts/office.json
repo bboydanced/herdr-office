@@ -153,6 +153,16 @@
                       "content": {
                         "mod": "office-inbox"
                       }
+                    },
+                    {
+                      "id": "office",
+                      "type": "block",
+                      "content": {
+                        "mod": "office-agents",
+                        "props": {
+                          "wide": true
+                        }
+                      }
                     }
                   ],
                   "active": "files"

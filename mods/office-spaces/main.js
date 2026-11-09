@@ -1,29 +1,67 @@
-// Office spaces: one project per space, drawn as a folder in the space's colour
-// (the same colour as its rug in the office below), worktrees under their
-// checkout, grouped by machine when more than one is known. After a space's name,
-// the repo its first terminal is in now, only where unusual: branch, ahead/behind;
-// under it the git summary and a dot per agent. Click to switch, right-click for
-// its menu, drag to reorder.
+// Office spaces: the lobby's room directory. Each space is a room: a door in the
+// space's colour (the same colour as its rug in the office below) with its room
+// number, a lamp over it (off, breathing while someone works, blinking while
+// someone waits for you) and its window lit while anyone is in. Worktrees under
+// their checkout, grouped by machine when more than one is known. After a space's
+// name, the repo its first terminal is in now, only where unusual: branch,
+// ahead/behind; under it git as sticky notes and the faces of the staff inside
+// (as the office draws them: it shares who wears which role as "office.faces").
+// Hovering a room lights its rug in the office and back ("office.hover"); a click
+// on the faces opens the Office panel. Click to switch, right-click for its menu,
+// drag to reorder.
 
-import { View, div, svg } from "gpui-kit";
+import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { spaces, machines, panes, agents, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout } from "herdr";
 
-// A project folder in the space's colour, with the project's initial.
-function badge(name, color, t) {
-  const letter = [...name].find((c) => /[\p{L}\p{N}]/u.test(c))?.toUpperCase() ?? "~";
-  return div().relative().w(28).h(26).flex_none()
-    .child(div().absolute().top(0).left(0).w(12).h(4).bg(color))
-    .child(div().absolute().top(3).left(0).w(28).h(23).flex().items_center().justify_center().bg(color)
-      .text_size(13).font_bold().text_color(t.canvas).child(letter))
-    .child(div().absolute().top(4).left(0).w(28).h(1).bg("#ffffff46"));
-}
-
 // A theme colour with a two-digit alpha (theme colours are #rrggbb).
 const alpha = (c, a) => (typeof c === "string" && /^#[0-9a-fA-F]{6}/.test(c) ? `${c.slice(0, 7)}${a}` : c);
+// A #rrggbb colour darkened by `k` (0..1); anything else stays.
+const darken = (c, k) => (typeof c === "string" && /^#[0-9a-fA-F]{6}/.test(c)
+  ? `#${[1, 3, 5].map((i) => Math.round(parseInt(c.slice(i, i + 2), 16) * (1 - k)).toString(16).padStart(2, "0")).join("")}`
+  : c);
+
+const INK = "#1d2733";
+// The office's roles: only these name a portrait, whatever "office.faces" holds.
+const ROLES = new Set(["analyst", "designer", "developer", "intern", "manager", "support", "tester", "writer"]);
+const portrait = (job) => (ROLES.has(job) ? `mods/office-agents/art/${job}.png` : null);
 
 // The most urgent status among some agents: waiting beats working.
 const urgent = (list) => (list.some((a) => a.status === "blocked") ? "blocked" : list.some((a) => a.status === "working") ? "working" : null);
+
+// The space under the pointer, here or in the office: set only when it changes
+// (every mod redraws on a shared value, and a redraw reports hover again).
+function hoverSpace(id, on) {
+  const now = shared("office.hover") ?? null;
+  const next = on ? id : now === id ? null : now;
+  if (next !== now) setShared("office.hover", next);
+}
+
+// A room's door in the space's colour: its number on the plate, a lamp above
+// (off; breathing while someone works; blinking while someone waits) and a
+// window lit while anyone is in.
+function door(id, number, color, status, occupied, t) {
+  const box = (top, left, w, h, bg) => div().absolute().top(top).left(left).w(w).h(h).bg(bg);
+  const lamp = { working: t.working, blocked: t.blocked }[status] ?? "#3a4250";
+  return div().relative().w(26).h(32).flex_none()
+    .when(status === "working", (el) => el.child(box(0, 5, 16, 6, alpha(t.working, "50")).id(`${id}-halo`)
+      .loop("opacity", { from: 0, to: 1, period: 1100 })))
+    .child(box(0, 8, 10, 3, lamp).id(`${id}-lamp`)
+      .when(status === "working", (el) => el.loop("opacity", { from: 0.45, to: 1, period: 1100 }))
+      .when(status === "blocked", (el) => el.loop("opacity", { from: 0.2, to: 1, period: 600, easing: "linear" })))
+    .child(box(4, 0, 26, 28, darken(color, 0.45)))
+    .child(box(5, 2, 22, 27, color))
+    .child(box(8, 5, 16, 6, occupied ? "#f0c06ecc" : "#16202b"))
+    .child(box(8, 12, 2, 6, darken(color, 0.3)))
+    .child(box(17, 5, 15, 10, "#efe6d2").flex().items_center().justify_center()
+      .text_size(8).font_bold().text_color(INK).child(number))
+    .child(box(23, 21, 2, 2, "#e8ba62"));
+}
+
+// A sticky note for the git summary.
+const note = (color, text) => div().relative().flex_none().h(13).px(4).flex().items_center().bg(color)
+  .text_size(9.5).font_semibold().text_color(INK).child(text)
+  .child(div().absolute().right(0).bottom(0).size(3).bg("#00000030"));
 
 // A row where someone works breathes in the working colour under a steady frame;
 // one where someone waits blinks a thick frame over a red tint (as in the office).
@@ -347,28 +385,41 @@ export default class Spaces extends View {
     };
   }
 
-  // One line: what git would say, then a dot per agent in the space.
-  summary(w, sum, t) {
-    const parts = [
-      sum.dirty > 0 && [t.ansi3, `${sum.dirty} changed`],
-      sum.ahead > 0 && [t.ansi2, `${sum.ahead} unpushed`],
-      sum.local > 0 && [t.ansi1, sum.local === 1 ? "no remote" : `${sum.local} without remote`],
+  // One line: git as sticky notes, then the faces of the staff in the room
+  // (a dot each until the office has said who is who). A click on the faces
+  // opens the Office panel.
+  summary(w, sum, mine, t) {
+    const notes = [
+      sum.dirty > 0 && [t.ansi11, `${sum.dirty} changed`],
+      sum.ahead > 0 && [t.ansi10, `\u2191${sum.ahead} unpushed`],
+      sum.local > 0 && [t.ansi9, sum.local === 1 ? "no remote" : `${sum.local} without remote`],
     ].filter(Boolean);
-    const mine = this.staff.filter((a) => a.space === w.id);
-    return h_flex().h(14).gap(4).items_center().text_size(11)
-      .child(h_flex().flex_1().min_w(0).gap(4).overflow_hidden()
-        .children(parts.flatMap(([color, text], n) => [
-          ...(n ? [div().flex_none().text_color(t.dim).child("\u00b7")] : []),
-          div().flex_none().text_color(color).child(text),
-        ])))
-      .children(mine.slice(0, 8).map((a) => div().size(5).flex_none().rounded(3).bg(t[a.status] ?? t.dim)))
-      .when(mine.length > 8, (el) => el.child(div().flex_none().text_size(10).text_color(t.dim).child(`+${mine.length - 8}`)));
+    const face = (a) => {
+      const src = portrait(this.faces[a.address]);
+      return src
+        ? div().size(14).flex_none().border(1).border_color(t[a.status] ?? t.dim).bg(t.raised).child(image(src).size(12))
+        : div().size(6).flex_none().rounded(3).bg(t[a.status] ?? t.dim);
+    };
+    return h_flex().h(15).gap(4).items_center().text_size(11)
+      .child(h_flex().flex_1().min_w(0).gap(4).overflow_hidden().children(notes.map(([color, text]) => note(color, text))))
+      .when(mine.length > 0, (el) => el.child(h_flex().id(`faces-${w.id}`).flex_none().gap(2).items_center().cursor_pointer()
+        .tooltip(`${mine.length} in · open the office`)
+        .on_click(() => {
+          run("layout.select", { stack: "panel-body", child: "office" });
+          run("layout.show", { id: "panel" });
+        })
+        .children(mine.slice(0, 5).map(face))
+        .when(mine.length > 5, (el) => el.child(div().flex_none().text_size(10).text_color(t.dim).child(`+${mine.length - 5}`)))));
   }
 
   row({ w, i, g, sum, tree }, t) {
     const on = w.active;
-    const status = tree ? null : urgent(this.staff.filter((a) => a.space === w.id));
+    const mine = this.staff.filter((a) => a.space === w.id);
+    const status = tree ? null : urgent(mine);
     const shown = activity(`space-${w.id}`, status, t);
+    const color = t[this.colors[w.id]] ?? t.muted;
+    // Lit from the office: its rug is under the pointer there.
+    const hot = this.hot === w.id;
     return v_flex()
       .relative()
       .id(`space-${w.id}`)
@@ -377,8 +428,14 @@ export default class Spaces extends View {
       .flex_none()
       .justify_center()
       .children(shown.under)
-      .when(on, (el) => el.bg(`${t.surface}c8`).child(div().absolute().left(0).top(0).bottom(0).w(2).bg(t.accent)))
+      // The room you are in has its lights on.
+      .when(on, (el) => el.bg(`${t.surface}c8`)
+        .child(div().absolute().top(0).left(0).right(0).bottom(0).bg(alpha(t.accent, "12")))
+        .child(div().absolute().left(0).top(0).bottom(0).w(2).bg(t.accent)))
       .when(!on, (el) => el.hover((s) => s.bg(t.hover)))
+      .when(hot && !on, (el) => el.bg(t.hover))
+      .when(hot, (el) => el.child(div().absolute().top(0).left(0).right(0).bottom(0).border(1).border_color(alpha(color, "aa"))))
+      .on_hover((hov) => hoverSpace(w.id, hov))
       .when(this.pressed === i && this.over !== i, (el) => el.opacity(0.5))
       .when(this.pressed !== null && this.over === i && this.pressed !== i, (el) => el.child(
         div().absolute().left(0).right(0).h(2).bg(t.accent)
@@ -412,13 +469,13 @@ export default class Spaces extends View {
           .gap(10)
           .items_center()
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/office-chrome/branch.svg").size(13).text_color(t.dim)))
-          .when(!tree, el => el.pl(2).child(badge(w.name, t[this.colors[w.id]] ?? t.muted, t)))
-          .child(v_flex().flex_1().min_w(0).gap(2)
+          .when(!tree, el => el.pl(2).child(door(`door-${w.id}`, String(i + 1).padStart(2, "0"), color, status, mine.length > 0, t)))
+          .child(v_flex().flex_1().min_w(0).gap(3)
             .child(h_flex().gap(9).items_center()
               .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(w.name))
               .when(status === "blocked", el => el.child(div().flex_none().px(4).bg("#c8392f").text_size(10).font_bold().text_color("#ffffff").child("!")))
               .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1()))
-            .when(!tree, el => el.child(this.summary(w, sum, t)))),
+            .when(!tree, el => el.child(this.summary(w, sum, mine, t)))),
       )
       .children(shown.over);
   }
@@ -454,6 +511,9 @@ export default class Spaces extends View {
     if (changed) setShared("space.colors", kept);
     this.colors = kept;
     this.staff = agents();
+    const faces = shared("office.faces");
+    this.faces = faces && typeof faces === "object" && !Array.isArray(faces) ? faces : {};
+    this.hot = shared("office.hover") ?? null;
     return v_flex().size_full().min_h(0).text_size(13)
       .child(h_flex().h(31).pl(16).pr(10).items_center().justify_between().text_size(11.5).text_color(t.dim)
         .when(!collapsed, el => el.child("Spaces"))
