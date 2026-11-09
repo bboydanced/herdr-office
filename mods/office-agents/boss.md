@@ -54,7 +54,26 @@ hc run --bg --name <role>-<topic> --label office.task="<the task in a few words>
 - `<role>` is one of developer, designer, tester, analyst, writer, support or
   intern: the office gives the hire that face. `<topic>` is a word or two. A
   name is 1-32 of a-z 0-9 - and unique among live terminals.
-- `<agent>` is the agent command you run as (your brief names it).
+- `<agent>` is one of the commands your brief lists (yours first, then the
+  other agents installed), with its flags exactly as written, before the task.
+  A hire starts in the background: a permission prompt there would stall it
+  where nobody sees it, so these flags let it work without asking (the person
+  chose this). Never drop them, and hire only an agent your brief lists. If
+  you no longer have your brief:
+
+  | Agent | `<agent>` |
+  |---|---|
+  | Claude Code | `claude --dangerously-skip-permissions` |
+  | Codex | `codex --dangerously-bypass-approvals-and-sandbox` |
+  | Antigravity | `agy --dangerously-skip-permissions -i` (the task right after `-i`: without it agy gets no task) |
+  | Gemini | `gemini --yolo -i` |
+  | Cursor | `cursor-agent --force --trust` |
+  | Grok | `grok --always-approve` |
+  | pi | `pi` (it never asks) |
+  | Oh My Pi | `omp --auto-approve` |
+
+- Hired that way, a hire does not ask before it acts: the Rules in its task
+  (see Writing a task) are what holds it back, so never leave them out.
 - What each role is for:
   - **developer**: builds or fixes the piece; runs its check before finishing.
   - **designer**: UI, styles and layout; describes what changed on screen.

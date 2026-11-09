@@ -198,7 +198,9 @@ another; `●` marks rooms that have one).
   to change how your bosses work (it is plain Markdown; write it in your own
   language if you like). It says: don't write code yourself; understand, plan,
   hire, follow, review, report; hire one agent per independent piece with `hc
-  run --bg --name <role>-<topic> --label office.task="…"`, at most four
+  run --bg --name <role>-<topic> --label office.task="…"`, running one of the
+  agents installed with its skip-permission flags (see Hires run without
+  asking below), at most four
   working at a time unless you ask for more; what each role is for, and the
   parts every task has (goal, area, what not to touch, the check to run, the
   rules, the summary to finish with); when pieces may touch the same files,
@@ -224,7 +226,10 @@ another; `●` marks rooms that have one).
 - **Later goals** go to the boss you already have (`Tell ⏎`, `hc send`).
 - **Its hires** are its children in herdr-core: they get a desk in its
   cubicle at once, with a role from their name (`tester-e2e` is a tester,
-  `frontend-nav` a developer), the same face everywhere. While you look at
+  `frontend-nav` a developer), the same face everywhere. A hire Herdr gets no
+  status from (an agent it doesn't know, like `pi` or `agy`) still gets its
+  desk, as long as it carries `office.task` or a role in its name; it reads
+  `Running` since its status is unknown, and never shows in Needs you. While you look at
   the boss's tab, they get panes beside it one by one (right, then down; four
   panes at most), and your focus goes back where it was; elsewhere they work
   at their desks.
@@ -235,6 +240,32 @@ another; `●` marks rooms that have one).
   Click it for its terminal in the desk window; double-click to go there.
 - Closing the `Boss` tab ends its hires too (herdr-core ends children with
   their parent).
+
+#### Hires run without asking
+
+A hire starts in the background, where a permission prompt would stall it
+with nobody watching. So the brief gives the boss each installed agent's
+command with the flags that skip those prompts (`HIRE_FLAGS` in
+`mods/office-agents/lib.js`; the playbook has the same table):
+
+| Agent | Hired as |
+|---|---|
+| Claude Code | `claude --dangerously-skip-permissions` |
+| Codex | `codex --dangerously-bypass-approvals-and-sandbox` |
+| Antigravity | `agy --dangerously-skip-permissions -i "<task>"` (without `-i` agy gets no task) |
+| Gemini | `gemini --yolo -i "<task>"` |
+| Cursor | `cursor-agent --force --trust` |
+| Grok | `grok --always-approve` |
+| pi | `pi` (it never asks) |
+| Oh My Pi | `omp --auto-approve` |
+
+**This is a risk you take on:** a hire then runs any command its model
+decides on (deleting files, pushing, installing, reading secrets) without
+asking you. Only the Rules in its task hold it back. Run it only on a machine
+and a project where that is acceptable. For a safer setting, change
+`HIRE_FLAGS` and the playbook's table (for example `codex --approve-for-me`,
+or `agy --mode auto`). A hire that asks anyway shows up in Needs you when
+Herdr knows the agent.
 
 Every hire is a full agent session, with its own cost. The boss runs `hc`
 through its shell, so its agent asks you before each command unless you allow

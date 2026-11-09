@@ -35,7 +35,7 @@
 import { View, div, image, svg } from "gpui-kit";
 import { Input, InputState, h_flex, v_flex } from "gpui-base";
 import { agents, appHome, closeOverlay, exec, focused, hc, home, knownAgents, layout, openOverlay, panes, props, readTextFile, run, setAgentOrder, setShared, shared, spaces, terminals, theme } from "herdr";
-import { DESK_SHADOW, EMPTY_DESK, ago, bossBrief, deskColumns, labelOf, deskJobs, deskLabel, deskPath, deskState, deskTip, filterPlan, findBosses, firstLine, fitAcross, isBossTab, localId, mixHex, officePlan, parsePrompt, portraitPath, roleFromName, screenLines, seatStep, shortPath, spaceColor, speechLine, splitTree, staffOf, tally, treeWidth, withAlpha } from "./lib.js";
+import { DESK_SHADOW, EMPTY_DESK, ago, bossBrief, deskColumns, labelOf, deskJobs, deskLabel, deskPath, deskState, deskTip, filterPlan, findBosses, firstLine, fitAcross, isBossTab, isHire, localId, mixHex, officePlan, parsePrompt, portraitPath, roleFromName, screenLines, seatStep, shortPath, spaceColor, speechLine, splitTree, staffOf, standIn, tally, treeWidth, withAlpha } from "./lib.js";
 import { Desk } from "./desk.js";
 
 const JOBS_FILE = `${appHome()}/mods/office-agents/jobs.json`;
@@ -98,6 +98,14 @@ function goTo(space, tab, pane) {
   if (!space.active) run("space.select", { id: space.id });
   if (!tab.active) run("tab.select", { id: tab.id });
   run("pane.focus", { pane: pane.pane });
+}
+
+// To a desk's terminal: an agent through Herdr's own focus; a stand-in (a hire
+// Herdr gets no status from) or a shell at its pane; with no pane, a peek.
+function reach(a, space, tab, pane, terminal) {
+  if (a && !a.standIn) return run("agent.focus", { terminal: a.address });
+  if (space && tab && pane) return goTo(space, tab, pane);
+  if (terminal) run("terminal.peek", { terminal });
 }
 
 // How a desk or a rug shows that someone there is busy or waiting for you.
@@ -293,8 +301,7 @@ export default class Office extends View {
         // In the panel a click picks them (the desk window opens); a double-click, or a click in the sidebar, goes there.
         if (this.wide && terminal && e.click_count < 2) return this.pick(terminal, cx);
         if (this.wide) this.closeDesk();
-        if (a) run("agent.focus", { terminal: a.address });
-        else goTo(space, c.tab, d.pane);
+        reach(a, space, c.tab, d.pane, terminal);
       })
       .on_mouse_down("right", (_e, cx) => {
         cx.stop_propagation();
@@ -427,7 +434,7 @@ export default class Office extends View {
         const src = portraitPath(roles.get(a.address));
         return div().id(`face-${a.address}`).size(30).flex_none().border(2).border_color(t[a.status] ?? t.dim)
           .cursor_pointer().tooltip(deskLabel({ agent: a }))
-          .on_click(() => run("agent.focus", { terminal: a.address }))
+          .on_click(() => reach(a, null, null, null, a.address))
           .when(Boolean(src), (el) => el.child(image(src).size(26)));
       }));
   }
@@ -522,7 +529,7 @@ export default class Office extends View {
   target() {
     const key = this.selected;
     if (!key) return null;
-    const agent = agents().find((a) => a.address === key) ?? null;
+    const agent = agents().find((a) => a.address === key) ?? this.standIns?.get(key) ?? null;
     const ps = panes();
     const pane = (agent ? ps.find((p) => p.pane === agent.pane) : ps.find((p) => p.terminal === key)) ?? null;
     if (!agent && !pane) return null;
@@ -586,8 +593,7 @@ export default class Office extends View {
     const tone = { working: mixHex(t.working, "#ffffff", 0.3), blocked: t.blocked, done: t.done }[state?.status] ?? t.dim;
     const go = () => {
       this.closeDesk();
-      if (a) run("agent.focus", { terminal: a.address });
-      else if (space && tab && pane) goTo(space, tab, pane);
+      reach(a, space, tab, pane, key);
     };
     return frame
       .child(div().size(36).flex_none().border(1).border_color(state ? t[state.status] ?? t.dim : t.dim).bg(t.raised)
@@ -697,9 +703,12 @@ export default class Office extends View {
     const step = seatStep(mine.length);
     if (!step) return;
     const live = new Set(agents().map((a) => a.address));
+    const terms = terminals() ?? [];
     const seated = new Set(ps.map((p) => p.terminal).filter(Boolean));
     const now = Date.now();
-    const hire = staffOf(terminals() ?? [], boss).find((addr) => live.has(addr) && !seated.has(addr) && now - (this.tried.get(addr) ?? 0) > 10000);
+    // An agent Herdr knows, or a hire it gets no status from (pi, agy).
+    const hire = staffOf(terms, boss).find((addr) => (live.has(addr) || isHire(terms.find((x) => x.address === addr)))
+      && !seated.has(addr) && now - (this.tried.get(addr) ?? 0) > 10000);
     const from = step.from === "boss" ? mine.find((p) => p.terminal === boss) : mine[mine.length - 1];
     if (!hire || !from) return;
     this.tried.set(hire, now);
@@ -774,7 +783,8 @@ export default class Office extends View {
       const playbook = await this.playbookFor(room.machine ?? null);
       // The goal stays in the box until the tab is open.
       try {
-        run("tab.new", { space: room.id, name: "Boss", argv: pick.run, task: bossBrief({ goal, playbook, argv: pick.run, folder, space: room.name, most: STAFF_CAP }) });
+        const hires = known.map((k) => k.run);
+        run("tab.new", { space: room.id, name: "Boss", argv: pick.run, task: bossBrief({ goal, playbook, argv: pick.run, hires, folder, space: room.name, most: STAFF_CAP }) });
         this.bossInput.set_value("");
       } catch (e) {
         this.flash(firstLine(String(e?.message ?? e)) || "Couldn't open the Boss tab", "blocked", cx, "bossNote");
@@ -985,7 +995,16 @@ export default class Office extends View {
     // A boss's hires without a pane of their own sit in the boss's tab.
     const team = this.team(sp, ps, live, terms);
     const paneIds = new Set(ps.map((p) => p.pane));
-    const list = live.map((a) => {
+    // A hire Herdr gets no status from (an agent it doesn't know) still gets a
+    // desk: its terminal stands in.
+    const reporting = new Set(live.map((a) => a.address));
+    this.standIns = new Map();
+    for (const [addr, at] of team.staff) {
+      const term = terms.find((x) => x.address === addr);
+      if (reporting.has(addr) || !isHire(term)) continue;
+      this.standIns.set(addr, standIn(term, ps.find((p) => p.terminal === addr), at));
+    }
+    const list = [...live, ...this.standIns.values()].map((a) => {
       const at = team.staff.get(a.address);
       if (!at) return a;
       // A hire's desk says its task (office.task), when it has one.
@@ -1005,7 +1024,7 @@ export default class Office extends View {
     this.roles = roles; // the desk window's header wears the same face
     if (!this.wide) {
       // agent.next / agent.prev walk the desks in the order they are drawn.
-      setAgentOrder(plan.flatMap((row) => row.tabs.flatMap((c) => c.desks.filter((d) => d.agent).map((d) => d.agent.address))));
+      setAgentOrder(plan.flatMap((row) => row.tabs.flatMap((c) => c.desks.filter((d) => d.agent && !d.agent.standIn).map((d) => d.agent.address))));
       this.shareFaces(roles);
       if ((find(layout(), "sidebar")?.size?.px ?? Infinity) < 160) return this.rail(plan, roles, t);
     }

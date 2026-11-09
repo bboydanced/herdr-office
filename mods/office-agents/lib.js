@@ -186,6 +186,7 @@ export function ago(since, now) {
 // tab's: working since, else last changed). null for a desk with nobody.
 export function deskState(agent, tab, now) {
   if (!agent) return null;
+  if (agent.standIn) return { status: "idle", text: "Running" };
   const status = agent.status in STATUS ? agent.status : "idle";
   const when = ago(status === "working" ? tab?.working_since : tab?.changed_at, now);
   return { status, text: when ? `${STATUS[status]} · ${when}` : STATUS[status] };
@@ -329,7 +330,8 @@ export function deskTip({ job, agent, pane, space, tab }) {
   const where = `${space?.name ?? ""} › ${tab?.name ?? ""}`;
   if (!agent) return [deskLabel({ pane }) || "Terminal", shortPath(pane?.cwd) || "No agent here", where].join("\n");
   const who = job ? job[0].toUpperCase() + job.slice(1) : "Agent";
-  return [`${who} · ${STATUS[agent.status] ?? agent.status}`, agent.program?.name, deskLabel({ agent }), where]
+  const said = agent.standIn ? "Running, no status from it" : STATUS[agent.status] ?? agent.status;
+  return [`${who} · ${said}`, agent.program?.name, deskLabel({ agent }), where]
     .filter(Boolean).join("\n");
 }
 
@@ -359,12 +361,38 @@ export function spaceColor(theme, colors, id) {
 // A shell word for the brief: quoted when it has anything but plain characters.
 const word = (w) => (/^[\w./:@%+=,-]+$/.test(w) ? w : `'${String(w).replace(/'/g, "'\\''")}'`);
 
+// The flags a hire runs with, by command: what lets it work without stopping
+// for permission (a hire starts in the background, so a prompt there stalls
+// it unseen), then, where a bare argument is not taken as the first message,
+// the flag that makes the task one (it comes last: the task is its value).
+// Keep boss.md's table the same.
+export const HIRE_FLAGS = {
+  claude: ["--dangerously-skip-permissions"],
+  codex: ["--dangerously-bypass-approvals-and-sandbox"],
+  agy: ["--dangerously-skip-permissions", "-i"],
+  gemini: ["--yolo", "-i"],
+  "cursor-agent": ["--force", "--trust"],
+  grok: ["--always-approve"],
+  pi: [],
+  omp: ["--auto-approve"],
+};
+
+// The command a hire runs, before its task: the agent's argv and its flags.
+export function hireCommand(argv) {
+  const words = (Array.isArray(argv) ? argv : []).filter((a) => typeof a === "string" && a);
+  if (words.length === 0) words.push("claude");
+  const name = words[0].split("/").pop();
+  const flags = Object.prototype.hasOwnProperty.call(HIRE_FLAGS, name) ? HIRE_FLAGS[name] : [];
+  return [...words, ...flags.filter((f) => !words.includes(f))].map(word).join(" ");
+}
+
 // What the boss is told when hired: where its playbook is (boss.md, the job in
 // full), the rules that matter most in case it can't read it, then the goal.
-// One line, so every agent takes it as one message.
-export function bossBrief({ goal, playbook, argv, folder, space, most = 4 } = {}) {
+// The agents it may hire: its own first, then the others installed (`hires`,
+// their argv). One line, so every agent takes it as one message.
+export function bossBrief({ goal, playbook, argv, hires, folder, space, most = 4 } = {}) {
   const task = typeof goal === "string" ? goal.replace(/\s+/g, " ").trim() : "";
-  const run = (Array.isArray(argv) ? argv : []).filter((a) => typeof a === "string" && a).map(word).join(" ") || "claude";
+  const agents = [...new Set([argv, ...(Array.isArray(hires) ? hires : [])].map(hireCommand))].map((c) => `\`${c}\``);
   const cwd = typeof folder === "string" && folder ? ` --cwd ${word(folder)}` : "";
   return [
     `You are the boss: the team lead of the space "${space ?? "this space"}" in Herdr${folder ? ` (folder: ${folder})` : ""}.`,
@@ -372,8 +400,9 @@ export function bossBrief({ goal, playbook, argv, folder, space, most = 4 } = {}
       ? `Read your playbook now and follow it: ${playbook} (read it again whenever your context is compacted). Also run \`hc --skill\` once.`
       : "Run `hc --skill` once to learn hc.",
     `In short: do not write code yourself; at most ${most} hires working at a time, each hired with`,
-    `hc run --bg --name <role>-<topic> --label office.task="<the task in a few words>"${cwd} ${run} "<task>"`,
-    "(role: developer, designer, tester, analyst, writer, support or intern);",
+    `hc run --bg --name <role>-<topic> --label office.task="<the task in a few words>"${cwd} <agent> "<task>"`,
+    "(role: developer, designer, tester, analyst, writer, support or intern;",
+    `<agent>: ${agents.join(" or ")}, flags exactly as written so it never stops for permission);`,
     "keep what you are doing in hc label $HC_TERMINAL_ID office.say=\"<one short line>\";",
     "never approve a hire's permission prompt for the person;",
     "ask the person before anything destructive (deleting files, git push, merging, force, resets, installs); never print secrets.",
@@ -416,6 +445,26 @@ export function roleFromName(name) {
     if (hit) return hit[0];
   }
   return null;
+}
+
+// A boss's child hired as the playbook says (an office.task label, or a role in
+// its name), not a command it left running in the background.
+export const isHire = (term) => labelOf(term, "office.task") !== "" || roleFromName(term?.name) !== null;
+
+// A desk for a hire Herdr gets no status from (an agent it doesn't know, like
+// pi or agy): its terminal stands in for the agent, in its pane, else at the
+// boss's tab. It never claims a status it doesn't have.
+export function standIn(term, pane, at) {
+  return {
+    address: term.address,
+    pane: pane?.pane ?? null,
+    tab: pane?.tab ?? at?.tab?.id ?? null,
+    status: null,
+    standIn: true,
+    focused: Boolean(pane?.focused),
+    title: firstLine(typeof term.name === "string" ? term.name : ""),
+    program: { name: term.program?.name || term.name || "Agent" },
+  };
 }
 
 // A tab with this name holds a space's boss.

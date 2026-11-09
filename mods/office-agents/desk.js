@@ -10,7 +10,7 @@
 // props: { desk: terminal address, job: role or null, overlay: the window }
 import { div, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, appHome, closeOverlay, hc, panes, props, readTextFile, run, spaces, theme } from "herdr";
+import { agents, appHome, closeOverlay, hc, panes, props, readTextFile, run, spaces, terminals, theme } from "herdr";
 import { DEFAULT_REPLIES, deskLabel, deskState, firstLine, mixHex, parseReplies, portraitPath, shortPath, withAlpha } from "./lib.js";
 
 const REPLIES_FILE = `${appHome()}/mods/office-agents/replies.json`;
@@ -63,19 +63,23 @@ export class Desk {
     const state = deskState(a, tab, Date.now());
     const waiting = a?.status === "blocked";
     const src = portraitPath(job);
-    const title = a ? `${job ? cap(job) : "Agent"} · ${a.program?.name ?? "Agent"}` : deskLabel({ pane }) || "Terminal";
+    // A hire Herdr gets no status from has no agent: its terminal names it.
+    const term = a ? null : (terminals() ?? []).find((x) => x.address === key) ?? null;
+    const what = a?.program?.name ?? term?.program?.name ?? (job ? term?.name : null) ?? (deskLabel({ pane }) || "Terminal");
+    const title = job || a ? `${job ? cap(job) : "Agent"} · ${what || "Agent"}` : what;
     const place = [space && tab ? `${space.name} › ${tab.name}` : "", shortPath(pane?.cwd), pane?.branch].filter(Boolean).join(" · ");
     const tone = { working: mixHex(t.working, "#ffffff", 0.3), blocked: t.blocked, done: t.done }[state?.status] ?? t.dim;
     const close = () => overlay && closeOverlay(overlay);
-    // Its own space and tab, never this window's copy of the terminal.
+    // Its own space and tab, never this window's copy of the terminal; a
+    // terminal with no pane (a background hire), in a peek.
     const go = () => {
+      close();
       if (a) run("agent.focus", { terminal: a.address });
       else if (space && tab && pane) {
         if (!space.active) run("space.select", { id: space.id });
         if (!tab.active) run("tab.select", { id: tab.id });
         run("pane.focus", { pane: pane.pane });
-      }
-      close();
+      } else run("terminal.peek", { terminal: key });
     };
     const button = (id, label, tip, action, color) => div().id(id).h(22).px(8).flex().flex_none().items_center().max_w(220)
       .text_size(11).text_color(color ?? t.muted).border(1).border_color(withAlpha(t.muted, "55")).bg("#0d131b")
