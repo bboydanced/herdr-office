@@ -230,7 +230,7 @@ export default class Office extends View {
       this.askReading = false;
       this.askNote = null;
       this.card = 0; // which waiting agent "Needs you" shows
-      this.drag = null; // a desk held down: { terminal, pane, tab, space, machine, name, left, moved }
+      this.drag = null; // a desk held down: { terminal, pane, tab, space, machine, name, moved }
       this.moving = false;
       this.moveNote = null;
       cx.timer.every(READ_EVERY, (cx) => this.poll(cx));
@@ -337,11 +337,11 @@ export default class Office extends View {
       .cursor_pointer()
       .hover((s) => s.bg(t.hover))
       .tooltip(`${deskTip({ job, agent: a, pane: d.pane, space, tab: c.tab })}\n${this.wide && terminal ? "Click: their terminal in a window · Double-click: go there · " : ""}${movable ? "Drag to Add desk: move to that tab · " : ""}Right-click: menu${terminal ? " · Middle-click: peek" : ""}`)
-      .when(movable, (el) => el.on_mouse_down("left", () => {
-        this.drag = { terminal, pane: d.pane.pane, tab: c.tab.id, space: space.id, machine: space.machine ?? null, name: deskLabel(d) || "the desk", left: false, moved: false };
-      })
-        // It is a drag once the pointer leaves the desk it was held on, not on a twitch.
-        .on_hover((hov) => { if (!hov && this.drag?.terminal === terminal) this.drag.left = true; }))
+      .when(this.wide, (el) => el
+        .on_mouse_down("left", () => {
+          this.drag = movable ? { terminal, pane: d.pane.pane, tab: c.tab.id, space: space.id, machine: space.machine ?? null, name: deskLabel(d) || "the desk", moved: false } : null;
+        })
+        .on_mouse_move((_e, cx) => this.dragOver(terminal, cx)))
       .when(held, (el) => el.opacity(0.4))
       .on_click((e, cx) => {
         if (held) return;
@@ -383,7 +383,8 @@ export default class Office extends View {
     const where = `${space.name} › ${c.tab.name}`;
     const to = { tab: c.tab.id, space: space.id, where };
     // A desk dragged here from another tab of the same machine moves in.
-    const drop = Boolean(this.drag?.moved && !this.moving && this.drag.tab !== c.tab.id && this.drag.machine === (space.machine ?? null));
+    const takes = (drag) => Boolean(drag?.moved && !this.moving && drag.tab !== c.tab.id && drag.machine === (space.machine ?? null));
+    const drop = takes(this.drag);
     return v_flex()
       .id(`ghost-${c.tab.id}`)
       .w(z.slot)
@@ -394,13 +395,17 @@ export default class Office extends View {
       .hover((s) => s.bg(t.hover))
       .tooltip("Add a desk: split this tab with a terminal or an agent · Drop a desk here to move it to this tab")
       .on_click(() => this.add({ mode: "pane", space: space.id, tab: c.tab.id, pane: last.pane, cwd: last.cwd ?? null, machine: space.machine ?? null, where }))
-      .when(drop, (el) => el.hover((s) => s.bg(withAlpha(t.accent, "30")))
-        .on_mouse_up("left", (_e, cx) => {
-          cx.stop_propagation();
-          const from = this.drag;
-          this.drag = null;
-          this.moveDesk(from, to, cx);
-        }))
+      .when(drop, (el) => el.hover((s) => s.bg(withAlpha(t.accent, "30"))))
+      // Pressed here, it is a click on Add desk, never the end of an old drag.
+      .on_mouse_down("left", () => { this.drag = null; })
+      .on_mouse_move((_e, cx) => this.dragOver(`ghost-${c.tab.id}`, cx))
+      .on_mouse_up("left", (_e, cx) => {
+        const from = this.drag;
+        if (!takes(from)) return;
+        cx.stop_propagation();
+        this.drag = null;
+        this.moveDesk(from, to, cx);
+      })
       .child(div().relative().w(z.deskW).h(z.deskH).border(drop ? 2 : 1).border_color(drop ? t.accent : withAlpha(t.muted, "40"))
         .child(div().absolute().top(0).left(0).opacity(0.25).child(image(EMPTY_DESK).w(z.deskW).h(z.deskH)))
         .child(div().absolute().top(0).left(0).w(z.deskW).h(z.deskH).flex().items_center().justify_center()
@@ -514,6 +519,14 @@ export default class Office extends View {
   // The office-add popup: a new tab or desk, with a shell or an agent.
   add(spec) {
     openOverlay({ mod: "office-add", kind: "popup", width: 250, height: 380, props: spec });
+  }
+
+  // A held desk becomes a drag once the pointer moves over another desk or an
+  // Add desk (each listens itself, as Spaces' rows do), not on a twitch.
+  dragOver(key, cx) {
+    if (!this.drag || this.drag.moved || this.drag.terminal === key) return;
+    this.drag.moved = true;
+    cx.notify();
   }
 
   // A dragged desk dropped on another tab's Add desk. While it moves its
@@ -1141,11 +1154,8 @@ export default class Office extends View {
       .overflow_hidden()
       .bg(CARPET)
       .text_color(t.foreground)
-      // A held desk becomes a drag once the pointer has left it; letting go
-      // anywhere but a lit Add desk (which stops this) drops it back.
-      .when(this.wide, (el) => el
-        .on_mouse_move((_e, cx) => { if (this.drag?.left && !this.drag.moved) { this.drag.moved = true; cx.notify(); } })
-        .on_mouse_up("left", (_e, cx) => { const was = this.drag?.moved; this.drag = null; if (was) cx.notify(); }))
+      // Letting go anywhere but a lit Add desk (which stops this) drops a drag.
+      .when(this.wide, (el) => el.on_mouse_up("left", (_e, cx) => { const was = this.drag?.moved; this.drag = null; if (was) cx.notify(); }))
       .child(div().absolute().top(0).left(0).child(image(FLOOR).w(912).h(800)))
       .when(!this.wide, (el) => el
         .child(h_flex().h(28).flex_none().pl(16).pr(12).gap(6).items_center().bg(t.chrome).text_size(11.5).text_color(t.dim)
