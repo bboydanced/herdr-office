@@ -10,7 +10,8 @@
 // with more: desks at 2 points an art pixel (3 with "+"), as many across as fit,
 // each with its status and for how long, a live board on the wall
 // and filters, "+" buttons for a new tab, desk or space (the office-add popup)
-// and the tabs put away. Only the sidebar's office sets the agent.next /
+// and the tabs put away. A desk dragged onto another tab's Add desk moves there,
+// its terminal still running (moveTerminal). Only the sidebar's office sets the agent.next /
 // agent.prev order. In both, right-click opens Herdr's own menu for a desk, a
 // cubicle or a rug, and middle-click peeks at a desk's terminal. A rug under the
 // pointer lights its room in the Spaces list and back ("office.hover"); the
@@ -34,7 +35,7 @@
 // its numbered choices (or Enter / Esc) pressed with `hc keys` when you click.
 import { View, div, image, svg } from "gpui-kit";
 import { Input, InputState, h_flex, v_flex } from "gpui-base";
-import { agents, appHome, closeOverlay, exec, focused, hc, home, knownAgents, layout, openOverlay, panes, props, readTextFile, run, setAgentOrder, setShared, shared, spaces, terminals, theme } from "herdr";
+import { agents, appHome, closeOverlay, commands, exec, focused, hc, home, knownAgents, layout, openOverlay, panes, props, readTextFile, run, setAgentOrder, setShared, shared, spaces, terminals, theme } from "herdr";
 import { DESK_SHADOW, EMPTY_DESK, ago, bossBrief, deskColumns, labelOf, deskJobs, deskLabel, deskPath, deskState, deskTip, filterPlan, findBosses, firstLine, fitAcross, isBossTab, isHire, localId, mixHex, officePlan, parsePrompt, portraitPath, roleFromName, screenLines, seatStep, shortPath, spaceColor, speechLine, splitTree, staffOf, standIn, tally, treeWidth, withAlpha } from "./lib.js";
 import { Desk } from "./desk.js";
 
@@ -106,6 +107,38 @@ function reach(a, space, tab, pane, terminal) {
   if (a && !a.standIn) return run("agent.focus", { terminal: a.address });
   if (space && tab && pane) return goTo(space, tab, pane);
   if (terminal) run("terminal.peek", { terminal });
+}
+
+// Moving a desk's terminal into another tab of its machine, still running.
+// With pane.move (herdr-app PR #444) one command; until then the recipe the
+// "Move to" mod uses: park, wait for the pane to go, relabel, keep — in that order.
+const bare = (id) => String(id).slice(String(id).lastIndexOf("/") + 1);
+const sleep = (ms) => exec("sleep", [String(ms / 1000)]);
+
+function hasCommand(name) {
+  try {
+    const all = commands();
+    if (Array.isArray(all)) return all.some((c) => (typeof c === "string" ? c : c?.name ?? c?.id ?? c?.command) === name);
+    return Boolean(all && typeof all === "object" && name in all);
+  } catch {
+    return false;
+  }
+}
+
+async function moveTerminal(from, to) {
+  if (hasCommand("pane.move")) return run("pane.move", { pane: from.pane, tab: to.tab });
+  const seated = () => panes().some((p) => p.terminal === from.terminal);
+  run("terminal.park", { terminal: from.terminal });
+  for (let i = 0; i < 40 && seated(); i++) await sleep(150);
+  if (seated()) throw new Error("The desk didn't let go of its terminal");
+  const failed = (r) => new Error(firstLine(r.stderr) || firstLine(r.stdout) || "Couldn't move the terminal");
+  const r = await hc(["label", from.terminal, `herdr.space=${bare(to.space)}`, `herdr.tab=${bare(to.tab)}`]);
+  if (r.code !== 0) {
+    await hc(["keep", from.terminal]).catch(() => null); // back to its own tab
+    throw failed(r);
+  }
+  const k = await hc(["keep", from.terminal]);
+  if (k.code !== 0) throw failed(k);
 }
 
 // How a desk or a rug shows that someone there is busy or waiting for you.
@@ -197,6 +230,9 @@ export default class Office extends View {
       this.askReading = false;
       this.askNote = null;
       this.card = 0; // which waiting agent "Needs you" shows
+      this.drag = null; // a desk held down: { terminal, pane, tab, space, machine, name, left, moved }
+      this.moving = false;
+      this.moveNote = null;
       cx.timer.every(READ_EVERY, (cx) => this.poll(cx));
     } else {
       // The sidebar's office runs the hires' seating: it is always there.
@@ -269,6 +305,10 @@ export default class Office extends View {
     const shown = activity(id, a?.status, t, true);
     const terminal = a?.address ?? d.pane?.terminal ?? null;
     const picked = this.wide && terminal !== null && terminal === this.selected;
+    // Wide, a desk with a terminal in a pane can be dragged to another tab's
+    // Add desk; a boss stays in its Boss tab, where it is found.
+    const movable = this.wide && Boolean(terminal && d.pane) && !Object.values(this.bosses()).includes(terminal);
+    const held = this.drag?.moved && this.drag.terminal === terminal;
     const picture = (path) => div().absolute().top(0).left(0).child(image(path).w(z.deskW).h(z.deskH));
     const line = (h, size) => div().h(h).max_w(z.slot).px(4).flex().items_center().text_size(size);
     const tag = (text) => line(z.label, z.text - 1.5).px(5).bg(TAG).font_bold().text_color("#fff0e6").child(div().min_w(0).truncate().child(text));
@@ -296,8 +336,15 @@ export default class Office extends View {
       .gap(1)
       .cursor_pointer()
       .hover((s) => s.bg(t.hover))
-      .tooltip(`${deskTip({ job, agent: a, pane: d.pane, space, tab: c.tab })}\n${this.wide && terminal ? "Click: their terminal in a window · Double-click: go there · " : ""}Right-click: menu${terminal ? " · Middle-click: peek" : ""}`)
+      .tooltip(`${deskTip({ job, agent: a, pane: d.pane, space, tab: c.tab })}\n${this.wide && terminal ? "Click: their terminal in a window · Double-click: go there · " : ""}${movable ? "Drag to Add desk: move to that tab · " : ""}Right-click: menu${terminal ? " · Middle-click: peek" : ""}`)
+      .when(movable, (el) => el.on_mouse_down("left", () => {
+        this.drag = { terminal, pane: d.pane.pane, tab: c.tab.id, space: space.id, machine: space.machine ?? null, name: deskLabel(d) || "the desk", left: false, moved: false };
+      })
+        // It is a drag once the pointer leaves the desk it was held on, not on a twitch.
+        .on_hover((hov) => { if (!hov && this.drag?.terminal === terminal) this.drag.left = true; }))
+      .when(held, (el) => el.opacity(0.4))
       .on_click((e, cx) => {
+        if (held) return;
         // In the panel a click picks them (the desk window opens); a double-click, or a click in the sidebar, goes there.
         if (this.wide && terminal && e.click_count < 2) return this.pick(terminal, cx);
         if (this.wide) this.closeDesk();
@@ -333,6 +380,10 @@ export default class Office extends View {
     const last = c.desks.filter((d) => d.pane).map((d) => d.pane).pop();
     if (!last) return null;
     const { space } = row;
+    const where = `${space.name} › ${c.tab.name}`;
+    const to = { tab: c.tab.id, space: space.id, where };
+    // A desk dragged here from another tab of the same machine moves in.
+    const drop = Boolean(this.drag?.moved && !this.moving && this.drag.tab !== c.tab.id && this.drag.machine === (space.machine ?? null));
     return v_flex()
       .id(`ghost-${c.tab.id}`)
       .w(z.slot)
@@ -341,13 +392,20 @@ export default class Office extends View {
       .gap(1)
       .cursor_pointer()
       .hover((s) => s.bg(t.hover))
-      .tooltip("Add a desk: split this tab with a terminal or an agent")
-      .on_click(() => this.add({ mode: "pane", space: space.id, tab: c.tab.id, pane: last.pane, cwd: last.cwd ?? null, machine: space.machine ?? null, where: `${space.name} › ${c.tab.name}` }))
-      .child(div().relative().w(z.deskW).h(z.deskH).border(1).border_color(withAlpha(t.muted, "40"))
+      .tooltip("Add a desk: split this tab with a terminal or an agent · Drop a desk here to move it to this tab")
+      .on_click(() => this.add({ mode: "pane", space: space.id, tab: c.tab.id, pane: last.pane, cwd: last.cwd ?? null, machine: space.machine ?? null, where }))
+      .when(drop, (el) => el.hover((s) => s.bg(withAlpha(t.accent, "30")))
+        .on_mouse_up("left", (_e, cx) => {
+          cx.stop_propagation();
+          const from = this.drag;
+          this.drag = null;
+          this.moveDesk(from, to, cx);
+        }))
+      .child(div().relative().w(z.deskW).h(z.deskH).border(drop ? 2 : 1).border_color(drop ? t.accent : withAlpha(t.muted, "40"))
         .child(div().absolute().top(0).left(0).opacity(0.25).child(image(EMPTY_DESK).w(z.deskW).h(z.deskH)))
         .child(div().absolute().top(0).left(0).w(z.deskW).h(z.deskH).flex().items_center().justify_center()
           .text_size(Math.round(z.deskH * 0.4)).text_color(t.muted).child("+")))
-      .child(div().h(z.label).px(4).flex().items_center().text_size(z.text).text_color(t.dim).child("Add desk"));
+      .child(div().h(z.label).px(4).flex().items_center().text_size(z.text).text_color(drop ? t.accent : t.dim).child(drop ? "Move here" : "Add desk"));
   }
 
   cubicle(row, c, roles, color, tree, t) {
@@ -456,6 +514,27 @@ export default class Office extends View {
   // The office-add popup: a new tab or desk, with a shell or an agent.
   add(spec) {
     openOverlay({ mod: "office-add", kind: "popup", width: 250, height: 380, props: spec });
+  }
+
+  // A dragged desk dropped on another tab's Add desk. While it moves its
+  // terminal is shared as office.moving, so the sidebar's seating leaves a
+  // parked hire alone.
+  moveDesk(from, to, cx) {
+    if (!from || this.moving) return;
+    this.moving = true;
+    setShared("office.moving", from.terminal);
+    this.flash(`Moving ${from.name} to ${to.where}…`, "muted", cx, "moveNote");
+    cx.spawn(async (cx) => {
+      try {
+        await moveTerminal(from, to);
+        this.flash(`${from.name} moved to ${to.where}`, "done", cx, "moveNote");
+      } catch (e) {
+        this.flash(firstLine(String(e?.message ?? e)) || "Couldn't move the desk", "blocked", cx, "moveNote");
+      }
+      this.moving = false;
+      setShared("office.moving", null);
+      cx.notify();
+    });
   }
 
   button(id, label, tip, t, action) {
@@ -705,6 +784,8 @@ export default class Office extends View {
     const live = new Set(agents().map((a) => a.address));
     const terms = terminals() ?? [];
     const seated = new Set(ps.map((p) => p.terminal).filter(Boolean));
+    const moving = shared("office.moving");
+    if (moving) seated.add(moving); // the panel is moving it to another tab
     const now = Date.now();
     // An agent Herdr knows, or a hire it gets no status from (pi, agy).
     const hire = staffOf(terms, boss).find((addr) => (live.has(addr) || isHire(terms.find((x) => x.address === addr)))
@@ -1047,6 +1128,9 @@ export default class Office extends View {
       const key = room?.machine ?? "";
       if (room && !(key in this.known) && !this.loadingKnown.has(key)) this.loadKnown(room.machine ?? null, cx);
     }
+    const moveLine = !this.wide ? null
+      : this.drag?.moved ? { text: `Drop ${this.drag.name} on Add desk in another tab to move them there`, tone: t.accent }
+      : this.moveNote ? { text: this.moveNote.text, tone: t[this.moveNote.tone] ?? t.muted } : null;
     const empty = plan.length === 0 ? "Nobody in yet. Open a space to start."
       : { working: "Nobody at work right now.", blocked: "Nobody needs you.", done: "Nothing finished yet." }[filter];
     return v_flex()
@@ -1057,6 +1141,11 @@ export default class Office extends View {
       .overflow_hidden()
       .bg(CARPET)
       .text_color(t.foreground)
+      // A held desk becomes a drag once the pointer has left it; letting go
+      // anywhere but a lit Add desk (which stops this) drops it back.
+      .when(this.wide, (el) => el
+        .on_mouse_move((_e, cx) => { if (this.drag?.left && !this.drag.moved) { this.drag.moved = true; cx.notify(); } })
+        .on_mouse_up("left", (_e, cx) => { const was = this.drag?.moved; this.drag = null; if (was) cx.notify(); }))
       .child(div().absolute().top(0).left(0).child(image(FLOOR).w(912).h(800)))
       .when(!this.wide, (el) => el
         .child(h_flex().h(28).flex_none().pl(16).pr(12).gap(6).items_center().bg(t.chrome).text_size(11.5).text_color(t.dim)
@@ -1069,6 +1158,7 @@ export default class Office extends View {
         return el.child(this.header(n, list.length, t)).child(this.bossBand(t, sp, list, team)).when(Boolean(ask), (el) => el.child(ask));
       })
       .child(v_flex().id("office-floor").flex_1().min_h(0).p(this.wide ? 10 : 8).gap(this.wide ? 10 : 8).overflow_y_scrollbar()
+        .when(Boolean(moveLine), (el) => el.child(div().flex_none().text_size(11).text_color(moveLine.tone).child(moveLine.text)))
         .children(shown.map((row) => this.rug(row, roles, colors, trees, t)))
         .when(shown.length === 0, (el) => el.child(div().p(8).text_size(12).text_color(t.dim).child(empty ?? "Nobody here.")))
         .when(Boolean(away), (el) => el.child(away))

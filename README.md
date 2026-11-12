@@ -160,6 +160,13 @@ bottom:
      space. Tab and desk ask what to start: a terminal, or one of the agents
      installed where the space lives (Herdr's `knownAgents`, most picked
      first). A desk with an agent starts in its neighbour's folder.
+   - **Moving:** drag a desk onto `Add desk` in another tab of the same
+     machine (it lights up as `Move here`) and its terminal moves there, still
+     running. Herdr's `pane.move` does it when Herdr has it; until then the
+     office parks the terminal, relabels its `herdr.space` / `herdr.tab` and
+     keeps it again, so it lands in that tab with a new pane, not where the
+     split was. A boss stays in its `Boss` tab. Inside one tab, use Herdr's own
+     pane grip or the right-click swap.
    - **Put away:** tabs put away (`tab.settle`) are listed at the end of the
      floor; click one to bring it back.
 5. **The inspector**, one bar under the floor: the staff member you picked,
@@ -328,7 +335,9 @@ its terminal.
   it). In the Office panel it runs `hc read` on the agents waiting for you and
   the boss (only while the panel shows the office), `hc send` when you send a
   goal or click a quick reply, `hc keys` when you click an answer and `hc
-  interrupt` when you press Stop; what it reads is drawn, never saved. A click
+  interrupt` when you press Stop; what it reads is drawn, never saved. A desk
+  dragged to another tab runs `pane.move`, or else `terminal.park`, `hc label`
+  (`herdr.space`, `herdr.tab`) and `hc keep` on that terminal. A click
   on a desk opens a window (`openOverlay`) showing that terminal itself. `Hire ⏎` opens a tab running the agent you picked; for a
   room on another machine it first writes the playbook there with `sh`
   (`~/.config/herdr-office/boss.md`, its text passed as an argument). It runs
