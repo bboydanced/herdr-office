@@ -50,9 +50,9 @@ Uninstall:
 H=~/.config/herdr-app
 herdr-app do layout.switch '{"name":"main"}'
 rm -rf "$H"/mods/office-agents "$H"/mods/office-chrome "$H"/mods/office-spaces \
-       "$H"/mods/office-tabs "$H"/mods/office-add
+       "$H"/mods/office-tabs "$H"/mods/office-add "$H"/mods/office-space-new
 rm -rf "$H"/data/office-agents "$H"/data/office-chrome "$H"/data/office-spaces \
-       "$H"/data/office-tabs "$H"/data/office "$H"/data/office-add
+       "$H"/data/office-tabs "$H"/data/office "$H"/data/office-add "$H"/data/office-space-new
 rm -f "$H"/layouts/office.json "$H"/layouts/office.png "$H"/themes/office-night.json
 ```
 
@@ -83,6 +83,19 @@ Herdr keeps the mod names in its own `seen.json`, which is harmless.
     you **blinks** a thick orange frame over a red tint, with a `!` by its name.
     Waiting wins over working. Hover a room and its rug lights up in the
     office; hover a rug and its room lights up.
+    Hovering a room also shows `+` (a new tab there, with a shell or an
+    agent), `✎` (rename) and `×` (close); its name's tooltip is its folder.
+  - **New space:** every `+` (the header, a machine's header, the Office
+    panel's `+ New space`) opens a dialog instead of a space in home. It starts
+    in the folder of the space you are in; type another, **Choose…** one with
+    the system's folder picker (this computer only), or click one of the
+    recent rooms. The name is optional (empty: Herdr names it after its repo or
+    folder). A folder that isn't there is said so before anything opens.
+  - **Closed rooms:** Herdr closes a space with its last tab. The room stays
+    under **Closed rooms** (per machine, foldable, the last 12), its door shut
+    and dark: a click opens it again in the same folder, with its name and
+    colour; `×` forgets it. Only the place comes back, not what was running.
+    A machine that is away doesn't count as closing its rooms.
   - **Office:** a header (`N need you`, `N/M at work`, the time), the back wall
     (night windows, clock, kanban board, door, water cooler, plant), then the
     dark carpet. Each **space is a rug** tinted in its door's colour, in the

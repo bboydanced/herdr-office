@@ -8,11 +8,14 @@
 // (as the office draws them: it shares who wears which role as "office.faces").
 // Hovering a room lights its rug in the office and back ("office.hover"); a click
 // on the faces opens the Office panel. Click to switch, right-click for its menu,
-// drag to reorder.
+// drag to reorder; hovering shows + (a tab), rename and close. A space Herdr
+// closes (its last tab went) stays as a closed room, its door shut and its lamp
+// off: a click opens it again in the same folder, × forgets it. Every "+" opens
+// the office-space-new dialog, which starts where you are, not in home.
 
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, machines, panes, agents, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout } from "herdr";
+import { spaces, machines, panes, agents, run, openOverlay, exec, hc, home, theme, shared, setShared, watchFolder, window, layout } from "herdr";
 
 // A theme colour with a two-digit alpha (theme colours are #rrggbb).
 const alpha = (c, a) => (typeof c === "string" && /^#[0-9a-fA-F]{6}/.test(c) ? `${c.slice(0, 7)}${a}` : c);
@@ -113,6 +116,15 @@ const base = (path) => path.replace(/\/+$/, "").split("/").pop();
 // Changes made outside Herdr (an editor's save, a commit in another app): looked
 // for this often, in repos the list shows, while the window is in front.
 const FALLBACK = 60000;
+// Closed rooms remembered, newest first; shared as "office.rooms" for the dialog.
+const ROOMS = 12;
+const roomKey = (r) => JSON.stringify([r.machine ?? null, r.folder]);
+
+// The new-space dialog, on that machine (null: this computer).
+function newSpace(machine) {
+  const rooms = (shared("office.rooms") ?? []).filter((r) => (r.machine ?? null) === (machine ?? null)).length;
+  openOverlay({ mod: "office-space-new", kind: "dialog", width: 480, height: 300 + Math.min(rooms + 3, 6) * 30, props: { machine: machine ?? null } });
+}
 
 // What a stored color name looks like on an avatar (the same in every mod
 // that draws space avatars): one strong color per hue, light and dark alike.
@@ -146,11 +158,69 @@ export default class Spaces extends View {
     this.over = null;
     this.machines = [];
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
+    // Rooms: the open ones as last seen (id -> { name, named, folder, machine, color }),
+    // and the closed ones, newest first.
+    this.known = JSON.parse(localStorage.getItem("rooms.known") ?? "{}");
+    this.closed = JSON.parse(localStorage.getItem("rooms.closed") ?? "[]");
+    this.closedOpen = localStorage.getItem("rooms.folded") !== "1";
+    this.reopening = null; // { machine, folder, color, before, until }: its colour comes back
+    this.hovering = null;
+    setShared("office.rooms", this.closed);
+    cx.timer.every(1000, (cx) => this.remember(cx));
     this.refreshMachines(cx);
     cx.timer.every(15000, cx => this.refreshMachines(cx));
     // `git status` walks the whole tree, on another machine a process there:
     // only when its answer could have changed (see `due`).
     cx.timer.every(250, (cx) => this.checkNew(cx));
+  }
+
+  // Notes where each open room is; one gone from a machine that answers was closed.
+  remember(cx) {
+    const sp = spaces(), ps = panes();
+    const ready = new Set(machines().filter((m) => m.layout === "ready").map((m) => m.name ?? null));
+    const colors = shared("space.colors") ?? {};
+    const known = {};
+    for (const s of sp) {
+      const folder = place(s, ps);
+      known[s.id] = { name: s.name, named: s.named, folder, machine: s.machine ?? null, color: colors[s.id] ?? this.known[s.id]?.color ?? null };
+    }
+    let closed = this.closed;
+    for (const [id, r] of Object.entries(this.known)) {
+      if (known[id]) continue;
+      // A machine away or still loading hides its spaces: they aren't closed.
+      if (!ready.has(r.machine ?? null)) { known[id] = r; continue; }
+      if (!r.folder || (!r.machine && r.folder === this.homeDir())) continue;
+      closed = [{ ...r, at: Date.now() }, ...closed.filter((c) => roomKey(c) !== roomKey(r))];
+    }
+    // A room open again isn't closed any more.
+    const open = new Set(Object.values(known).map(roomKey));
+    closed = closed.filter((c) => !open.has(roomKey(c))).slice(0, ROOMS);
+    const k = JSON.stringify(known), c = JSON.stringify(closed);
+    if (k !== JSON.stringify(this.known)) localStorage.setItem("rooms.known", k);
+    this.known = known;
+    if (c !== JSON.stringify(this.closed)) {
+      this.closed = closed;
+      localStorage.setItem("rooms.closed", c);
+      setShared("office.rooms", closed);
+      cx.notify();
+    }
+  }
+
+  homeDir() {
+    try { return home(); } catch { return null; }
+  }
+
+  // A closed room opened again: same folder, its name if it had one, its colour.
+  reopen(r) {
+    this.reopening = { machine: r.machine ?? null, folder: r.folder, color: r.color, before: new Set(spaces().map((s) => s.id)), until: Date.now() + 15000 };
+    run("space.new", { machine: r.machine ?? "", folder: r.folder, ...(r.named && r.name ? { name: r.name } : {}) });
+  }
+
+  forget(r, cx) {
+    this.closed = this.closed.filter((c) => roomKey(c) !== roomKey(r));
+    localStorage.setItem("rooms.closed", JSON.stringify(this.closed));
+    setShared("office.rooms", this.closed);
+    cx.notify();
   }
 
   checkNew(cx) {
@@ -321,8 +391,9 @@ export default class Spaces extends View {
       return layout === "loading" || (!layout && this.machines.some(k => k.name === m && k.state === "connected"))
         || spaces().some(s => (s.machine ?? null) === m && !this.shown.has(s.id));
     };
+    const shut = (m) => (collapsed ? [] : this.closedRooms(m, t));
     const loadingRow = m => div().id(`machine-loading-${m ?? "local"}`).h(28).flex_none().px(8).text_size(12).text_color(t.dim).child(collapsed ? "…" : "Loading…");
-    if (!remote.length) return loading(null) && !rows.length ? [loadingRow(null)] : rows.map(draw);
+    if (!remote.length) return loading(null) && !rows.length ? [loadingRow(null)] : [...rows.map(draw), ...shut(null)];
     const machineNames = [null, ...remote];
     return machineNames.flatMap((m) => {
       const mine = rows.filter((r) => (r.w.machine ?? null) === m);
@@ -340,14 +411,14 @@ export default class Spaces extends View {
         .when(!collapsed, el => el.child(div().flex_1().truncate().child(m ?? "This computer"))
           .when(!connected, el => el.child(div().flex_none().child((machine?.state ?? "asleep").replace(/_/g, " "))))
           .when(connected, el => el.child(div().id(`machine-add-${m ?? "local"}`).flex_none().px(4).rounded(4).hover(s => s.bg(t.hover).text_color(t.foreground))
-            .on_click((_e, cx) => { cx.stop_propagation(); run("space.new", m ? { machine: m } : {}); }).child("+")))
+            .on_click((_e, cx) => { cx.stop_propagation(); newSpace(m); }).child("+")))
           .child(div().size(6).rounded(3).flex_none().bg(connected ? t.ansi2 : t.dim))
           .child(svg(`mods/office-chrome/chevron-${folded ? "right" : "down"}.svg`).size(11).flex_none()));
       const empty = h_flex().id(`machine-new-${m ?? "local"}`).h(28).flex_none().px(8).gap(7).items_center().rounded(7)
         .text_size(12).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
-        .on_click(() => run("space.new", m ? { machine: m } : {}))
+        .on_click(() => newSpace(m))
         .child(svg("mods/office-chrome/plus.svg").size(12)).when(!collapsed, el => el.child("New space there"));
-      return [head, ...(folded ? [] : mine.length ? mine.map(draw) : [loading(m) ? loadingRow(m) : empty])];
+      return [head, ...(folded ? [] : [...(mine.length ? mine.map(draw) : [loading(m) ? loadingRow(m) : empty]), ...shut(m)])];
     });
   }
 
@@ -435,7 +506,10 @@ export default class Spaces extends View {
       .when(!on, (el) => el.hover((s) => s.bg(t.hover)))
       .when(hot && !on, (el) => el.bg(t.hover))
       .when(hot, (el) => el.child(div().absolute().top(0).left(0).right(0).bottom(0).border(1).border_color(alpha(color, "aa"))))
-      .on_hover((hov) => hoverSpace(w.id, hov))
+      .on_hover((hov) => {
+        this.hovering = hov ? w.id : this.hovering === w.id ? null : this.hovering;
+        hoverSpace(w.id, hov);
+      })
       .when(this.pressed === i && this.over !== i, (el) => el.opacity(0.5))
       .when(this.pressed !== null && this.over === i && this.pressed !== i, (el) => el.child(
         div().absolute().left(0).right(0).h(2).bg(t.accent)
@@ -472,12 +546,69 @@ export default class Spaces extends View {
           .when(!tree, el => el.pl(2).child(door(`door-${w.id}`, String(i + 1).padStart(2, "0"), color, status, mine.length > 0, t)))
           .child(v_flex().flex_1().min_w(0).gap(3)
             .child(h_flex().gap(9).items_center()
-              .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(w.name))
+              .child(div().id(`name-${w.id}`).flex_shrink(1).min_w(0).max_w(150).truncate().text_color(t.foreground)
+                .tooltip(this.short(place(w, panes()), w.machine) || "~").child(w.name))
               .when(status === "blocked", el => el.child(div().flex_none().px(4).bg("#c8392f").text_size(10).font_bold().text_color("#ffffff").child("!")))
-              .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1()))
+              .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())
+              .when(this.hovering === w.id && this.pressed === null, (el) => el.child(this.actions(w, t))))
             .when(!tree, el => el.child(this.summary(w, sum, mine, t)))),
       )
       .children(shown.over);
+  }
+
+  // On a hovered room: a new tab (the office-add popup), rename, close.
+  actions(w, t) {
+    const act = (id, label, tip, fn) => div().id(`${id}-${w.id}`).size(20).flex_none().flex().items_center().justify_center()
+      .text_size(12).text_color(t.muted).bg(t.raised).border(1).border_color(t.border)
+      .hover((s) => s.text_color(t.foreground).border_color(t.accent)).tooltip(tip)
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_mouse_up("left", (_e, cx) => { cx.stop_propagation(); fn(); });
+    const folder = place(w, panes());
+    return h_flex().flex_none().gap(3)
+      .child(act("space-tab", "+", "New tab here", () => openOverlay({ mod: "office-add", kind: "popup", width: 250, height: 380,
+        props: { mode: "tab", space: w.id, machine: w.machine ?? null, where: `${w.name} · ${this.short(folder, w.machine) || "~"}` } })).child("+"))
+      .child(act("space-rename", "✎", "Rename", () => run("space.rename", { id: w.id })).child("✎"))
+      .child(act("space-close", "×", "Close space (it stays under Closed rooms)", () => run("space.close", { id: w.id })).child("×"));
+  }
+
+  // A path with this computer's home as "~".
+  short(path, machine) {
+    const h = machine ? null : this.homeDir();
+    return path && h && (path === h || path.startsWith(`${h}/`)) ? `~${path.slice(h.length)}` : path || "";
+  }
+
+  // The closed rooms of a machine: a fold, then each with its door shut.
+  closedRooms(m, t) {
+    const mine = this.closed.filter((r) => (r.machine ?? null) === (m ?? null));
+    if (!mine.length) return [];
+    const head = h_flex().id(`rooms-closed-${m ?? "local"}`).h(24).mt(4).flex_none().px(8).gap(7).items_center()
+      .text_size(11).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.muted))
+      .on_click((_e, cx) => {
+        this.closedOpen = !this.closedOpen;
+        localStorage.setItem("rooms.folded", this.closedOpen ? "0" : "1");
+        cx.notify();
+      })
+      .child(svg(`mods/office-chrome/chevron-${this.closedOpen ? "down" : "right"}.svg`).size(10).flex_none())
+      .child(div().flex_1().child(`Closed rooms · ${mine.length}`));
+    if (!this.closedOpen) return [head];
+    return [head, ...mine.map((r, n) => {
+      const id = `closed-${m ?? "local"}-${n}`;
+      const color = darken(t[r.color] ?? t.muted, 0.35);
+      return h_flex().id(id).h(32).flex_none().pl(12).pr(8).gap(10).items_center().cursor_pointer().opacity(0.8)
+        .hover((s) => s.bg(t.hover).opacity(1))
+        .tooltip(`Open again in ${this.short(r.folder, r.machine)}`)
+        .on_click(() => this.reopen(r))
+        .child(div().relative().w(18).h(22).flex_none().bg(darken(color, 0.4))
+          .child(div().absolute().top(1).left(1).w(16).h(21).bg(color))
+          .child(div().absolute().top(4).left(4).w(10).h(4).bg("#16202b"))
+          .child(div().absolute().top(12).left(13).size(2).bg("#8a7a5a")))
+        .child(v_flex().flex_1().min_w(0)
+          .child(div().truncate().text_size(12.5).text_color(t.muted).child(r.name || base(r.folder)))
+          .child(div().truncate().text_size(10.5).text_color(t.dim).child(this.short(r.folder, r.machine))))
+        .child(div().id(`${id}-forget`).size(20).flex_none().flex().items_center().justify_center().text_size(12).text_color(t.dim)
+          .hover((s) => s.text_color(t.foreground).bg(t.raised)).tooltip("Forget this room")
+          .on_click((_e, cx) => { cx.stop_propagation(); this.forget(r, cx); }).child("×"));
+    })];
   }
 
   compact({ w, i }, t) {
@@ -502,8 +633,17 @@ export default class Spaces extends View {
     const ids = new Set(sp.map(p => p.id));
     const kept = Object.fromEntries(Object.entries(shared("space.colors") ?? {}).filter(([id]) => ids.has(id)));
     let changed = Object.keys(kept).length !== Object.keys(shared("space.colors") ?? {}).length;
+    const back = this.reopening;
+    if (back && Date.now() > back.until) this.reopening = null;
     for (const p of sp) {
-      if (kept[p.id] || p.name === "~") continue;
+      if (kept[p.id]) continue;
+      if (back && back.color && !back.before.has(p.id) && (p.machine ?? null) === back.machine) {
+        kept[p.id] = back.color;
+        this.reopening = null;
+        changed = true;
+        continue;
+      }
+      if (p.name === "~") continue;
       const uses = c => Object.values(kept).filter(v => v === c).length;
       kept[p.id] = palette.reduce((best, c) => uses(c) < uses(best) ? c : best);
       changed = true;
@@ -518,7 +658,8 @@ export default class Spaces extends View {
       .child(h_flex().h(31).pl(16).pr(10).items_center().justify_between().text_size(11.5).text_color(t.dim)
         .when(!collapsed, el => el.child("Spaces"))
         .child(div().id("space-new").size(26).flex_none().flex().items_center().justify_center().rounded(6).hover(s => s.bg(t.hover).text_color(t.foreground))
-          .on_click(() => run("space.new")).child(svg("mods/office-chrome/plus.svg").size(14))))
+          .tooltip("New space").on_click(() => newSpace(spaces().find((s) => s.active)?.machine ?? null))
+          .child(svg("mods/office-chrome/plus.svg").size(14))))
       .child(v_flex().flex_1().min_h(0).px(8).pb(14).overflow_y_scrollbar().mode("always")
         .on_mouse_up("left", (_e, cx) => { this.pressed = null; cx.notify(); })
         .children(this.grouped(t, collapsed)));

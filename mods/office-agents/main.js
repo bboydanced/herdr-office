@@ -1172,7 +1172,7 @@ export default class Office extends View {
         .children(shown.map((row) => this.rug(row, roles, colors, trees, t)))
         .when(shown.length === 0, (el) => el.child(div().p(8).text_size(12).text_color(t.dim).child(empty ?? "Nobody here.")))
         .when(Boolean(away), (el) => el.child(away))
-        .when(this.wide, (el) => el.child(h_flex().flex_none().child(this.button("office-new-space", "+ New space", "A new space on this computer", t, () => run("space.new"))))))
+        .when(this.wide, (el) => el.child(h_flex().flex_none().child(this.button("office-new-space", "+ New space", "A new space where you are now, or in a folder you pick", t, () => openOverlay({ mod: "office-space-new", kind: "dialog", width: 480, height: 480, props: { machine: spaces().find((s) => s.active)?.machine ?? null } }))))))
       .when(this.wide, (el) => el.child(this.inspector(roles, t)));
   }
 }
