@@ -4,7 +4,6 @@
 
 import * as A from "./../mods/office-agents/lib.js";
 import * as T from "./../mods/office-tabs/lib.js";
-import * as I from "./../mods/office-inbox/lib.js";
 import { readFileSync } from "node:fs";
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.log("FAIL:", m); } };
@@ -197,17 +196,5 @@ const twoBosses = [parked[0], { ...parked[0], address: "t8" }];
 ok(A.findBosses({ spaces: bossSpaces, panes: [], terminals: twoBosses, agents: [], prev: { s3: "t8" } }).s3 === "t8", "boss: the last one wins a tie");
 ok(JSON.stringify(A.findBosses({})) === "{}", "boss: nothing given");
 
-// inbox lib
-ok(I.kindOf("a.PNG") === "image", "ext case-insensitive");
-ok(I.kindOf(".hidden.png") === null, "hidden file rejected");
-ok(I.kindOf("a/b.png") === null, "path rejected");
-ok(I.kindOf("a.sh") === null, "not whitelisted");
-const listing = I.parseListing("1700000000 12 /in/a.png\n1700000001 3 /in/b.sh\n1700000002 4 /other/c.png", "/in");
-ok(listing.length === 1 && listing[0].name === "a.png", "listing filters kind+prefix");
-const trav = I.parseListing("1700000000 12 /in/../etc/p.png", "/in");
-ok(trav.length === 0, "listing rejects path traversal by kind/prefix");
-ok(I.openCommand("/in/a.png", "/in")?.cmd === "/usr/bin/open", "open allowed");
-ok(I.openCommand("/etc/passwd", "/in") === null, "open outside rejected");
-ok(I.formatSize(2048) === "2.0 KB", "format size");
 console.log(`pass=${pass} fail=${fail}`);
 process.exit(fail ? 1 : 0);

@@ -6,11 +6,6 @@ you and who dozed off, and one click takes you to their terminal.
 
 ![Office](preview.png)
 
-Derived from [herdr-traveler](https://github.com/franky5440-afk/herdr-traveler)
-(Apache 2.0, Copyright 2026 Frank Lin): same node tree and same mod structure,
-rethemed from a pixel RPG to a modern office and renamed throughout. See
-`NOTICE`.
-
 ## Install
 
 ```sh
@@ -41,9 +36,12 @@ rsync -a --exclude jobs.json --exclude replies.json --exclude boss.md mods/ "$H/
 ```
 
 Earlier versions shipped `mods/office-agents/sprites/`, `mods/office-spaces/art/`,
-`mods/office-spaces/places.json`, `mods/office-chrome/sidebar.png` and
-`mods/office-chrome/floor.png`; nothing reads them any more, so delete them from
-`$H/mods` after updating, and copy `layouts/office.json` again. The Office panel
+`mods/office-spaces/places.json`, `mods/office-chrome/sidebar.png`,
+`mods/office-chrome/floor.png`, the Inbox panel (`mods/office-inbox/`, its files in
+`data/office-inbox/`, `mods/office-tabs/art/inbox.png`) and icons in
+`mods/office-chrome/` that nothing draws; nothing reads them any more, so delete
+them from `$H` after updating (move any file you kept in the inbox first), and copy
+`layouts/office.json` again. The Office panel
 also needs the current `layouts/office.json`.
 
 Uninstall:
@@ -52,14 +50,13 @@ Uninstall:
 H=~/.config/herdr-app
 herdr-app do layout.switch '{"name":"main"}'
 rm -rf "$H"/mods/office-agents "$H"/mods/office-chrome "$H"/mods/office-spaces \
-       "$H"/mods/office-tabs "$H"/mods/office-inbox "$H"/mods/office-add
+       "$H"/mods/office-tabs "$H"/mods/office-add
 rm -rf "$H"/data/office-agents "$H"/data/office-chrome "$H"/data/office-spaces \
-       "$H"/data/office-tabs "$H"/data/office "$H"/data/office-inbox "$H"/data/office-add
+       "$H"/data/office-tabs "$H"/data/office "$H"/data/office-add
 rm -f "$H"/layouts/office.json "$H"/layouts/office.png "$H"/themes/office-night.json
 ```
 
-This deletes everything in the inbox folder; move anything you want to keep
-first. Herdr keeps the mod names in its own `seen.json`, which is harmless.
+Herdr keeps the mod names in its own `seen.json`, which is harmless.
 
 ## What you see
 
@@ -102,8 +99,8 @@ first. Herdr keeps the mod names in its own `seen.json`, which is harmless.
 - **Tabs, 58 px:** square 48 px tabs showing **every agent in the tab**: one
   agent as a 44 px portrait, several as overlapping faces framed in their status
   colour (four at most, then `+n`), then a terminal mark with the count of the
-  tab's other panes. Faces match the desks in the office. Files, Changes,
-  Inbox and Office buttons open the right panel.
+  tab's other panes. Faces match the desks in the office. Files, Changes
+  and Office buttons open the right panel.
 
 Herdr's mod API gives a tab's panes in order but not where a split put them.
 The office reads that from Herdr's own layout document, which herdr-core keeps
@@ -345,7 +342,6 @@ its terminal.
   sidebar's office gives the boss's hires panes (`terminal.keep`) while you
   look at the boss's tab, and reads the bosses' and hires' `office.say` /
   `office.task` labels.
-- `office-inbox` runs `mkdir`, `find`, `stat` and `open`.
 - `office-add` asks Herdr which agents are installed (`knownAgents`: Herdr looks
   in the shell agents start in, at most once a minute per machine) and runs
   `tab.new`, `pane.split` or `terminal.open` only for what you pick.
@@ -359,7 +355,7 @@ its terminal.
 
 Code is Apache 2.0, see `LICENSE` and `NOTICE`. `office-spaces`, `office-tabs`
 and `office-chrome` are modified copies of Herdr's built-in `spaces`, `tabs` and
-`workspace-chrome` (Herdr 0.1.11), as are the upstream mods they derive from.
+`workspace-chrome` (Herdr 0.1.11).
 
 The office idea — one room, a desk per agent, the screen telling its state — is
 inspired by [herdr-office-layout](https://github.com/zuccs/herdr-office-layout)

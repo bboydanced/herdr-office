@@ -20,7 +20,7 @@ prompts below. Green screen (`#00FF00`) backgrounds get cut out afterwards.
 | `mods/office-agents/room/wall.png` | 600x88 | the office's back wall, shown 300x44 pt |
 | `mods/office-agents/room/wall-wide.png` | 1800x88 | the Office panel's back wall, shown 900x44 pt and cut to the panel; its kanban board (x 104-200 pt) keeps three empty columns for the live counts |
 | `mods/office-agents/room/floor.png` | 1824x1600 | dark carpet behind the rugs, shown 912x800 pt; the sidebar shows its left part |
-| `mods/office-tabs/art/<kind>.png` | 256x256 | `files`, `changes`, `inbox`, `office`, transparent |
+| `mods/office-tabs/art/<kind>.png` | 256x256 | `files`, `changes`, `office`, transparent |
 | `mods/office-chrome/wallpaper.png` | 1840x1844 | night windows behind the sidebar, the work column, the side panel and the terminals, `cover`-cropped |
 | `layouts/office.png` | 640x468 | layout picker thumbnail (from `tools/build-preview.py`) |
 
@@ -82,8 +82,6 @@ idle: head down on folded arms on the desk, dim screensaver on the screen, a sma
 files: Pixel art game icon of one manila document folder with a few sheets sticking out, bold simple silhouette, large and centered, few details, visible square pixels, plain solid pure green background (#00FF00), no text, no border.
 
 changes: Pixel art game icon of two overlapping sheets of paper with a small curved arrow between them, bold simple silhouette, large and centered, few details, visible square pixels, plain solid pure green background (#00FF00), no text, no border.
-
-inbox: Pixel art game icon of one shallow metal inbox tray seen from the front, a single sheet inside, bold simple silhouette, large and centered, few details, visible square pixels, plain solid pure green background (#00FF00), no text, no border.
 
 office: Pixel art game icon of one computer monitor on a small wooden desk, two lines of amber text on the screen, bold simple silhouette, large and centered, few details, visible square pixels, plain solid pure green background (#00FF00), no text, no border.
 ```

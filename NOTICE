@@ -6,7 +6,7 @@ Copyright 2026 Frank Lin, Apache License 2.0. mods/office-spaces,
 mods/office-tabs and mods/office-chrome are modified copies of that project's
 traveler-spaces, traveler-tabs and traveler-chrome, which are themselves
 derived from the built-in mods spaces, tabs and workspace-chrome of Herdr
-0.1.11 (Apache License 2.0). mods/office-inbox, layouts/office.json and
+0.1.11 (Apache License 2.0). layouts/office.json and
 themes/office-night.json are adapted from the same project's traveler
 equivalents; mods/office-agents started as one and has since been rewritten.
 

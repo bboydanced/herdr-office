@@ -630,8 +630,8 @@ def main() -> None:
         td.text((x + 14 + fw, 21), name, font=font(13), fill=hexa("foreground" if active else "muted"))
         x += tw + 3
     td.text((x + 8, 20), "+", font=font(16), fill=hexa("dim"))
-    bx = W - 10 - 4 * 96
-    for i, (kind, name) in enumerate((("files", "Files"), ("changes", "Changes"), ("inbox", "Inbox"), ("office", "Office"))):
+    bx = W - 10 - 3 * 96
+    for i, (kind, name) in enumerate((("files", "Files"), ("changes", "Changes"), ("office", "Office"))):
         on = kind == "office"
         if on:
             td.rectangle([bx + i * 96 - 8, 16, bx + i * 96 + 82, 41], fill=hexa("#3a3527"))

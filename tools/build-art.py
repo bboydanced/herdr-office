@@ -16,7 +16,7 @@ Output (relative to the repo root):
     mods/office-agents/art/<role>.png     bust portraits (tab bar)     88x88
     mods/office-agents/room/wall.png      the office's back wall      600x88
     mods/office-agents/room/floor.png     office carpet              600x1600
-    mods/office-tabs/art/<files|changes|inbox>.png                    256x256
+    mods/office-tabs/art/<files|changes|office>.png                   256x256
     mods/office-chrome/wallpaper.png      night windows behind everything   1840x1844
 """
 
@@ -1181,17 +1181,13 @@ def icon(kind: str, scale: int = 256) -> Image.Image:
         r(1, 12, 14, 2, gold)
         r(2, 14, 1, 2, gold)
         r(13, 14, 1, 2, gold)
-    else:
-        r(2, 8, 12, 6, steel)
-        r(2, 8, 12, 1, paper)
-        r(5, 10, 6, 2, INK)
     return im
 
 
 def build_icons() -> None:
     out = os.path.join(ROOT, "mods/office-tabs/art")
     os.makedirs(out, exist_ok=True)
-    for kind in ("files", "changes", "inbox", "office"):
+    for kind in ("files", "changes", "office"):
         icon(kind).save(os.path.join(out, f"{kind}.png"))
 
 

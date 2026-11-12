@@ -155,7 +155,7 @@ export default class OfficeTabs extends View {
       ? Math.max(10, (root.traffic_lights[0] + 64) / settings().zoom - (sidebar?.hidden ? 0 : sidebar?.size?.px ?? 0))
       : 10;
     const panel = find(root, "panel"), body = find(root, "panel-body");
-    const enabled = [...(shared("workspace.panels") ?? ["files", "changes"]), "inbox", "office"];
+    const enabled = [...(shared("workspace.panels") ?? ["files", "changes"]), "office"];
     this.syncPanel(space, panel, body, enabled);
     this.fitPanel(panel, body);
     const panelButton = (id, label, icon) => {
@@ -175,7 +175,6 @@ export default class OfficeTabs extends View {
       .child(button("tab-new", "+", () => openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 })))
       .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", "mods/office-tabs/art/files.png")))
       .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/office-tabs/art/changes.png")))
-      .child(panelButton("inbox", "Inbox", "mods/office-tabs/art/inbox.png"))
       .child(panelButton("office", "Office", "mods/office-tabs/art/office.png"))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg("mods/office-tabs/win-min.svg").size(16) : "−", () => run("window.minimize")))
         .child(button("maximize", w.platform === "windows" ? svg(`mods/office-tabs/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))
