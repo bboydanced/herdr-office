@@ -96,6 +96,12 @@ Herdr keeps the mod names in its own `seen.json`, which is harmless.
     and dark: a click opens it again in the same folder, with its name and
     colour; `×` forgets it. Only the place comes back, not what was running.
     A machine that is away doesn't count as closing its rooms.
+  - **Machines:** a machine whose core was replaced (a rebuilt server, a new
+    container) says so where its name is, with **Connect**: the machine is
+    forgotten and added again under the same name, so its rooms keep their
+    places. A machine that needs a login shows the command to copy.
+  - **Narrow:** dragged below 160 px, Spaces becomes a rail: one numbered cell
+    per room with its status dot, and one cell per machine.
   - **Office:** a header (`N need you`, `N/M at work`, the time), the back wall
     (night windows, clock, kanban board, door, water cooler, plant), then the
     dark carpet. Each **space is a rug** tinted in its door's colour, in the
