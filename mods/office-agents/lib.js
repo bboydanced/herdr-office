@@ -119,6 +119,52 @@ export function deskPath(job, status) {
   return `${DESKS_DIR}/${job}-${STATES.has(status) ? status : "idle"}.gif`;
 }
 
+// ---- groups: named sets of spaces you make yourself ------------------------
+
+// shared("office.groups") as a list: [{ id, name, spaces, folded }]. Anything
+// that isn't one is dropped, so a hand-edited value can't break the office.
+export function readGroups(value) {
+  if (!Array.isArray(value)) return [];
+  const out = [];
+  for (const g of value) {
+    if (!g || typeof g !== "object") continue;
+    const id = typeof g.id === "string" && g.id ? g.id : null;
+    const name = typeof g.name === "string" ? g.name.replace(/\s+/g, " ").trim() : "";
+    if (!id || !name || out.some((k) => k.id === id)) continue;
+    const spaces = Array.isArray(g.spaces) ? [...new Set(g.spaces.filter((s) => typeof s === "string"))] : [];
+    out.push({ id, name: name.slice(0, 40), spaces, folded: g.folded === true });
+  }
+  return out;
+}
+
+// The floor (or the Spaces list) folded into groups: a group appears where its
+// first space is, holding its spaces in their existing order; a space in no
+// group stands alone. A group with no row here doesn't appear, so a filtered
+// floor never shows an empty band.
+// `rows` are plan rows ({ space, tabs }) or list rows ({ space, ... }).
+// -> [{ band, rows }] (band: the group) and [{ band: null, rows: [row] }].
+export function planGroups(rows, groups) {
+  const list = Array.isArray(rows) ? rows : [];
+  const owner = new Map();
+  for (const g of groups ?? []) for (const id of g.spaces) if (!owner.has(id)) owner.set(id, g.id);
+  const held = new Map((groups ?? []).map((g) => [g.id, { band: g, rows: [] }]));
+  const out = [];
+  for (const row of list) {
+    const gid = owner.get(row?.space?.id);
+    const entry = gid ? held.get(gid) : null;
+    if (!entry) { out.push({ band: null, rows: [row] }); continue; }
+    if (!out.includes(entry)) out.push(entry);
+    entry.rows.push(row);
+  }
+  return out;
+}
+
+// The spaces a group holds that still exist, in the list's order.
+export function groupRows(rows, group) {
+  const wanted = new Set(group?.spaces ?? []);
+  return (rows ?? []).filter((r) => wanted.has(r?.space?.id));
+}
+
 // A cubicle's columns: up to three desks in a row, four as two by two.
 export function deskColumns(n) {
   return n <= 3 ? Math.max(1, n) : n === 4 ? 2 : 3;

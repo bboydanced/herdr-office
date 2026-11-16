@@ -36,7 +36,7 @@
 import { View, div, image, svg } from "gpui-kit";
 import { Input, InputState, h_flex, v_flex } from "gpui-base";
 import { agents, appHome, closeOverlay, commands, exec, focused, hc, home, knownAgents, layout, openOverlay, panes, props, readTextFile, run, setAgentOrder, setShared, shared, spaces, terminals, theme } from "herdr";
-import { DESK_SHADOW, EMPTY_DESK, ago, bossBrief, deskColumns, labelOf, deskJobs, deskLabel, deskPath, deskState, deskTip, filterPlan, findBosses, firstLine, fitAcross, isBossTab, isHire, localId, mixHex, officePlan, parsePrompt, portraitPath, roleFromName, screenLines, seatStep, shortPath, spaceColor, speechLine, splitTree, staffOf, standIn, tally, treeWidth, withAlpha } from "./lib.js";
+import { DESK_SHADOW, EMPTY_DESK, ago, bossBrief, deskColumns, labelOf, deskJobs, deskLabel, deskPath, deskState, deskTip, filterPlan, findBosses, firstLine, fitAcross, isBossTab, isHire, localId, mixHex, officePlan, parsePrompt, planGroups, readGroups, portraitPath, roleFromName, screenLines, seatStep, shortPath, spaceColor, speechLine, splitTree, staffOf, standIn, tally, treeWidth, withAlpha } from "./lib.js";
 import { Desk } from "./desk.js";
 
 const JOBS_FILE = `${appHome()}/mods/office-agents/jobs.json`;
@@ -489,6 +489,70 @@ export default class Office extends View {
       .children(shown.over);
   }
 
+  // The groups you made yourself, as kept (shared by both mods).
+  groups() {
+    const stored = shared("office.groups");
+    if (Array.isArray(stored)) return readGroups(stored);
+    try { return readGroups(JSON.parse(localStorage.getItem("office.groups") ?? "[]")); } catch { return []; }
+  }
+
+  // Writes the groups; both the panel and the Spaces list redraw from the value.
+  saveGroups(list) {
+    const clean = readGroups(list);
+    localStorage.setItem("office.groups", JSON.stringify(clean));
+    setShared("office.groups", clean);
+  }
+
+  // A group is a band with its name and counts, then the rugs of the spaces in
+  // it, exactly as they would be on their own. It holds nothing else: making it,
+  // naming it and picking its spaces is yours, not worked out from folders.
+  groupBand(part, roles, colors, trees, t) {
+    const g = part.band;
+    const staff = part.rows.flatMap((row) => row.tabs.flatMap((c) => c.desks.filter((d) => d.agent).map((d) => d.agent)));
+    const status = urgent(staff);
+    const count = staff.filter((a) => a.status === status).length;
+    return v_flex()
+      .id(`group-${g.id}`)
+      .flex_none()
+      .gap(this.wide ? 8 : 6)
+      .child(h_flex().h(this.wide ? 26 : 22).gap(7).items_center().px(4)
+        .bg("#080c1299").border(1).border_color(withAlpha(t.muted, "44")).rounded(4)
+        .child(div().id(`group-fold-${g.id}`).size(14).flex_none().flex().items_center().justify_center()
+          .cursor_pointer().hover((s) => s.opacity(0.7))
+          .tooltip(g.folded ? "Show its spaces" : "Fold its spaces away")
+          .on_click((_e, cx) => this.foldGroup(g.id, cx))
+          .child(svg(`mods/office-chrome/chevron-${g.folded ? "right" : "down"}.svg`).size(10).flex_none().text_color(t.muted)))
+        .child(div().min_w(0).truncate().text_size(this.wide ? 13 : 11.5).font_semibold().text_color(t.foreground).child(g.name))
+        .child(div().flex_none().px(4).bg(withAlpha(t.muted, "33")).text_size(9.5).text_color(t.foreground)
+          .child(`${part.rows.length} space${part.rows.length === 1 ? "" : "s"}`))
+        .child(div().flex_1().min_w(0))
+        .when(status === "blocked", (el) => el.child(div().flex_none().px(4).bg(TAG).text_size(10).font_bold()
+          .text_color("#ffffff").child(`! ${count} need${count === 1 ? "s" : ""} you`)))
+        .when(status === "working", (el) => el.child(div().flex_none().text_size(10).text_color(mixHex(t.working, "#ffffff", 0.3))
+          .child(`\u25cf ${count} working`)))
+        .child(this.button(`group-rename-${g.id}`, "\u270e", "Rename this group, or change its spaces", t, () => this.editGroup(g.id)))
+        .child(this.button(`group-add-${g.id}`, "+", "Put a space in this group", t, () => this.editGroup(g.id)))
+        .child(this.button(`group-drop-${g.id}`, "\u00d7", "Delete the group (the spaces stay)", t, () => this.dropGroup(g.id))))
+      .when(!g.folded, (el) => el.child(v_flex().flex_none().gap(this.wide ? 10 : 8).pl(this.wide ? 12 : 8)
+        .border_l(1).border_color(withAlpha(t.muted, "44"))
+        .children(part.rows.map((row) => this.rug(row, roles, colors, trees, t)))));
+  }
+
+  foldGroup(id, cx) {
+    this.saveGroups(this.groups().map((g) => (g.id === id ? { ...g, folded: !g.folded } : g)));
+    cx.notify();
+  }
+
+  // The group dialog (name and the spaces in it): one overlay whether you
+  // rename a group or add spaces to it, so it opens at one size.
+  editGroup(id) {
+    openOverlay({ mod: "office-space-new", kind: "popup", width: 420, height: 430, props: { group: id } });
+  }
+
+  dropGroup(id) {
+    this.saveGroups(this.groups().filter((g) => g.id !== id));
+  }
+
   // A rail too narrow for desks: one face per agent, framed in its status colour.
   rail(plan, roles, t) {
     const seated = plan.flatMap((row) => row.tabs.flatMap((c) => c.desks.filter((d) => d.agent).map((d) => d.agent)));
@@ -727,6 +791,8 @@ export default class Office extends View {
           .child(div().text_color(key === "blocked" && n.blocked ? t.blocked : t.dim).child(String(key === "all" ? total : n[key])));
       }))
       .child(div().flex_1())
+      .child(this.button("office-new-group", "▤", "New group of spaces", t,
+        () => openOverlay({ mod: "office-space-new", kind: "popup", width: 420, height: 430, props: { group: "@new" } })))
       .children([["small", "−", "Smaller desks"], ["large", "+", "Bigger desks"]].map(([zoom, label, tip]) => {
         const on = this.zoom === zoom;
         return div().id(`zoom-${zoom}`).size(22).flex().flex_none().items_center().justify_center().text_size(13)
@@ -1130,6 +1196,9 @@ export default class Office extends View {
     // Filtered, a tab shows some of its desks: the split no longer fits them.
     const trees = filter === "all" ? this.treesFor(plan) : new Map();
     const shown = filterPlan(plan, filter);
+    // Groups you made yourself: each band holds the spaces you put in it.
+    const groups = this.groups();
+    const deck = planGroups(shown, groups);
     const colors = shared("space.colors") ?? {};
     const n = tally(list);
     // The terminals' code font, for the inspector's screen.
@@ -1169,8 +1238,8 @@ export default class Office extends View {
       })
       .child(v_flex().id("office-floor").flex_1().min_h(0).p(this.wide ? 10 : 8).gap(this.wide ? 10 : 8).overflow_y_scrollbar()
         .when(Boolean(moveLine), (el) => el.child(div().flex_none().text_size(11).text_color(moveLine.tone).child(moveLine.text)))
-        .children(shown.map((row) => this.rug(row, roles, colors, trees, t)))
-        .when(shown.length === 0, (el) => el.child(div().p(8).text_size(12).text_color(t.dim).child(empty ?? "Nobody here.")))
+        .children(deck.map((part) => (part.band ? this.groupBand(part, roles, colors, trees, t) : this.rug(part.rows[0], roles, colors, trees, t))))
+        .when(deck.length === 0, (el) => el.child(div().p(8).text_size(12).text_color(t.dim).child(empty ?? "Nobody here.")))
         .when(Boolean(away), (el) => el.child(away))
         .when(this.wide, (el) => el.child(h_flex().flex_none().child(this.button("office-new-space", "+ New space", "A new space where you are now, or in a folder you pick", t, () => openOverlay({ mod: "office-space-new", kind: "dialog", width: 480, height: 480, props: { machine: spaces().find((s) => s.active)?.machine ?? null } }))))))
       .when(this.wide, (el) => el.child(this.inspector(roles, t)));

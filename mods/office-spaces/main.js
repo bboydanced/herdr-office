@@ -19,6 +19,58 @@ import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { spaces, machines, panes, agents, run, openOverlay, exec, hc, home, theme, shared, setShared, watchFolder, window, layout } from "herdr";
 
+// Groups you make yourself: shared("office.groups"), [{ id, name, spaces, folded }].
+// A group is only a way to hold spaces together in this list and in the Office
+// panel; it never changes a space's folder or order.
+const groupsNow = () => {
+  const stored = shared("office.groups");
+  if (Array.isArray(stored)) return groupsNowFrom(JSON.stringify(stored));
+  return groupsNowFrom(localStorage.getItem("office.groups"));
+};
+
+// The groups kept in a store value, as readGroups does (kept local so this mod
+// imports nothing across mods).
+function groupsNowFrom(text) {
+  let list;
+  try { list = JSON.parse(text ?? "[]"); } catch { return []; }
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const g of list) {
+    if (!g || typeof g.id !== "string" || !g.id || typeof g.name !== "string" || !g.name.trim()) continue;
+    if (out.some((k) => k.id === g.id)) continue;
+    out.push({ id: g.id, name: g.name.trim().slice(0, 40),
+      spaces: Array.isArray(g.spaces) ? [...new Set(g.spaces.filter((s) => typeof s === "string"))] : [],
+      folded: g.folded === true });
+  }
+  return out;
+}
+
+// Rows folded into groups: a group appears where its first space is, a space in
+// no group stands alone. Groups with no space in these rows don't appear (they
+// are on another machine, or the machine hasn't said yet).
+function groupRows(rows, groups) {
+  const owner = new Map();
+  for (const g of groups) for (const id of g.spaces) if (!owner.has(id)) owner.set(id, g.id);
+  const held = new Map(groups.map((g) => [g.id, { band: g, rows: [] }]));
+  const out = [];
+  for (const row of rows) {
+    const gid = owner.get(row.w.id);
+    const entry = gid ? held.get(gid) : null;
+    if (!entry) { out.push({ band: null, rows: [row] }); continue; }
+    if (!out.includes(entry)) out.push(entry);
+    entry.rows.push(row);
+  }
+  return out;
+}
+
+// The groups as both mods keep them, written back.
+function saveGroups(list) {
+  const clean = list.map((g) => ({ id: g.id, name: g.name.trim().slice(0, 40),
+    spaces: [...new Set((g.spaces ?? []).filter((s) => typeof s === "string"))], folded: g.folded === true }));
+  setShared("office.groups", clean);
+  localStorage.setItem("office.groups", JSON.stringify(clean));
+}
+
 // A theme colour with a two-digit alpha (theme colours are #rrggbb).
 const alpha = (c, a) => (typeof c === "string" && /^#[0-9a-fA-F]{6}/.test(c) ? `${c.slice(0, 7)}${a}` : c);
 // A #rrggbb colour darkened by `k` (0..1); anything else stays.
@@ -174,6 +226,10 @@ export default class Spaces extends View {
     this.known = JSON.parse(localStorage.getItem("rooms.known") ?? "{}");
     this.closed = JSON.parse(localStorage.getItem("rooms.closed") ?? "[]");
     this.closedOpen = localStorage.getItem("rooms.folded") !== "1";
+    // Groups you made (shared with the Office panel), started from what was kept.
+    if (!Array.isArray(shared("office.groups"))) {
+      try { setShared("office.groups", groupsNowFrom(localStorage.getItem("office.groups"))); } catch {}
+    }
     this.reopening = null; // { machine, folder, color, before, until }: its colour comes back
     this.hovering = null;
     setShared("office.rooms", this.closed);
@@ -468,10 +524,23 @@ export default class Spaces extends View {
     return out.filter((r) => this.shown.has(r.w.id));
   }
 
+  // The groups you made, as kept.
+  groups() {
+    return groupsNow();
+  }
+
   // The rows, under a header per machine once one isn't this computer.
   grouped(t, collapsed) {
     const rows = this.ordered();
+    const groups = this.groups();
     const draw = (r) => (collapsed ? this.compact(r, t) : this.row(r, t));
+    // A machine's rows as groups you made, then the loose ones. A group with
+    // spaces on two machines draws a band under each, so its ids carry the one.
+    const parts = (mine, m) => groupRows(mine, groups)
+      .flatMap((part) => (part.band
+        ? [this.groupBand(part.band, part.rows.length, t, collapsed, m)]
+          .concat(collapsed || part.band.folded ? [] : part.rows.map(draw))
+        : part.rows.map(draw)));
     const remote = [...new Set([...rows.map(r => r.w.machine).filter(Boolean), ...this.machines.map(m => m.name), ...Object.keys(this.reconnecting)])].sort();
     const loading = m => {
       const layout = machines().find(k => k.name === m)?.layout;
@@ -480,7 +549,7 @@ export default class Spaces extends View {
     };
     const shut = (m) => (collapsed ? [] : this.closedRooms(m, t));
     const loadingRow = m => h_flex().id(`machine-loading-${m ?? "local"}`).h(28).flex_none().px(collapsed ? 0 : 8).items_center().when(collapsed, el => el.justify_center()).text_size(12).text_color(t.dim).child(collapsed ? "…" : "Loading…");
-    if (!remote.length) return loading(null) && !rows.length ? [loadingRow(null)] : [...rows.map(draw), ...shut(null)];
+    if (!remote.length) return loading(null) && !rows.length ? [loadingRow(null)] : [...parts(rows, null), ...shut(null)];
     const machineNames = [null, ...remote];
     return machineNames.flatMap((m) => {
       const mine = rows.filter((r) => (r.w.machine ?? null) === m);
@@ -535,7 +604,7 @@ export default class Spaces extends View {
             .text_size(11).text_color(t.foreground).bg(t.raised).cursor_pointer().hover(s => s.bg(t.hover))
             .on_click((_e, cx) => { cx.stop_propagation(); cx.write_to_clipboard(login); this.copiedLogin = login; cx.notify(); })
             .child(this.copiedLogin === login ? "Copied" : "Copy")))] : [];
-      return [cell(head), ...guidance, ...(folded ? [] : [...(mine.length ? mine.map(draw) : [loading(m) ? loadingRow(m) : cell(empty)]), ...shut(m)])];
+      return [cell(head), ...guidance, ...(folded ? [] : [...(mine.length ? parts(mine, m) : [loading(m) ? loadingRow(m) : cell(empty)]), ...shut(m)])];
     });
   }
 
@@ -573,6 +642,14 @@ export default class Spaces extends View {
     };
   }
 
+  // A staff member's face (a dot until the office has said who is who).
+  face(a, t) {
+    const src = portrait(this.faces[a.address]);
+    return src
+      ? div().size(14).flex_none().border(1).border_color(t[a.status] ?? t.dim).bg(t.raised).child(image(src).size(12))
+      : div().size(6).flex_none().rounded(3).bg(t[a.status] ?? t.dim);
+  }
+
   // One line: git as sticky notes, then the faces of the staff in the room
   // (a dot each until the office has said who is who). A click on the faces
   // opens the Office panel.
@@ -582,12 +659,7 @@ export default class Spaces extends View {
       sum.ahead > 0 && [t.ansi10, `\u2191${sum.ahead} unpushed`],
       sum.local > 0 && [t.ansi9, sum.local === 1 ? "no remote" : `${sum.local} without remote`],
     ].filter(Boolean);
-    const face = (a) => {
-      const src = portrait(this.faces[a.address]);
-      return src
-        ? div().size(14).flex_none().border(1).border_color(t[a.status] ?? t.dim).bg(t.raised).child(image(src).size(12))
-        : div().size(6).flex_none().rounded(3).bg(t[a.status] ?? t.dim);
-    };
+    const face = (a) => this.face(a, t);
     return h_flex().h(15).gap(4).items_center().text_size(11)
       .child(h_flex().flex_1().min_w(0).gap(4).overflow_hidden().children(notes.map(([color, text]) => note(color, text))))
       .when(mine.length > 0, (el) => el.child(h_flex().id(`faces-${w.id}`).flex_none().gap(2).items_center().cursor_pointer()
@@ -598,6 +670,62 @@ export default class Spaces extends View {
         })
         .children(mine.slice(0, 5).map(face))
         .when(mine.length > 5, (el) => el.child(div().flex_none().text_size(10).text_color(t.dim).child(`+${mine.length - 5}`)))));
+  }
+
+  // A group you made: a slim band with its name, its spaces, the faces of the
+  // staff in them and their status, then the rows of the spaces you put in it.
+  // No door, git or actions of its own: the rows carry those.
+  groupBand(g, count, t, collapsed, m = null) {
+    const staff = this.staff.filter((a) => g.spaces.includes(a.space));
+    const status = urgent(staff);
+    const waiting = staff.filter((a) => a.status === status).length;
+    const id = `group-${g.id}-${m ?? "local"}`;
+    return v_flex()
+      .id(id)
+      .mt(collapsed ? 4 : 6)
+      .h(collapsed ? 22 : 30)
+      .flex_none()
+      .when(collapsed, (el) => el.w(RAIL_CELL).self_center().rounded(6))
+      .px(collapsed ? 0 : 8)
+      .justify_center()
+      .bg(t.surface)
+      .border_b(1)
+      .border_color(t.border)
+      .when(!collapsed, (el) => el.hover((s) => s.bg(t.hover)))
+      .child(h_flex().gap(8).items_center()
+        .child(div().id(`group-fold-${id}`).size(14).flex_none().flex().items_center().justify_center()
+          .cursor_pointer().hover((s) => s.opacity(0.7))
+          .tooltip(g.folded ? "Show its spaces" : "Fold its spaces away")
+          .on_click((_e, cx) => { this.foldGroup(g.id, cx); })
+          .child(collapsed
+            ? div().text_size(11).text_color(t.muted).child(String(count))
+            : svg(`mods/office-chrome/chevron-${g.folded ? "right" : "down"}.svg`).size(10).text_color(t.muted)))
+        .when(!collapsed, (el) => el
+          .child(div().min_w(0).max_w(150).truncate().text_size(12).font_semibold().text_color(t.foreground).child(g.name))
+          .child(div().flex_none().px(4).bg(t.raised).text_size(9.5).text_color(t.muted)
+            .child(`${count} space${count === 1 ? "" : "s"}`))
+          .child(div().flex_1().min_w(0))
+          .when(status === "blocked", (el) => el.child(div().flex_none().px(4).bg("#c8392f").text_size(10).font_bold()
+            .text_color("#ffffff").child(`! ${waiting}`)))
+          .when(status === "working", (el) => el.child(div().flex_none().text_size(10).text_color(t.ansi4)
+            .child(`\u25cf ${waiting}`)))
+          .when(staff.length > 0, (el) => el.child(h_flex().flex_none().gap(2).items_center()
+            .children(staff.slice(0, 4).map((a) => this.face(a, t)))))
+          .child(div().id(`group-menu-${id}`).flex_none().px(4).rounded(4).text_size(11).text_color(t.dim)
+            .hover((s) => s.bg(t.raised).text_color(t.foreground))
+            .on_click((_e, cx) => { cx.stop_propagation(); this.groupMenu(g); })
+            .child("\u22ef"))));
+  }
+
+  // What can be done with a group: rename it, put spaces in it, delete it.
+  groupMenu(g) {
+    openOverlay({ mod: "office-space-new", kind: "popup", width: 420, height: 430, props: { group: g.id } });
+  }
+
+  foldGroup(id, cx) {
+    const groups = this.groups().map((g) => (g.id === id ? { ...g, folded: !g.folded } : g));
+    saveGroups(groups);
+    cx.notify();
   }
 
   row({ w, i, g, sum, tree }, t) {
@@ -774,9 +902,14 @@ export default class Spaces extends View {
     this.faces = faces && typeof faces === "object" && !Array.isArray(faces) ? faces : {};
     this.hot = shared("office.hover") ?? null;
     return v_flex().size_full().min_h(0).text_size(13)
-      .child(h_flex().h(31).pl(16).pr(10).items_center().justify_between().text_size(11.5).text_color(t.dim)
+      .child(h_flex().h(31).pl(16).pr(10).gap(2).items_center().justify_between().text_size(11.5).text_color(t.dim)
         .when(collapsed, el => el.pl(0).pr(0).justify_center())
         .when(!collapsed, el => el.child("Spaces"))
+        .when(!collapsed, el => el.child(div().flex_1()))
+        .when(!collapsed, el => el.child(div().id("group-new").size(26).flex_none().flex().items_center().justify_center().rounded(6)
+          .hover(s => s.bg(t.hover).text_color(t.foreground)).tooltip("New group of spaces")
+          .on_click(() => openOverlay({ mod: "office-space-new", kind: "popup", width: 420, height: 430, props: { group: "@new" } }))
+          .child("\u25a4")))
         .child(div().id("space-new").size(26).flex_none().flex().items_center().justify_center().rounded(6).hover(s => s.bg(t.hover).text_color(t.foreground))
           .tooltip("New space").on_click(() => newSpace(spaces().find((s) => s.active)?.machine ?? null))
           .child(svg("mods/office-chrome/plus.svg").size(14))))
