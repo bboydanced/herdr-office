@@ -14,6 +14,7 @@
 import { View, div, svg } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input } from "gpui-base";
 import { closeOverlay, exec, home, panes, pickFolder, props, run, setShared, shared, spaces, theme } from "herdr";
+import { loadGroups, newGroupId, putGroup, saveGroups } from "./groups.js";
 
 const INK = "#1d2733";
 const MOST = 6;
@@ -127,12 +128,9 @@ export default class OfficeSpaceNew extends View {
     });
   }
 
-  // Groups as both mods keep them: [{ id, name, spaces, folded }].
+  // The groups you made yourself (see office-agents/groups.js).
   groups() {
-    const stored = shared("office.groups");
-    const list = Array.isArray(stored) ? stored : [];
-    return list.filter((g) => g && typeof g.id === "string" && typeof g.name === "string")
-      .map((g) => ({ id: g.id, name: g.name, spaces: Array.isArray(g.spaces) ? g.spaces.filter((s) => typeof s === "string") : [], folded: g.folded === true }));
+    return loadGroups(shared("office.groups"));
   }
 
   // The group dialog: its name and the spaces in it, one tick each.
@@ -163,20 +161,13 @@ export default class OfficeSpaceNew extends View {
     if (this.groupBusy) return;
     const name = this.groupName.value().replace(/\s+/g, " ").trim().slice(0, 40);
     if (!name) { this.error = "Give the group a name."; cx.notify(); return; }
-    const id = this.group ?? `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-    const was = this.group ? this.groups().find((g) => g.id === id) : null;
-    const next = this.groups().filter((g) => g.id !== id);
-    next.push({ id, name, spaces: [...this.picked], folded: was?.folded === true });
-    setShared("office.groups", next);
-    localStorage.setItem("office.groups", JSON.stringify(next));
+    saveGroups(putGroup(this.groups(), { id: this.group ?? newGroupId(), name, spaces: [...this.picked] }), setShared);
     closeOverlay(props()?.overlay);
   }
 
   deleteGroup(cx) {
     if (!this.group) { closeOverlay(props()?.overlay); return; }
-    const next = this.groups().filter((g) => g.id !== this.group);
-    setShared("office.groups", next);
-    localStorage.setItem("office.groups", JSON.stringify(next));
+    saveGroups(this.groups().filter((g) => g.id !== this.group), setShared);
     closeOverlay(props()?.overlay);
   }
 
@@ -189,15 +180,20 @@ export default class OfficeSpaceNew extends View {
       .text_color(primary ? t.solid_foreground : t.foreground).text_size(12.5).font_medium().cursor_pointer()
       .hover((s) => s.opacity(0.88)).on_click(action).child(text);
     const list = this.candidates();
+    const elsewhere = new Map();
+    for (const g of this.groups()) if (g.id !== this.group) for (const s of g.spaces) if (!elsewhere.has(s)) elsewhere.set(s, g.name);
     const row = (r, i) => {
       const on = this.picked.has(r.s.id);
+      const other = elsewhere.get(r.s.id);
       return h_flex().id(`group-space-${i}`).h(30).px(8).gap(9).items_center().flex_none().cursor_pointer()
         .when(on, (el) => el.bg(t.selected))
         .hover((s) => s.bg(t.hover))
         .on_click((_e, cx) => this.toggleSpace(r.s.id, cx))
         .child(div().size(13).flex_none().border_1().border_color(on ? t.accent : t.input).bg(on ? t.accent : t.background))
         .child(div().flex_none().max_w(150).truncate().text_size(12.5).text_color(t.foreground).child(r.s.name))
-        .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(r.s.machine ? `${r.s.machine} · ${r.where}` : r.where));
+        .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(r.s.machine ? `${r.s.machine} · ${r.where}` : r.where))
+        .when(Boolean(other), (el) => el.child(div().flex_none().max_w(110).truncate().text_size(10.5).text_color(on ? t.blocked : t.dim)
+          .child(on ? `moves from ${other}` : `in ${other}`)));
     };
     return v_flex().id("office-group").w_full().h_full().min_h(0).p(18).gap(14).bg(t.popover).text_color(t.foreground)
       .on_key_down((e, cx) => { if (e.key === "escape") { closeOverlay(overlay); cx.stop_propagation(); } })

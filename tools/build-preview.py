@@ -5,10 +5,12 @@ reviewed without Herdr. Not part of the mods - nothing reads this file.
     python3 tools/build-preview.py     # writes preview.png and layouts/office.png
 
 The mock follows layouts/office.json and the sizes the mods ask for: a 300 px
-sidebar (46 header, Spaces, the office, 69 footer), 58 px tab bar, 8 px padding,
-and the side panel open on the Office tab at its first width, 640 px. Spaces
-are rooms (a door with its number, lamp, sticky notes, faces); in the office
-each space is a rug, each tab a cubicle on it, each pane a desk. The panel shows
+sidebar (46 header, Spaces, the Office Agent list, 69 footer), 58 px tab bar,
+8 px padding, and the side panel open on the Office tab at its first width,
+640 px. Spaces are rooms (a door with its number, lamp, sticky notes, faces);
+Office Agent is one row per agent (face, name and role, space › tab, status),
+spaces in a group banded under its name. In the panel's office each space is a
+rug, each tab a cubicle on it, each pane a desk. The panel shows
 the header with the filters, the boss in front of the back wall, a Needs you
 card, the floor (two lines under each desk, an "Add desk" place in each
 cubicle) and the inspector bar on the picked staff member. A tab with a `tree`
@@ -397,39 +399,86 @@ def draw_floor(sb, d, x0, y, width, z, most, frame) -> int:
     return y
 
 
-def office_header(sb, d, x0, y, width, wide) -> None:
-    people = [st for s in SPACES for _, st in staff(s)]
-    busy, waiting = people.count("working"), people.count("blocked")
-    h = 32 if wide else 28
-    d.rectangle([x0, y, x0 + width - 1, y + h - 1], fill=hexa("chrome"))
-    if wide:
-        d.text((x0 + 16, y + 8), "Office", font=font(12.5, bold=True), fill=hexa("foreground"))
+# Sample group: spaces banded together in the sidebar's Office Agent list.
+GROUPS = [("Product", ("web-app", "api"))]
+
+STATUS = {"working": "Working", "blocked": "Needs you", "done": "Done", "idle": "Idle"}
+# What each pane's program is called, as the row prints it beside the role.
+PROGRAMS = {"manager": "Claude Code", "developer": "Codex", "designer": "Frontend", "analyst": "Review",
+            "tester": "Tests", "support": "Deploy", "writer": "Docs", "intern": "Claude Code"}
+
+
+def agent_row(sb, d, x, y, space, tab, role, st, since) -> None:
+    """One 30 px row of the Office Agent list: the face framed in its status
+    colour, the name and role, the space and tab, then its state."""
+    d.rectangle([x, y, x + 21, y + 21], fill=hexa("raised"), outline=hexa(st))
+    sb.alpha_composite(load(f"mods/office-agents/art/{role}.png", (20, 20)), (x + 1, y + 1))
+    right = SIDEBAR - 14
+    if st == "blocked":
+        tf, text, w = font(9.5, bold=True), "NEEDS YOU", round(d.textlength("NEEDS YOU", font=font(9.5, bold=True))) + 8
+        d.rectangle([right - w, y + 9, right, y + 21], fill=hexa(TAG))
+        d.text((right - w + 4, y + 9), text, font=tf, fill=(255, 240, 230, 255))
     else:
-        d.text((x0 + 16, y + 8), "Office", font=font(11.5), fill=hexa("dim"))
-    right = x0 + width - 12
-    if wide and waiting:
-        bf = font(10.5, bold=True)
-        bw = round(d.textlength("Next waiting →", font=bf)) + 14
-        d.rectangle([right - bw, y + 6, right, y + 25], fill=hexa(TAG))
-        d.text((right - bw + 7, y + 9), "Next waiting →", font=bf, fill=(255, 255, 255, 255))
-        right -= bw + 6
-    info = f"{busy}/{len(people)} at work · 21:40"
-    d.text((right - d.textlength(info, font=font(11)), y + (10 if wide else 8)), info, font=font(11), fill=hexa("dim"))
+        text = f"{STATUS[st]} · {since}" if since else STATUS[st]
+        tf = font(10)
+        w = round(d.textlength(text, font=tf))
+        d.text((right - w, y + 10), text, font=tf, fill=bright("working") if st == "working" else hexa(st))
+    tx = x + 27
+    f = font(11.5)
+    rf = font(9.5)
+    name = fit(d, PROGRAMS.get(role, role), f, right - w - 12 - tx - d.textlength(role, font=rf) - 5)
+    d.text((tx, y + 3), name, font=f, fill=hexa("foreground"))
+    d.text((tx + d.textlength(name, font=f) + 5, y + 6), role, font=rf, fill=hexa("dim"))
+    d.text((tx, y + 17), fit(d, f"{space} › {tab}", font(10), right - w - 12 - tx), font=font(10), fill=hexa("dim"))
+
+
+def draw_agents(sb: Image.Image, top: int, bottom: int) -> None:
+    """The sidebar's Office Agent list: a header (the counts, the time), the back
+    wall, then one row per agent; spaces in a group sit in a band under its name."""
+    d = ImageDraw.Draw(sb, "RGBA")
+    rows = [(s["name"], t["name"], role, st, t.get("since", ""))
+            for s in SPACES for t in s["tabs"] for role, st, _ in t["panes"] if st]
+    busy, waiting = [r[3] for r in rows].count("working"), [r[3] for r in rows].count("blocked")
+
+    d.rectangle([0, top, SIDEBAR - 1, top + 27], fill=hexa("chrome"))
+    d.text((16, top + 6), "Office Agent", font=font(11.5, bold=True), fill=hexa("foreground"))
+    info = f"{busy}/{len(rows)} at work · 21:40"
+    right = SIDEBAR - 12
+    d.text((right - d.textlength(info, font=font(10.5)), top + 8), info, font=font(10.5), fill=hexa("dim"))
     if waiting:
         need = f"{waiting} need{'s' if waiting == 1 else ''} you ·"
-        d.text((right - 4 - d.textlength(info, font=font(11)) - d.textlength(need, font=font(11.5)), y + (10 if wide else 8)),
+        d.text((right - 8 - d.textlength(info, font=font(10.5)) - d.textlength(need, font=font(11.5)), top + 7),
                need, font=font(11.5), fill=hexa("blocked"))
 
+    sb.alpha_composite(load("mods/office-agents/room/wall.png", (SIDEBAR, 44)), (0, top + 28))
 
-def draw_office(sb: Image.Image, top: int, bottom: int, frame: int) -> None:
-    d = ImageDraw.Draw(sb, "RGBA")
-    floor = load("mods/office-agents/room/floor.png")
-    floor = floor.resize((floor.width // 2, floor.height // 2), Image.NEAREST)
-    sb.paste(floor.crop((0, 0, SIDEBAR, bottom - top)), (0, top))
-    office_header(sb, d, 0, top, SIDEBAR, False)
-    wall = load("mods/office-agents/room/wall.png")
-    sb.alpha_composite(wall.resize((wall.width // 2, wall.height // 2), Image.NEAREST), (0, top + 28))
-    draw_floor(sb, d, 8, top + 28 + 44 + 8, SIDEBAR - 16, SMALL, 3, frame)
+    owner = {name: band for band, names in GROUPS for name in names}
+    y, banded = top + 80, set()
+    for space, tab, role, st, since in rows:
+        band = owner.get(space)
+        if band and band not in banded:
+            banded.add(band)
+            states = [r[3] for r in rows if owner.get(r[0]) == band]
+            n = len(states)
+            d.rectangle([8, y, SIDEBAR - 9, y + 21], fill=(8, 12, 18, 0x99))
+            d.line([8, y + 21, SIDEBAR - 9, y + 21], fill=hexa("muted", 0x44))
+            d.text((12, y + 4), "▾", font=font(9), fill=hexa("dim"))
+            d.text((30, y + 3), band, font=font(10.5, bold=True), fill=hexa("foreground"))
+            bx = SIDEBAR - 12 - d.textlength(str(n), font=font(10))
+            d.text((bx, y + 5), str(n), font=font(10), fill=hexa("dim"))
+            # Its most urgent status and how many are in it, seen even folded.
+            urgent = "blocked" if "blocked" in states else "working" if "working" in states else None
+            if urgent == "blocked":
+                tag = f"! {states.count('blocked')}"
+                w = round(d.textlength(tag, font=font(9.5, bold=True))) + 8
+                d.rectangle([bx - 6 - w, y + 5, bx - 6, y + 17], fill=hexa(TAG))
+                d.text((bx - 6 - w + 4, y + 5), tag, font=font(9.5, bold=True), fill=(255, 255, 255, 255))
+            elif urgent == "working":
+                tag = f"● {states.count('working')}"
+                d.text((bx - 6 - d.textlength(tag, font=font(10)), y + 5), tag, font=font(10), fill=bright("working"))
+            y += 23
+        agent_row(sb, d, 18 if band else 14, y, space, tab, role, st, since)
+        y += 31
 
 
 def chip(d, x, y, text, on=False, size=11, color=None, w=None) -> int:
@@ -608,7 +657,7 @@ def main() -> None:
     sd.rectangle([0, 0, SIDEBAR, 46], fill=hexa("chrome", 0xC8))
     sd.text((16, 15), "Herdr", font=font(14, bold=True), fill=hexa("foreground"))
     draw_spaces(sb, sd, 46)
-    draw_office(sb, 46 + SPACES_H, H - 69, frame=0)
+    draw_agents(sb, 46 + SPACES_H, H - 69)
     sd = ImageDraw.Draw(sb, "RGBA")
     sd.rectangle([0, H - 69, SIDEBAR, H], fill=hexa("chrome"))
     sd.line([0, H - 69, SIDEBAR, H - 69], fill=hexa("border", 0x66))
@@ -645,7 +694,7 @@ def main() -> None:
     out.save(os.path.join(ROOT, "preview.png"))
     # Layout picker thumbnail: the left of the window, where the office is.
     thumb = out.resize((round(W * 468 / H), 468), Image.LANCZOS).crop((0, 0, 640, 468))
-    thumb.quantize(colors=128, method=Image.Quantize.MEDIANCUT).save(os.path.join(ROOT, "layouts/office.png"), optimize=True)
+    thumb.quantize(colors=128).save(os.path.join(ROOT, "layouts/office.png"), optimize=True)
     print("wrote preview.png and layouts/office.png")
 
 

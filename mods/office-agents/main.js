@@ -1,13 +1,15 @@
-// Office: one room for every agent. Each space is a rug in its Spaces colour and
-// order, each tab a cubicle on it, each pane a desk placed the way the tab is
-// split (side by side or one above the other, read from Herdr's layout document),
-// else in pane order: an agent at work facing you, or an empty desk for a pane
-// with no agent. Click a desk to go to its terminal. The sidebar's office reads
-// jobs.json and that document only and opens no connection; the one command it
-// runs is `hc label`, once per boss it finds (see findBosses).
+// Office Agent (the sidebar) is the staff as a list: one row per agent, its
+// status and for how long, and the space and tab it sits in; the spaces you put
+// in a group are banded under the group's name, folded with it. A click goes to
+// its terminal. The sidebar reads jobs.json and Herdr's layout document only and
+// opens no connection; the one command it runs is `hc label`, once per boss it
+// finds (see findBosses).
 //
-// With props { wide: true } (the side panel's Office tab) the same office is drawn
-// with more: desks at 2 points an art pixel (3 with "+"), as many across as fit,
+// With props { wide: true } (the side panel's Office tab) the office proper is
+// drawn: one room for every agent, each space a rug in its Spaces colour and
+// order, each tab a cubicle, each pane a desk placed the way the tab is split
+// (side by side or one above the other, read from Herdr's layout document), else
+// in pane order. Desks at 2 points an art pixel (3 with "+"), as many across as fit,
 // each with its status and for how long, a live board on the wall
 // and filters, "+" buttons for a new tab, desk or space (the office-add popup)
 // and the tabs put away. A desk dragged onto another tab's Add desk moves there,
@@ -36,8 +38,9 @@
 import { View, div, image, svg } from "gpui-kit";
 import { Input, InputState, h_flex, v_flex } from "gpui-base";
 import { agents, appHome, closeOverlay, commands, exec, focused, hc, home, knownAgents, layout, openOverlay, panes, props, readTextFile, run, setAgentOrder, setShared, shared, spaces, terminals, theme } from "herdr";
-import { DESK_SHADOW, EMPTY_DESK, ago, bossBrief, deskColumns, labelOf, deskJobs, deskLabel, deskPath, deskState, deskTip, filterPlan, findBosses, firstLine, fitAcross, isBossTab, isHire, localId, mixHex, officePlan, parsePrompt, planGroups, readGroups, portraitPath, roleFromName, screenLines, seatStep, shortPath, spaceColor, speechLine, splitTree, staffOf, standIn, tally, treeWidth, withAlpha } from "./lib.js";
+import { DESK_SHADOW, EMPTY_DESK, ago, bossBrief, deskColumns, labelOf, deskJobs, deskLabel, deskPath, deskState, deskTip, filterPlan, findBosses, firstLine, fitAcross, isBossTab, isHire, localId, mixHex, officePlan, parsePrompt, portraitPath, roleFromName, screenLines, seatStep, shortPath, spaceColor, speechLine, splitTree, staffOf, standIn, tally, treeWidth, withAlpha } from "./lib.js";
 import { Desk } from "./desk.js";
+import { loadGroups, planGroups, saveGroups } from "./groups.js";
 
 const JOBS_FILE = `${appHome()}/mods/office-agents/jobs.json`;
 // The boss's playbook; on another machine a copy goes to REMOTE_PLAYBOOK there.
@@ -194,6 +197,19 @@ const programIcon = (program, t, size = 14) => {
 };
 
 // The most urgent status among some agents: waiting beats working.
+// The group dialog (name and the spaces in it): a group id, or "@new".
+const openGroupDialog = (group) => openOverlay({ mod: "office-space-new", kind: "popup", width: 420, height: 430, props: { group } });
+// The sidebar list's rows: per space, its staff with the tab and pane each sits
+// in (spaces with nobody left out), folded into the groups you made.
+function listDeck(plan, groups) {
+  const rows = plan
+    .map((row) => ({
+      space: row.space,
+      staff: row.tabs.flatMap((c) => c.desks.filter((d) => d.agent).map((d) => ({ agent: d.agent, tab: c.tab, pane: d.pane }))),
+    }))
+    .filter((row) => row.staff.length > 0);
+  return planGroups(rows, groups);
+}
 const urgent = (list) => (list.some((a) => a.status === "blocked") ? "blocked" : list.some((a) => a.status === "working") ? "working" : null);
 
 export default class Office extends View {
@@ -489,18 +505,9 @@ export default class Office extends View {
       .children(shown.over);
   }
 
-  // The groups you made yourself, as kept (shared by both mods).
+  // The groups you made yourself (see groups.js).
   groups() {
-    const stored = shared("office.groups");
-    if (Array.isArray(stored)) return readGroups(stored);
-    try { return readGroups(JSON.parse(localStorage.getItem("office.groups") ?? "[]")); } catch { return []; }
-  }
-
-  // Writes the groups; both the panel and the Spaces list redraw from the value.
-  saveGroups(list) {
-    const clean = readGroups(list);
-    localStorage.setItem("office.groups", JSON.stringify(clean));
-    setShared("office.groups", clean);
+    return loadGroups(shared("office.groups"));
   }
 
   // A group is a band with its name and counts, then the rugs of the spaces in
@@ -530,8 +537,7 @@ export default class Office extends View {
           .text_color("#ffffff").child(`! ${count} need${count === 1 ? "s" : ""} you`)))
         .when(status === "working", (el) => el.child(div().flex_none().text_size(10).text_color(mixHex(t.working, "#ffffff", 0.3))
           .child(`\u25cf ${count} working`)))
-        .child(this.button(`group-rename-${g.id}`, "\u270e", "Rename this group, or change its spaces", t, () => this.editGroup(g.id)))
-        .child(this.button(`group-add-${g.id}`, "+", "Put a space in this group", t, () => this.editGroup(g.id)))
+        .child(this.button(`group-edit-${g.id}`, "\u270e", "Rename this group, or change its spaces", t, () => openGroupDialog(g.id)))
         .child(this.button(`group-drop-${g.id}`, "\u00d7", "Delete the group (the spaces stay)", t, () => this.dropGroup(g.id))))
       .when(!g.folded, (el) => el.child(v_flex().flex_none().gap(this.wide ? 10 : 8).pl(this.wide ? 12 : 8)
         .border_l(1).border_color(withAlpha(t.muted, "44"))
@@ -539,21 +545,86 @@ export default class Office extends View {
   }
 
   foldGroup(id, cx) {
-    this.saveGroups(this.groups().map((g) => (g.id === id ? { ...g, folded: !g.folded } : g)));
+    saveGroups(this.groups().map((g) => (g.id === id ? { ...g, folded: !g.folded } : g)), setShared);
     cx.notify();
   }
 
-  // The group dialog (name and the spaces in it): one overlay whether you
-  // rename a group or add spaces to it, so it opens at one size.
-  editGroup(id) {
-    openOverlay({ mod: "office-space-new", kind: "popup", width: 420, height: 430, props: { group: id } });
-  }
-
   dropGroup(id) {
-    this.saveGroups(this.groups().filter((g) => g.id !== id));
+    saveGroups(this.groups().filter((g) => g.id !== id), setShared);
   }
 
-  // A rail too narrow for desks: one face per agent, framed in its status colour.
+  // The sidebar's list: one row per agent — its face, name and role, its status
+  // and for how long, then the space and tab it sits in. Spaces in a group are
+  // banded under its name (folded, its rows go too); the rest follow as they come.
+  list(deck, roles, all, t) {
+    const now = (this.now = Date.now());
+    const n = tally(all);
+    const row = ({ space }, { agent: a, tab, pane }) => {
+      const job = roles.get(a.address);
+      const src = portraitPath(job);
+      const state = deskState(a, tab, now);
+      const tone = state?.status === "working" ? mixHex(t.working, "#ffffff", 0.3) : t[state?.status] ?? t.dim;
+      return h_flex().id(`agent-${a.address}`).flex_none().h(30).px(6).gap(6).items_center()
+        .cursor_pointer().hover((s) => s.bg(t.hover))
+        .when(this.hot === space.id, (el) => el.bg(withAlpha(t.accent, "22")))
+        .on_hover((hov) => hoverSpace(space.id, hov))
+        .tooltip(`${deskTip({ job, agent: a, pane, space, tab })}\nClick: go to its terminal · Right-click: menu · Middle-click: peek`)
+        .on_click(() => reach(a, space, tab, pane, a.address))
+        .on_mouse_down("right", (_e, cx) => {
+          cx.stop_propagation();
+          this.menu("pane", { ...(pane ? { pane: pane.pane } : {}), terminal: a.address });
+        })
+        .on_mouse_down("middle", (_e, cx) => {
+          cx.stop_propagation();
+          run("terminal.peek", { terminal: a.address });
+        })
+        .child(div().size(22).flex_none().border(1).border_color(t[state?.status] ?? t.dim).bg(t.raised)
+          .when(Boolean(src), (el) => el.child(image(src).size(20))))
+        .child(v_flex().flex_1().min_w(0).gap(0)
+          .child(h_flex().gap(5).items_center()
+            .child(div().min_w(0).truncate().text_size(11.5).text_color(t.foreground).child(deskLabel({ agent: a }) || "Agent"))
+            .when(Boolean(job), (el) => el.child(div().flex_none().text_size(9.5).text_color(t.dim).child(cap(job)))))
+          .child(div().min_w(0).truncate().text_size(10).text_color(t.dim)
+            .child(`${space.name} › ${tab.name}`)))
+        .child(state?.status === "blocked"
+          ? div().flex_none().px(4).bg(TAG).text_size(9.5).font_bold().text_color("#fff0e6").child("NEEDS YOU")
+          : div().flex_none().text_size(10).text_color(tone).child(state ? state.text : "Terminal"));
+    };
+    const band = (part) => {
+      const staff = part.rows.flatMap((r) => r.staff.map((d) => d.agent));
+      const status = urgent(staff);
+      const count = staff.filter((a) => a.status === status).length;
+      return v_flex().flex_none().gap(1)
+      .child(h_flex().id(`agent-group-${part.band.id}`).h(22).px(4).gap(6).items_center()
+        .bg("#080c1299").border_b(1).border_color(withAlpha(t.muted, "44"))
+        .child(div().size(12).flex_none().flex().items_center().justify_center().cursor_pointer()
+          .hover((s) => s.opacity(0.7))
+          .tooltip(part.band.folded ? "Show its agents" : "Fold its agents away")
+          .on_click((_e, cx) => this.foldGroup(part.band.id, cx))
+          .child(svg(`mods/office-chrome/chevron-${part.band.folded ? "right" : "down"}.svg`).size(9).flex_none().text_color(t.dim)))
+        .child(div().min_w(0).truncate().text_size(10.5).font_semibold().text_color(t.foreground).child(part.band.name))
+        .child(div().flex_1())
+        .when(status === "blocked", (el) => el.child(div().flex_none().px(4).bg(TAG).text_size(9.5).font_bold()
+          .text_color("#ffffff").child(`! ${count}`)))
+        .when(status === "working", (el) => el.child(div().flex_none().text_size(10).text_color(mixHex(t.working, "#ffffff", 0.3))
+          .child(`\u25cf ${count}`)))
+        .child(div().flex_none().text_size(10).text_color(t.dim).child(String(staff.length))))
+      .when(!part.band.folded, (el) => el.child(v_flex().flex_none().pl(10)
+        .children(part.rows.flatMap((r) => r.staff.map((d) => row(r, d))))));
+    };
+    return v_flex().id("office-agent-list").size_full().min_h(0).text_size(11.5)
+      .child(h_flex().h(28).flex_none().pl(16).pr(12).gap(6).items_center().bg(t.chrome).text_size(11.5).text_color(t.dim)
+        .child(div().flex_none().font_semibold().text_color(t.foreground).child("Office Agent"))
+        .child(div().flex_1())
+        .when(n.blocked > 0, (el) => el.child(div().flex_none().text_color(t.blocked).child(`${n.blocked} need${n.blocked === 1 ? "s" : ""} you ·`)))
+        .child(div().flex_none().text_size(10.5).child(`${n.working}/${all.length} at work · ${this.time}`)))
+      .child(this.wall())
+      .child(v_flex().id("office-agent-rows").flex_1().min_h(0).px(8).pb(14).gap(1).overflow_y_scrollbar()
+        .children(deck.flatMap((part) => (part.band ? [band(part)] : part.rows.flatMap((r) => r.staff.map((d) => row(r, d))))))
+        .when(!deck.length, (el) => el.child(div().p(8).text_size(11.5).text_color(t.dim).child("Nobody in yet. Open a space to start."))));
+  }
+
+  // A rail too narrow for the list: one face per agent, framed in its status colour.
   rail(plan, roles, t) {
     const seated = plan.flatMap((row) => row.tabs.flatMap((c) => c.desks.filter((d) => d.agent).map((d) => d.agent)));
     return v_flex().id("office-rail").size_full().min_h(0).items_center().gap(4).py(6).overflow_y_scrollbar()
@@ -770,7 +841,7 @@ export default class Office extends View {
     cx.notify();
   }
 
-  // The sidebar's back wall.
+  // The sidebar's back wall, over the list.
   wall() {
     return div().h(44).flex_none().overflow_hidden().child(image(WALL).w(300).h(44));
   }
@@ -792,7 +863,7 @@ export default class Office extends View {
       }))
       .child(div().flex_1())
       .child(this.button("office-new-group", "▤", "New group of spaces", t,
-        () => openOverlay({ mod: "office-space-new", kind: "popup", width: 420, height: 430, props: { group: "@new" } })))
+        () => openGroupDialog("@new")))
       .children([["small", "−", "Smaller desks"], ["large", "+", "Bigger desks"]].map(([zoom, label, tip]) => {
         const on = this.zoom === zoom;
         return div().id(`zoom-${zoom}`).size(22).flex().flex_none().items_center().justify_center().text_size(13)
@@ -1183,10 +1254,16 @@ export default class Office extends View {
     }
     this.roles = roles; // the desk window's header wears the same face
     if (!this.wide) {
-      // agent.next / agent.prev walk the desks in the order they are drawn.
-      setAgentOrder(plan.flatMap((row) => row.tabs.flatMap((c) => c.desks.filter((d) => d.agent && !d.agent.standIn).map((d) => d.agent.address))));
       this.shareFaces(roles);
-      if ((find(layout(), "sidebar")?.size?.px ?? Infinity) < 160) return this.rail(plan, roles, t);
+      // agent.next / agent.prev walk the agents in the order they are drawn.
+      const order = (seated) => setAgentOrder(seated.filter((a) => !a.standIn).map((a) => a.address));
+      if ((find(layout(), "sidebar")?.size?.px ?? Infinity) < 160) {
+        order(plan.flatMap((row) => row.tabs.flatMap((c) => c.desks.filter((d) => d.agent).map((d) => d.agent))));
+        return this.rail(plan, roles, t);
+      }
+      const deck = listDeck(plan, this.groups());
+      order(deck.flatMap((part) => part.rows.flatMap((r) => r.staff.map((d) => d.agent))));
+      return this.list(deck, roles, list, t);
     }
     const width = this.wide ? find(layout(), "panel")?.size?.px ?? 640 : 300;
     this.z = this.wide && this.zoom === "large" && width >= LARGE_FROM ? LARGE : SMALL;
@@ -1226,12 +1303,6 @@ export default class Office extends View {
       // Letting go anywhere but a lit Add desk (which stops this) drops a drag.
       .when(this.wide, (el) => el.on_mouse_up("left", (_e, cx) => { const was = this.drag?.moved; this.drag = null; if (was) cx.notify(); }))
       .child(div().absolute().top(0).left(0).child(image(FLOOR).w(912).h(800)))
-      .when(!this.wide, (el) => el
-        .child(h_flex().h(28).flex_none().pl(16).pr(12).gap(6).items_center().bg(t.chrome).text_size(11.5).text_color(t.dim)
-          .child(div().flex_1().child("Office"))
-          .when(n.blocked > 0, (el) => el.child(div().text_color(t.blocked).child(`${n.blocked} need${n.blocked === 1 ? "s" : ""} you ·`)))
-          .child(div().text_size(11).child(`${n.working}/${list.length} at work · ${this.time}`)))
-        .child(this.wall()))
       .when(this.wide, (el) => {
         const ask = this.needsYou(list, roles, sp, t, mono);
         return el.child(this.header(n, list.length, t)).child(this.bossBand(t, sp, list, team)).when(Boolean(ask), (el) => el.child(ask));

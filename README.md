@@ -93,7 +93,11 @@ Herdr keeps the mod names in its own `seen.json`, which is harmless.
     them and their status count — no door, git or actions of its own. Its spaces
     follow as ordinary rows, each still marked with its own number. `▾` on the
     band folds them away (kept, and the Office panel folds the same way), `▸`
-    brings them back; `⋯` edits the group. A group with no space on a machine,
+    brings them back; `⋯` edits the group. A space sits in one group: ticking
+    one that is in another moves it. A space closed and opened again (from
+    here, the dialog, or after a restart) goes back in its group. Groups live in
+    `mods/office-agents/groups.js`; a mod can't import outside its folder, so
+    Spaces and the dialog carry verbatim copies (the tests check they match). A group with no space on a machine,
     or none left after a filter, draws no band.
   - **New space:** every `+` (the header, a machine's header, the Office
     panel's `+ New space`) opens a dialog instead of a space in home. It starts
@@ -112,25 +116,17 @@ Herdr keeps the mod names in its own `seen.json`, which is harmless.
     places. A machine that needs a login shows the command to copy.
   - **Narrow:** dragged below 160 px, Spaces becomes a rail: one numbered cell
     per room with its status dot, and one cell per machine.
-  - **Office:** a header (`N need you`, `N/M at work`, the time), the back wall
-    (night windows, clock, kanban board, door, water cooler, plant), then the
-    dark carpet. Each **space is a rug** tinted in its door's colour, in the
-    Spaces order. On it each **tab is a cubicle** with its name (amber for the
-    tab you are on). In it each **pane is a desk, placed the way the tab is
-    split**: panes split right sit side by side, panes split down sit one above
-    the other, so a tab split right and then down on the right shows one desk
-    on the left and two stacked on the right. A pane with an agent has
-    its staff member (a pastel chibi) behind the desk facing you, the monitor beside them showing
-    the state; any other pane is an empty desk with the screen off, labelled
-    `Terminal` for a shell (never the long `user@host:path` title) or its
-    program's name. A sub-agent without a pane of its own takes an extra desk at
-    the end of its tab. Put-away tabs stay out unless someone in them needs you.
-    Spaces you put in a **group** are drawn together: a slim band with the
-    group's name and `N spaces`, then each space as its own rug exactly as it
-    would be on its own (cubicles, desks, + Tab), indented under a thin line.
-    `▾` on the band folds its spaces away; `✎`, `+` and `×` there rename it, put
-    another space in it, or delete it (the spaces stay). A group with no space on
-    the floor after a filter draws nothing.
+  - **Office Agent:** every agent as a list, not the floor. A header
+    (`Office Agent`, `N need you`, `N/M at work`, the time), the back wall
+    (night windows, clock, kanban board, door, water cooler, plant), then one
+    30 px row per agent: its face framed in its status colour, its name and
+    role, the status and for how long (`Working · 12m`, `NEEDS YOU`, `✓ Done`),
+    and the space › tab it sits in. A click goes to its terminal; right-click
+    opens Herdr's menu, middle-click peeks. Spaces you put in a **group** are
+    banded: a slim header with the group's name, how many agents it holds and
+    `! N` / `● N` when some need you or are working (seen even folded), then their rows indented under it. `▾` on the band folds them away (the
+    same fold the Spaces list and the Office panel share). The floor itself —
+    rugs, cubicles and desks — is in the **Office** panel.
 - **Tabs, 58 px:** square 48 px tabs showing **every agent in the tab**: one
   agent as a 44 px portrait, several as overlapping faces framed in their status
   colour (four at most, then `+n`), then a terminal mark with the count of the
@@ -165,7 +161,7 @@ they run without re-rendering the mod. Click a staffed desk for
 that pane. Hover for who, what and where. Right-click a desk, a cubicle or a
 rug for Herdr's own pane, tab or space menu; middle-click a desk to peek at its
 terminal without leaving your tab. `agent.next` / `agent.prev` walk the
-desks in the order they are drawn. Narrowed below 160 px, the office becomes a
+desks in the order they are drawn. Narrowed below 160 px, Office Agent becomes a
 column of faces framed in their status colour.
 
 ### The Office panel

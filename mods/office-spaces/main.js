@@ -18,58 +18,13 @@
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { spaces, machines, panes, agents, run, openOverlay, exec, hc, home, theme, shared, setShared, watchFolder, window, layout } from "herdr";
+import { groupOf, loadGroups, planGroups, regroup, saveGroups } from "./groups.js";
 
-// Groups you make yourself: shared("office.groups"), [{ id, name, spaces, folded }].
-// A group is only a way to hold spaces together in this list and in the Office
-// panel; it never changes a space's folder or order.
-const groupsNow = () => {
-  const stored = shared("office.groups");
-  if (Array.isArray(stored)) return groupsNowFrom(JSON.stringify(stored));
-  return groupsNowFrom(localStorage.getItem("office.groups"));
-};
-
-// The groups kept in a store value, as readGroups does (kept local so this mod
-// imports nothing across mods).
-function groupsNowFrom(text) {
-  let list;
-  try { list = JSON.parse(text ?? "[]"); } catch { return []; }
-  if (!Array.isArray(list)) return [];
-  const out = [];
-  for (const g of list) {
-    if (!g || typeof g.id !== "string" || !g.id || typeof g.name !== "string" || !g.name.trim()) continue;
-    if (out.some((k) => k.id === g.id)) continue;
-    out.push({ id: g.id, name: g.name.trim().slice(0, 40),
-      spaces: Array.isArray(g.spaces) ? [...new Set(g.spaces.filter((s) => typeof s === "string"))] : [],
-      folded: g.folded === true });
-  }
-  return out;
-}
-
-// Rows folded into groups: a group appears where its first space is, a space in
-// no group stands alone. Groups with no space in these rows don't appear (they
-// are on another machine, or the machine hasn't said yet).
-function groupRows(rows, groups) {
-  const owner = new Map();
-  for (const g of groups) for (const id of g.spaces) if (!owner.has(id)) owner.set(id, g.id);
-  const held = new Map(groups.map((g) => [g.id, { band: g, rows: [] }]));
-  const out = [];
-  for (const row of rows) {
-    const gid = owner.get(row.w.id);
-    const entry = gid ? held.get(gid) : null;
-    if (!entry) { out.push({ band: null, rows: [row] }); continue; }
-    if (!out.includes(entry)) out.push(entry);
-    entry.rows.push(row);
-  }
-  return out;
-}
-
-// The groups as both mods keep them, written back.
-function saveGroups(list) {
-  const clean = list.map((g) => ({ id: g.id, name: g.name.trim().slice(0, 40),
-    spaces: [...new Set((g.spaces ?? []).filter((s) => typeof s === "string"))], folded: g.folded === true }));
-  setShared("office.groups", clean);
-  localStorage.setItem("office.groups", JSON.stringify(clean));
-}
+// Groups you make yourself (office-agents/groups.js): a way to hold spaces
+// together in this list and in the Office panel; they never change a space's
+// folder or order.
+// The group dialog: a group id to edit, "@new" to make one.
+const openGroupDialog = (group) => openOverlay({ mod: "office-space-new", kind: "popup", width: 420, height: 430, props: { group } });
 
 // A theme colour with a two-digit alpha (theme colours are #rrggbb).
 const alpha = (c, a) => (typeof c === "string" && /^#[0-9a-fA-F]{6}/.test(c) ? `${c.slice(0, 7)}${a}` : c);
@@ -228,7 +183,7 @@ export default class Spaces extends View {
     this.closedOpen = localStorage.getItem("rooms.folded") !== "1";
     // Groups you made (shared with the Office panel), started from what was kept.
     if (!Array.isArray(shared("office.groups"))) {
-      try { setShared("office.groups", groupsNowFrom(localStorage.getItem("office.groups"))); } catch {}
+      setShared("office.groups", loadGroups(null));
     }
     this.reopening = null; // { machine, folder, color, before, until }: its colour comes back
     this.hovering = null;
@@ -246,22 +201,34 @@ export default class Spaces extends View {
     const sp = spaces(), ps = panes();
     const ready = new Set(machines().filter((m) => m.layout === "ready").map((m) => m.name ?? null));
     const colors = shared("space.colors") ?? {};
+    const groups = this.groups();
     const known = {};
     for (const s of sp) {
       const folder = place(s, ps);
-      known[s.id] = { name: s.name, named: s.named, folder, machine: s.machine ?? null, color: colors[s.id] ?? this.known[s.id]?.color ?? null };
+      known[s.id] = { name: s.name, named: s.named, folder, machine: s.machine ?? null, color: colors[s.id] ?? this.known[s.id]?.color ?? null, group: groupOf(groups, s.id) };
     }
     let closed = this.closed;
+    const gone = [];
     for (const [id, r] of Object.entries(this.known)) {
       if (known[id]) continue;
       // A machine away or still loading hides its spaces: they aren't closed.
       if (!ready.has(r.machine ?? null)) { known[id] = r; continue; }
       if (!r.folder || (!r.machine && r.folder === this.homeDir())) continue;
+      // Its id leaves its group; the closed room remembers the group (r.group).
+      gone.push(id);
       closed = [{ ...r, at: Date.now() }, ...closed.filter((c) => roomKey(c) !== roomKey(r))];
     }
-    // A room open again isn't closed any more.
-    const open = new Set(Object.values(known).map(roomKey));
-    closed = closed.filter((c) => !open.has(roomKey(c))).slice(0, ROOMS);
+    // A room open again isn't closed any more, and goes back in its group under
+    // its new id, however it was opened (here, the dialog, a restart).
+    const open = new Map(sp.map((s) => [roomKey(known[s.id]), s.id]));
+    const back = closed.filter((c) => c.group && open.has(roomKey(c))).map((c) => [open.get(roomKey(c)), c.group]);
+    const regrouped = regroup(groups, gone, back);
+    if (regrouped) {
+      saveGroups(regrouped, setShared);
+      for (const [id, gid] of back) if (groupOf(regrouped, id) === gid) known[id].group = gid;
+    }
+    const live = new Set(Object.values(known).map(roomKey));
+    closed = closed.filter((c) => !live.has(roomKey(c))).slice(0, ROOMS);
     const k = JSON.stringify(known), c = JSON.stringify(closed);
     if (k !== JSON.stringify(this.known)) localStorage.setItem("rooms.known", k);
     this.known = known;
@@ -526,7 +493,7 @@ export default class Spaces extends View {
 
   // The groups you made, as kept.
   groups() {
-    return groupsNow();
+    return loadGroups(shared("office.groups"));
   }
 
   // The rows, under a header per machine once one isn't this computer.
@@ -536,10 +503,10 @@ export default class Spaces extends View {
     const draw = (r) => (collapsed ? this.compact(r, t) : this.row(r, t));
     // A machine's rows as groups you made, then the loose ones. A group with
     // spaces on two machines draws a band under each, so its ids carry the one.
-    const parts = (mine, m) => groupRows(mine, groups)
+    const parts = (mine, m) => planGroups(mine, groups, (r) => r.w.id)
       .flatMap((part) => (part.band
         ? [this.groupBand(part.band, part.rows.length, t, collapsed, m)]
-          .concat(collapsed || part.band.folded ? [] : part.rows.map(draw))
+          .concat(part.band.folded ? [] : part.rows.map(draw))
         : part.rows.map(draw)));
     const remote = [...new Set([...rows.map(r => r.w.machine).filter(Boolean), ...this.machines.map(m => m.name), ...Object.keys(this.reconnecting)])].sort();
     const loading = m => {
@@ -719,12 +686,12 @@ export default class Spaces extends View {
 
   // What can be done with a group: rename it, put spaces in it, delete it.
   groupMenu(g) {
-    openOverlay({ mod: "office-space-new", kind: "popup", width: 420, height: 430, props: { group: g.id } });
+    openGroupDialog(g.id);
   }
 
   foldGroup(id, cx) {
     const groups = this.groups().map((g) => (g.id === id ? { ...g, folded: !g.folded } : g));
-    saveGroups(groups);
+    saveGroups(groups, setShared);
     cx.notify();
   }
 
@@ -908,7 +875,7 @@ export default class Spaces extends View {
         .when(!collapsed, el => el.child(div().flex_1()))
         .when(!collapsed, el => el.child(div().id("group-new").size(26).flex_none().flex().items_center().justify_center().rounded(6)
           .hover(s => s.bg(t.hover).text_color(t.foreground)).tooltip("New group of spaces")
-          .on_click(() => openOverlay({ mod: "office-space-new", kind: "popup", width: 420, height: 430, props: { group: "@new" } }))
+          .on_click(() => openGroupDialog("@new"))
           .child("\u25a4")))
         .child(div().id("space-new").size(26).flex_none().flex().items_center().justify_center().rounded(6).hover(s => s.bg(t.hover).text_color(t.foreground))
           .tooltip("New space").on_click(() => newSpace(spaces().find((s) => s.active)?.machine ?? null))

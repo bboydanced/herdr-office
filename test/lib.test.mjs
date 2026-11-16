@@ -3,6 +3,7 @@
 //     node test/lib.test.mjs
 
 import * as A from "./../mods/office-agents/lib.js";
+import * as Gr from "./../mods/office-agents/groups.js";
 import * as T from "./../mods/office-tabs/lib.js";
 import { readFileSync } from "node:fs";
 let pass = 0, fail = 0;
@@ -106,16 +107,29 @@ ok(A.spaceColor({ accent: "#e0a44a" }, null, "s1") === "#e0a44a", "no colours, n
 
 // groups you make yourself
 const G = (id, name, spaces, folded = false) => ({ id, name, spaces, folded });
-ok(A.readGroups(null).length === 0 && A.readGroups("x").length === 0 && A.readGroups([null, 3]).length === 0, "nothing in, nothing out");
-ok(A.readGroups([G("g1", "  Checkout  ", ["s1", "s1", 7]), G("g1", "dup"), { name: "no id" }]).length === 1, "one per id, spaces deduped, junk dropped");
-const g1 = A.readGroups([G("g1", "  Checkout  ", ["s1", "s1", 7])])[0];
+ok(Gr.readGroups(null).length === 0 && Gr.readGroups("x").length === 0 && Gr.readGroups([null, 3]).length === 0, "nothing in, nothing out");
+ok(Gr.readGroups([G("g1", "  Checkout  ", ["s1", "s1", 7]), G("g1", "dup"), { name: "no id" }]).length === 1, "one per id, spaces deduped, junk dropped");
+const g1 = Gr.readGroups([G("g1", "  Checkout  ", ["s1", "s1", 7])])[0];
 ok(g1.name === "Checkout" && g1.spaces.join() === "s1" && g1.folded === false, "group read clean");
-const deck = A.planGroups(plan, [G("g1", "One", ["s2"]), G("g2", "Empty", [])]);
+const deck = Gr.planGroups(plan, [G("g1", "One", ["s2"]), G("g2", "Empty", [])]);
 ok(deck.map((d) => d.band?.name ?? "-").join() === "-,One", "a group sits where its first space is, an empty one nowhere");
 ok(deck[0].rows.length === 1 && deck[0].rows[0].space.id === "s1" && deck[1].rows[0].space.id === "s2", "its spaces in the floor's order");
-ok(A.planGroups(plan, []).length === 2 && A.planGroups(null, [G("g1", "x", ["s1"])]).length === 0, "no rows: no group");
-ok(A.planGroups(plan, [G("a", "A", ["s1"]), G("b", "B", ["s1", "s2"])])[1].rows.length === 1, "a space in two groups stays in the first");
-ok(A.groupRows(plan, G("g1", "x", ["s2", "gone"])).map((r) => r.space.id).join() === "s2", "group rows: live spaces only");
+ok(Gr.planGroups(plan, []).length === 2 && Gr.planGroups(null, [G("g1", "x", ["s1"])]).length === 0, "no rows: no group");
+ok(Gr.planGroups(plan, [G("a", "A", ["s1"]), G("b", "B", ["s1", "s2"])])[1].rows.length === 1, "a space in two groups stays in the first");
+
+ok(Gr.planGroups([{ w: { id: "s2" } }, { w: { id: "s1" } }], [G("g", "G", ["s1", "s2"])], (r) => r.w.id)[0].rows.length === 2, "rows keyed another way (Spaces list)");
+ok(Gr.groupOf([G("a", "A", ["s1"])], "s1") === "a" && Gr.groupOf([], "s1") === null, "group of a space");
+const put = Gr.putGroup([G("a", "A", ["s1", "s2"], true), G("b", "B", ["s3"])], { id: "a", name: "A2", spaces: ["s1", "s3"] });
+ok(put.map((g) => `${g.id}:${g.spaces.join("+")}:${g.folded}`).join() === "a:s1+s3:true,b::false", "putGroup: edit keeps place and fold, takes its spaces from others");
+ok(Gr.putGroup([G("a", "A", ["s1"])], { id: "n", name: "N", spaces: ["s1"] }).map((g) => `${g.id}:${g.spaces.join("+")}`).join() === "a:,n:s1", "putGroup: a new group goes last");
+const rg = Gr.regroup([G("a", "A", ["old", "s2"]), G("b", "B", ["s9"])], ["old"], [["new", "a"], ["s9", "a"], ["x", "gone"]]);
+ok(rg.map((g) => `${g.id}:${g.spaces.join("+")}`).join() === "a:s2+new,b:s9", "regroup: closed id out, reopened id back, one group per space");
+ok(Gr.regroup([G("a", "A", ["s1"])], ["zz"], []) === null, "regroup: nothing changed -> null");
+
+const groupsSrc = readFileSync(new URL("../mods/office-agents/groups.js", import.meta.url), "utf8");
+for (const m of ["office-spaces", "office-space-new"]) {
+  ok(readFileSync(new URL(`../mods/${m}/groups.js`, import.meta.url), "utf8") === groupsSrc, `${m}/groups.js is a verbatim copy`);
+}
 
 // wide office: filters, counts, fit, times
 ok(A.filterPlan(plan, "all") === plan && A.filterPlan(null, "working").length === 0, "no filter keeps the plan");
