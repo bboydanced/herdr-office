@@ -74,8 +74,9 @@ export function portraitPath(job) {
   return typeof job === "string" && JOB_SET.has(job) ? `${PORTRAITS_DIR}/${job}.png` : null;
 }
 
-// Every tab's desks: a desk per pane in the tab's pane order (an agent, or
-// nobody), then one per agent with no pane of its own (a sub-agent).
+// Every tab's desks: a desk per terminal pane in the tab's pane order (an agent,
+// or nobody), then one per agent with no pane of its own (a sub-agent). Mod
+// panes get none, so a tab holding only views has no cubicle.
 export function tabDesks(spaces, panes, agents) {
   const paneIds = new Set((panes ?? []).map((p) => p.pane));
   const byPane = new Map();
@@ -85,7 +86,11 @@ export function tabDesks(spaces, panes, agents) {
     else extra.set(a.tab, [...(extra.get(a.tab) ?? []), a]);
   }
   const out = new Map();
-  for (const p of panes ?? []) out.set(p.tab, [...(out.get(p.tab) ?? []), { pane: p, agent: byPane.get(p.pane) ?? null }]);
+  for (const p of panes ?? []) {
+    // A mod's pane (git-changes' diff, a commit view) is a view, not a desk.
+    if (p.mod || p.terminal === null) continue;
+    out.set(p.tab, [...(out.get(p.tab) ?? []), { pane: p, agent: byPane.get(p.pane) ?? null }]);
+  }
   for (const [tab, list] of extra) out.set(tab, [...(out.get(tab) ?? []), ...list.map((agent) => ({ pane: null, agent }))]);
   return out;
 }

@@ -36,9 +36,9 @@
 // Above the floor, "Needs you": a waiting agent's question read from its screen,
 // its numbered choices (or Enter / Esc) pressed with `hc keys` when you click.
 import { View, div, image, svg } from "gpui-kit";
-import { Input, InputState, h_flex, v_flex } from "gpui-base";
+import { Input, InputState, Popover, Textarea, TextareaState, h_flex, v_flex } from "gpui-base";
 import { agents, appHome, closeOverlay, commands, exec, focused, hc, home, knownAgents, layout, openOverlay, panes, props, readTextFile, run, setAgentOrder, setShared, shared, spaces, terminals, theme } from "herdr";
-import { DESK_SHADOW, EMPTY_DESK, ago, bossBrief, deskColumns, labelOf, deskJobs, deskLabel, deskPath, deskState, deskTip, filterPlan, findBosses, firstLine, fitAcross, isBossTab, isHire, localId, mixHex, officePlan, parsePrompt, portraitPath, roleFromName, screenLines, seatStep, shortPath, spaceColor, speechLine, splitTree, staffOf, standIn, tally, treeWidth, withAlpha } from "./lib.js";
+import { DESK_SHADOW, EMPTY_DESK, ago, bossBrief, bossStage, deskColumns, labelOf, deskJobs, deskLabel, deskPath, deskState, deskTip, filterPlan, findBosses, firstLine, fitAcross, isBossTab, isHire, localId, mixHex, officePlan, parsePrompt, portraitPath, roleFromName, screenLines, seatStep, shortPath, spaceColor, speechLine, splitTree, staffOf, standIn, tally, treeWidth, withAlpha } from "./lib.js";
 import { Desk } from "./desk.js";
 import { loadGroups, planGroups, saveGroups } from "./groups.js";
 
@@ -57,17 +57,14 @@ const DESK_HEAD_H = 76;
 // herdr-core keeps every app's shared documents here, Herdr's layout among them.
 const CORE_DOCS = ".local/state/herdr-core/default/docs.json";
 const WALL = "mods/office-agents/room/wall.png";
-// 456 art pixels wide at 2 points each: the sidebar shows its left part.
+// The panel's graphite floor, 456x400 art pixels at 2 points each; past its
+// bottom, its base colour (build-art.py PLANK) carries on.
 const FLOOR = "mods/office-agents/room/floor.png";
-const CARPET = "#1e2634";
+const CARPET = "#1b1e25";
 const TAG = "#c8392f";
-// Desks are 36x30 art pixels, in a slot wide enough for a name: 2 points a pixel
-// in the sidebar, 3 in a wide panel. pad: the floor, rug and cubicle padding
-// around a row of desks.
+// Desks are 36x30 art pixels at 2 points a pixel, in a slot wide enough for a
+// name. pad: the floor, rug and cubicle padding around a row of desks.
 const SMALL = { deskW: 72, deskH: 60, slot: 80, label: 13, text: 10, gap: 6, pad: 40 };
-const LARGE = { deskW: 108, deskH: 90, slot: 120, label: 16, text: 11.5, gap: 8, pad: 52 };
-// "+" draws the panel's desks this big once it is at least this wide.
-const LARGE_FROM = 480;
 // In the sidebar, wider than this many desks a split tree falls back to rows.
 const MOST_ACROSS = 3;
 const FILTERS = [["all", "All"], ["working", "Working"], ["blocked", "Needs you"], ["done", "Done"]];
@@ -75,7 +72,24 @@ const FILTERS = [["all", "All"], ["working", "Working"], ["blocked", "Needs you"
 // Its band, on a plain backing so its words read: the boss on the left; what it
 // says, the rooms row and the goal box beside it; folded, one line.
 const BOSS_DIR = "mods/office-agents/boss";
-const BAND_H = 100;
+// The boss's office (room/boss-office.png, 900x136 points): its wall down to
+// WALL_H, then the floor it stands on. The band grows with the goal box; the
+// floor's colour carries on below the picture.
+const BAND_H = 136;
+const BOSS_ROOM = "mods/office-agents/room/boss-office.png";
+const WALL_H = 64;
+const BOSS_FLOOR = CARPET;
+const STICKY = "#f0d27a";
+const INK = "#1d2733";
+// How a boss works, in order (bossStage): what each step means.
+const FLOW_TIPS = [
+  "Plan: reads your goal and splits it into pieces that can run side by side",
+  "Hire: one coding agent per piece, at most 4 at work at once",
+  "Review: reads each agent's changes and runs the check before calling it done",
+  "Report: tells you what was done, and asks before anything destructive",
+];
+// The orchestrator picked by default, when it is installed.
+const DEFAULT_BOSS = "claude";
 const BAND_FOLDED_H = 34;
 // How many hires the boss is told it may have at a time.
 const STAFF_CAP = 4;
@@ -196,7 +210,6 @@ const programIcon = (program, t, size = 14) => {
   return (program.tint ? svg(program.icon).text_color(program.color ?? t.muted) : image(program.icon)).size(size).flex_none();
 };
 
-// The most urgent status among some agents: waiting beats working.
 // The group dialog (name and the spaces in it): a group id, or "@new".
 const openGroupDialog = (group) => openOverlay({ mod: "office-space-new", kind: "popup", width: 420, height: 430, props: { group } });
 // The sidebar list's rows: per space, its staff with the tab and pane each sits
@@ -210,6 +223,7 @@ function listDeck(plan, groups) {
     .filter((row) => row.staff.length > 0);
   return planGroups(rows, groups);
 }
+// The most urgent status among some agents: waiting beats working.
 const urgent = (list) => (list.some((a) => a.status === "blocked") ? "blocked" : list.some((a) => a.status === "working") ? "working" : null);
 
 export default class Office extends View {
@@ -223,7 +237,6 @@ export default class Office extends View {
     this.shape = null; // every tab's panes, to notice splits and closes
     this.filter = localStorage.getItem("office.filter") ?? "all"; // wide only
     this.tried = new Map(); // a hire -> when it was last given a pane (sidebar)
-    this.zoom = localStorage.getItem("office.zoom") === "large" ? "large" : "small"; // wide only
     this.marked = new Set(); // bosses this copy has labelled office.role=boss
     if (props()?.wide) {
       this.selected = localStorage.getItem("office.selected") || null; // a terminal's address
@@ -234,10 +247,13 @@ export default class Office extends View {
       this.answering = false; // a key pressed for "Needs you"
       this.bossRoom = localStorage.getItem("office.bossRoom") || null; // a space id
       this.bossPick = localStorage.getItem("office.bossAgent") || null; // a program key
+      this.picking = null; // the boss band's open picker: "room" | "agent" | null
       this.known = {}; // machine ("" here) -> installed agents (knownAgents)
       this.loadingKnown = new Set();
-      this.bossInput = InputState.new({ placeholder: "Tell the boss what you need…" });
-      this.bossInput.on("submit", (_e, cx) => this.assign(cx));
+      // Multi-line, so a pasted spec keeps its lines (hc send pastes it whole).
+      this.bossInput = TextareaState.new({ placeholder: "What should the team do? Paste a spec or type it · Ctrl+Enter sends" });
+      this.bossInput.set_auto_grow(1, 6);
+      this.bossInput.on("submit", (e, cx) => { if (e?.secondary) this.assign(cx); });
       this.bossSay = null; // { key, seq, at, line }: the boss's latest line
       this.bossNote = null;
       this.bossReading = false;
@@ -473,6 +489,7 @@ export default class Office extends View {
     const count = staff.filter((a) => a.status === status).length;
     const shown = activity(`rug-${row.space.id}`, status, t, false);
     const hot = this.hot === row.space.id;
+    const flow = this.wide ? this.bossFlow(row.space.id) : null;
     return v_flex()
       .id(`rug-${row.space.id}`)
       .relative()
@@ -500,6 +517,9 @@ export default class Office extends View {
           .child(`● ${count} working`)))
         .when(this.wide, (el) => el.child(this.button(`add-tab-${row.space.id}`, "+ Tab", "New tab: a terminal or an agent", t,
           () => this.add({ mode: "tab", space: row.space.id, machine: row.space.machine ?? null, where: row.space.name })))))
+      .when(Boolean(flow), (el) => el.child(h_flex().gap(6).items_center()
+        .child(div().flex_none().text_size(10).font_semibold().text_color(t.muted).child("BOSS"))
+        .child(this.flowNotes(`rug-${row.space.id}`, flow, t))))
       .child(h_flex().flex_wrap().items_start().gap(this.wide ? 8 : 6)
         .children(row.tabs.map((c) => this.cubicle(row, c, roles, color, trees.get(c.tab.id) ?? null, t))))
       .children(shown.over);
@@ -846,7 +866,7 @@ export default class Office extends View {
     return div().h(44).flex_none().overflow_hidden().child(image(WALL).w(300).h(44));
   }
 
-  // The wide header: the filters with their counts, desk size, the time.
+  // The wide header: the filters with their counts, the time.
   header(n, total, t) {
     return h_flex().h(34).flex_none().pl(14).pr(10).gap(5).items_center().bg(t.chrome).overflow_hidden()
       .child(div().flex_none().pr(6).text_size(12.5).font_semibold().text_color(t.foreground).child("Office"))
@@ -864,14 +884,6 @@ export default class Office extends View {
       .child(div().flex_1())
       .child(this.button("office-new-group", "▤", "New group of spaces", t,
         () => openGroupDialog("@new")))
-      .children([["small", "−", "Smaller desks"], ["large", "+", "Bigger desks"]].map(([zoom, label, tip]) => {
-        const on = this.zoom === zoom;
-        return div().id(`zoom-${zoom}`).size(22).flex().flex_none().items_center().justify_center().text_size(13)
-          .border(1).border_color(on ? t.accent : withAlpha(t.border, "33")).text_color(on ? t.foreground : t.muted)
-          .cursor_pointer().hover((s) => s.bg(t.hover)).tooltip(tip)
-          .on_click((_e, cx) => { this.zoom = zoom; localStorage.setItem("office.zoom", zoom); cx.notify(); })
-          .child(label);
-      }))
       .child(div().flex_none().pl(4).text_size(11).text_color(t.dim).child(this.time));
   }
 
@@ -972,7 +984,7 @@ export default class Office extends View {
   // Worked out afresh rather than read from what was last shared, so a goal never
   // goes to a boss that is gone and never hires a second one.
   assign(cx) {
-    const goal = (this.bossInput?.value() ?? "").replace(/\s+/g, " ").trim();
+    const goal = (this.bossInput?.value() ?? "").replace(/\r\n?/g, "\n").replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
     if (!goal || this.bossBusy) return;
     const sp = spaces();
     const ps = panes();
@@ -1005,7 +1017,7 @@ export default class Office extends View {
     }
     const known = this.known[room.machine ?? ""];
     if (!known) return this.flash("Looking for agents…", "muted", cx, "bossNote");
-    const pick = known.find((k) => k.key === this.bossPick) ?? known[0];
+    const pick = this.bossAgent(known);
     if (!pick) return this.flash("No agent installed to be the boss", "blocked", cx, "bossNote");
     const folder = spaceFolder(room, ps);
     this.bossBusy = true;
@@ -1066,9 +1078,75 @@ export default class Office extends View {
     localStorage.setItem("office.bossBand", folded ? "folded" : "open");
   }
 
-  // The boss's band: the boss standing on the left; beside it what it says,
-  // where goals go and the box to give it one, each on its own row. Folded: its
-  // face and its line.
+  // The orchestrator a new boss runs: the one you picked, else Claude Code, else
+  // the first agent installed.
+  bossAgent(known) {
+    if (!Array.isArray(known)) return null;
+    return known.find((k) => k.key === this.bossPick) ?? known.find((k) => k.key === DEFAULT_BOSS) ?? known[0] ?? null;
+  }
+
+  // A space's boss and where it is in its flow; null with no boss there.
+  bossFlow(spaceId) {
+    const addr = this.bosses()[spaceId];
+    if (!addr || !this.teamNow) return null;
+    const list = this.listNow ?? [];
+    const hires = this.teamNow.bosses.get(addr)?.staff ?? [];
+    return bossStage(list.find((a) => a.address === addr) ?? null, list.filter((a) => hires.includes(a.address)));
+  }
+
+  // The flow as four notes on a cork strip: steps behind ticked and faded, the
+  // one it is on lit (red while someone waits for you), the rest pale.
+  flowNotes(id, f, t) {
+    const labels = [
+      "Plan",
+      f.hired ? `Hired ${f.hired} agent${f.hired === 1 ? "" : "s"}${f.busy ? ` · ${f.busy} at work` : ""}` : "Hire ≤4",
+      "Review",
+      "Report",
+    ];
+    const finished = !f.live && f.stage === "report";
+    return h_flex().id(`flow-${id}`).flex_none().h(22).px(3).gap(3).items_center().bg("#5b4330").border(1).border_color("#3a2a1e")
+      .children(labels.map((text, i) => {
+        const past = i < f.step || (finished && i === f.step);
+        const now = i === f.step && !finished;
+        const ring = now ? (f.blocked ? t.blocked : f.live ? t.accent : "#c9b48a") : null;
+        return div().id(`flow-${id}-${i}`).relative().h(16).px(6).flex().flex_none().items_center().gap(3)
+          .bg(past ? "#c9b98f" : now ? STICKY : "#e8dcb8").border(1).border_color(ring ?? "#00000000")
+          .text_size(10).font_semibold().text_color(past || !now ? "#6a5c45" : INK).opacity(now || past ? 1 : 0.7)
+          .tooltip(FLOW_TIPS[i])
+          .child(past ? `✓ ${text}` : now && f.live ? `${text}…` : text);
+      }));
+  }
+
+  // A dropdown in the boss's office: the trigger a wooden nameplate like the
+  // boss's; open, an index card in a manila folder tab, one ruled line per
+  // option, the picked one highlighted and ticked.
+  picker(id, t, value, tip, options, onPick, title) {
+    const open = this.picking === id;
+    const trigger = h_flex().id(`pick-${id}`).h(26).px(8).gap(6).flex_none().max_w(170).items_center()
+      .text_size(11.5).text_color("#f3e3c3").bg("#3b2a1c").border(1)
+      .border_color(open ? "#e0b45a" : "#6b4a2e").cursor_pointer().hover((s) => s.bg("#4a3524")).tooltip(tip)
+      .child(h_flex().min_w(0).gap(5).items_center().children(value))
+      .child(svg(`mods/office-chrome/chevron-${open ? "right" : "down"}.svg`).size(10).flex_none().text_color("#c9b48a"));
+    const card = v_flex().id(`pick-${id}-card`).w(240).flex_none()
+      .child(h_flex().flex_none()
+        .child(div().h(18).px(10).flex().items_center().bg("#d9b86a").border_t(1).border_l(1).border_r(1).border_color("#a8863f")
+          .text_size(9.5).font_bold().text_color("#4a3518").child(title)))
+      .child(v_flex().id(`pick-${id}-list`).max_h(264).py(3).overflow_y_scrollbar().bg("#f2ead4").border(1).border_color("#a8863f")
+        .children(options.map((o) => h_flex().id(`pick-${id}-${o.key}`).h(28).px(10).gap(7).items_center().cursor_pointer()
+          .border_b(1).border_color("#dccfa9").text_size(12).text_color(INK)
+          .when(o.on, (el) => el.bg("#f6e27a"))
+          .hover((s) => s.bg("#efe0a8"))
+          .on_click((_e, cx) => { this.picking = null; onPick(o.key); cx.notify(); })
+          .children(o.label)
+          .child(div().w(12).flex_none().text_size(11).font_bold().text_color("#2f7a4a").child(o.on ? "✓" : "")))));
+    return Popover.new(`picker-${id}`).anchor("top_left").open(open)
+      .on_open_change((on, cx) => { this.picking = on ? id : null; cx.notify(); })
+      .trigger(trigger).content(card);
+  }
+
+  // The boss's office: its back wall with what it does pinned on it, the boss
+  // standing on the left; on the floor what it says, then where the goal goes,
+  // who leads a new team and the goal itself. Folded: its face and its line.
   bossBand(t, sp, list, team) {
     const room = this.room(sp);
     const bosses = this.bosses();
@@ -1083,8 +1161,8 @@ export default class Office extends View {
     const state = boss?.status ?? "idle";
     // What it says: its office.say label, else its screen's last line.
     const said = (bossAddr && team.say.get(bossAddr)) || (bossAddr && this.bossSay?.key === bossAddr ? this.bossSay.line : "");
-    const line = this.bossNote?.text
-      ?? (said || (bossAddr ? (boss ? deskLabel({ agent: boss }) : "Getting ready…") : `Tell me what ${room?.name ?? "this space"} needs: I'll hire the team.`));
+    const line = this.bossNote?.text ?? (said || (bossAddr ? (boss ? deskLabel({ agent: boss }) : "Getting ready…") : "No boss here yet"));
+    const lineColor = this.bossNote ? t[this.bossNote.tone] ?? t.foreground : bossAddr ? t.foreground : t.dim;
     const tip = bossAddr ? "The boss · click for details, double-click for its terminal" : "The boss: give it a goal and it hires the team";
     const onBoss = (e, cx) => {
       if (bossAddr) return e.click_count >= 2 ? run("agent.focus", { terminal: bossAddr }) : this.pick(bossAddr, cx);
@@ -1100,41 +1178,61 @@ export default class Office extends View {
       return h_flex().id("boss-band").h(BAND_FOLDED_H).flex_none().px(10).gap(8).items_center().bg("#1a2230").border_b(1).border_color("#11161f")
         .child(div().id("boss").size(24).flex_none().border(1).border_color(t[state] ?? t.dim).bg(t.raised).cursor_pointer().tooltip(tip).on_click(onBoss)
           .child(image(portraitPath("manager")).size(22)))
-        .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(this.bossNote ? t[this.bossNote.tone] ?? t.foreground : t.foreground).child(line))
+        .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(lineColor).child(line))
         .when(Boolean(crewText), (el) => el.child(div().flex_none().text_size(10.5).text_color(over ? t.blocked : t.dim).child(crewText)))
         .child(fold);
     }
     const known = this.known[room?.machine ?? ""];
-    const pick = known?.find((k) => k.key === this.bossPick) ?? known?.[0] ?? null;
-    const chip = (id, label, on, tip, action, color) => h_flex().id(id).h(22).px(7).gap(5).flex_none().items_center().max_w(130)
-      .text_size(11).border(1).border_color(on ? t.accent : withAlpha(color ?? t.muted, "66")).bg(on ? t.selected : "#0d131bcc")
-      .text_color(on ? t.foreground : t.muted).cursor_pointer().hover((s) => s.bg(t.hover)).tooltip(tip).on_click(action)
-      .child(div().min_w(0).truncate().child(label));
+    const pick = this.bossAgent(known);
     const colors = shared("space.colors") ?? {};
-    // The rows start right of the boss; its line leaves room for the fold.
+    const swatch = (s) => div().size(8).flex_none().bg(spaceColor(t, colors, s.id));
+    const roomName = (s) => div().min_w(0).truncate().child(s.name);
+    // Where the goal goes: every space, the ones with a boss marked.
+    const rooms = room ? this.picker("room", t, [swatch(room), roomName(room)], "The space the goal goes to",
+      sp.map((s) => ({ key: s.id, on: s.id === room.id,
+        label: [swatch(s), div().flex_1().min_w(0).truncate().child(s.name),
+          div().flex_none().px(4).text_size(9.5).font_bold().when(Boolean(bosses[s.id]), (el) => el.bg("#3b2a1c").text_color("#f3e3c3"))
+            .when(!bosses[s.id], (el) => el.text_color("#8a7a5c")).child(bosses[s.id] ? "BOSS" : "no boss")] })),
+      (id) => { this.bossRoom = id; localStorage.setItem("office.bossRoom", id); }, "SPACES") : null;
+    // Who leads a new team: only while the space has no boss.
+    const agentsPick = bossAddr ? null
+      : known === undefined ? div().flex_none().text_size(10.5).text_color(t.dim).child("Looking for agents…")
+      : !known.length ? div().flex_none().text_size(10.5).text_color(t.blocked).child("No agent installed")
+      : this.picker("agent", t, [programIcon(pick, t, 13), div().min_w(0).truncate().child(pick.name)], "The agent that leads the team (the orchestrator)",
+        known.map((k) => ({ key: k.key, on: k.key === pick.key,
+          label: [programIcon(k, t, 14), div().flex_1().min_w(0).truncate().child(k.name),
+            ...(k.key === DEFAULT_BOSS ? [div().flex_none().text_size(10).text_color("#8a7a5c").child("default")] : [])] })),
+        (key) => { this.bossPick = key; localStorage.setItem("office.bossAgent", key); }, "ORCHESTRATOR");
+    const plaque = h_flex().flex_none().h(22).px(8).gap(6).items_center().bg("#3b2a1c").border(1).border_color("#6b4a2e")
+      .child(div().text_size(11).font_bold().text_color("#f3e3c3").child("BOSS"))
+      .child(div().size(6).flex_none().bg(t[state] ?? t.dim))
+      .child(div().max_w(160).truncate().text_size(11).text_color("#d8c7a6").child(room?.name ?? "no space"));
+    const flow = bossAddr ? this.bossFlow(room.id) : null;
     const left = 88;
-    return div().id("boss-band").relative().h(BAND_H).flex_none().overflow_hidden().bg("#1a2230").border_b(1).border_color("#11161f")
-      .child(div().id("boss").absolute().left(12).top(6).w(64).h(88).cursor_pointer().tooltip(tip).on_click(onBoss)
+    return div().id("boss-band").relative().min_h(BAND_H).flex_none().overflow_hidden().bg(BOSS_FLOOR).border_b(1).border_color("#11161f")
+      .child(div().absolute().top(0).left(0).w(900).h(BAND_H).child(image(BOSS_ROOM).w(900).h(BAND_H)))
+      .child(div().absolute().top(12).right(10).child(fold))
+      .child(div().id("boss").absolute().left(12).top(BAND_H - 98).w(64).h(88).cursor_pointer().tooltip(tip).on_click(onBoss)
         .child(image(`${BOSS_DIR}/${["working", "blocked", "done"].includes(state) ? state : "idle"}.gif`).w(64).h(88)))
-      .child(h_flex().absolute().left(left).right(40).top(8).h(20).gap(8).items_center()
-        .child(div().min_w(0).truncate().text_size(11.5).text_color(this.bossNote ? t[this.bossNote.tone] ?? t.foreground : t.foreground).child(line))
-        .when(Boolean(crewText), (el) => el.child(div().flex_none().text_size(10.5).text_color(over ? t.blocked : t.muted).child(crewText))))
-      .child(div().absolute().top(8).right(10).child(fold))
-      .child(h_flex().absolute().left(left).right(12).top(34).h(22).gap(4).items_center().overflow_hidden()
-        .children(sp.slice(0, 6).map((s) => chip(`room-${s.id}`, `${bosses[s.id] ? "● " : ""}${s.name}`, s.id === room?.id,
-          bosses[s.id] ? `${s.name}: has a boss` : `${s.name}: no boss yet`,
-          (_e, cx) => { this.bossRoom = s.id; localStorage.setItem("office.bossRoom", s.id); cx.notify(); }, spaceColor(t, colors, s.id))))
-        .child(div().flex_1())
-        .when(!bossAddr && known === undefined, (el) => el.child(div().flex_none().text_size(10.5).text_color(t.dim).child("Looking for agents…")))
-        .when(!bossAddr && Array.isArray(known), (el) => el.children(known.slice(0, 3).map((k) => chip(`hire-${k.key}`, k.name, k.key === pick?.key,
-          `Hire ${k.name} as the boss`, (_e, cx) => { this.bossPick = k.key; localStorage.setItem("office.bossAgent", k.key); cx.notify(); })
-          .child(programIcon(k, t, 12))))))
-      .child(h_flex().absolute().left(left).right(12).top(62).h(30).gap(6).items_center()
-        .child(div().flex_1().min_w(0).child(Input.new(this.bossInput)))
-        .child(div().id("boss-assign").h(28).px(12).flex().flex_none().items_center().bg(this.bossBusy ? t.raised : t.accent)
-          .text_size(12).font_bold().text_color(t.accent_foreground ?? "#101820").cursor_pointer()
-          .tooltip(bossAddr ? "Send the goal to the boss" : `Hire ${pick?.name ?? "an agent"} as the boss with this goal`)
-          .on_click((_e, cx) => this.assign(cx)).child(bossAddr ? "Tell ⏎" : "Hire ⏎")));
+      .child(v_flex().relative().pl(left).pr(12).pt(9).pb(10).gap(6)
+        // On the wall: whose office, its team, and how it works.
+        .child(h_flex().h(22).pr(28).gap(8).items_center().overflow_hidden()
+          .child(plaque)
+          .when(Boolean(crewText), (el) => el.child(div().flex_none().px(5).bg("#0d131bcc").text_size(10.5).text_color(over ? t.blocked : "#d8c7a6").child(crewText))))
+        .child(h_flex().h(22).items_center().overflow_hidden()
+          .when(Boolean(flow), (el) => el.child(this.flowNotes("band", flow, t))))
+        // On the floor: what it says, then the goal.
+        .child(div().h(18).mt(4).min_w(0).truncate().text_size(11.5).text_color(lineColor).child(line))
+        .child(h_flex().gap(6).items_start()
+          .when(Boolean(rooms), (el) => el.child(rooms))
+          .when(Boolean(agentsPick), (el) => el.child(agentsPick))
+          .child(div().id("boss-goal").flex_1().min_w(120).min_h(28).px(8).py(3).bg("#0b1017e6").border(1)
+            .border_color(withAlpha(t.muted, "77")).cursor_text().on_click(() => this.bossInput.focus())
+            .child(Textarea.new(this.bossInput).w_full().text_size(12)))
+          .child(div().id("boss-assign").h(28).px(12).flex().flex_none().items_center().bg(this.bossBusy ? t.raised : t.accent)
+            .text_size(12).font_bold().text_color(t.accent_foreground ?? "#101820").cursor_pointer()
+            .tooltip(bossAddr ? "Send the goal to the boss (Ctrl+Enter)" : `Hire ${pick?.name ?? "an agent"} as the boss with this goal (Ctrl+Enter)`)
+            .on_click((_e, cx) => this.assign(cx)).child(bossAddr ? "Tell ⏎" : "Hire ⏎"))));
   }
 
   // ---- needs you ----
@@ -1245,6 +1343,8 @@ export default class Office extends View {
         ? hire
         : { ...hire, tab: at.tab.id, tab_name: at.tab.name, space: at.space.id, space_name: at.space.name };
     });
+    this.teamNow = team; // the rugs read their space's boss flow from these
+    this.listNow = list;
     const plan = officePlan(sp, ps, list);
     const roles = deskJobs(sp, ps, list, { Boss: "manager", ...this.jobs });
     for (const boss of team.bosses.keys()) roles.set(boss, "manager");
@@ -1266,7 +1366,7 @@ export default class Office extends View {
       return this.list(deck, roles, list, t);
     }
     const width = this.wide ? find(layout(), "panel")?.size?.px ?? 640 : 300;
-    this.z = this.wide && this.zoom === "large" && width >= LARGE_FROM ? LARGE : SMALL;
+    this.z = SMALL;
     this.most = this.wide ? fitAcross(width - this.z.pad, this.z.slot, this.z.gap) : MOST_ACROSS;
     this.now = Date.now();
     const filter = this.wide ? this.filter : "all";

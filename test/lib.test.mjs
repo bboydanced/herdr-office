@@ -131,6 +131,18 @@ for (const m of ["office-spaces", "office-space-new"]) {
   ok(readFileSync(new URL(`../mods/${m}/groups.js`, import.meta.url), "utf8") === groupsSrc, `${m}/groups.js is a verbatim copy`);
 }
 
+// the boss's flow
+const W = (status) => ({ status });
+ok(A.bossStage(W("idle"), []).stage === "plan" && !A.bossStage(W("idle"), []).live, "flow: a new boss waits to plan");
+ok(A.bossStage(W("working"), []).stage === "plan" && A.bossStage(W("working"), []).live, "flow: working alone is planning");
+const hiring = A.bossStage(W("idle"), [W("working"), W("blocked"), W("done")]);
+ok(hiring.stage === "hire" && hiring.hired === 3 && hiring.busy === 2 && hiring.blocked && hiring.live, "flow: hires at work");
+ok(A.bossStage(W("working"), [W("done"), W("idle")]).stage === "review", "flow: hires done, boss at it -> review");
+ok(A.bossStage(W("done"), [W("done")]).stage === "report" && A.bossStage(W("done"), []).stage === "report", "flow: all quiet -> report");
+ok(A.bossStage(null, null).step === 0, "flow: nothing known");
+ok(A.tabDesks([], [{ pane: "p1", tab: "t1", terminal: "a" }, { pane: "p2", tab: "t1", terminal: null, mod: "git-changes" }, { pane: "p3", tab: "t2", terminal: null, mod: "git-changes" }], []).get("t1").length === 1
+  && !A.tabDesks([], [{ pane: "p3", tab: "t2", terminal: null, mod: "git-changes" }], []).has("t2"), "mod panes are views, not desks");
+
 // wide office: filters, counts, fit, times
 ok(A.filterPlan(plan, "all") === plan && A.filterPlan(null, "working").length === 0, "no filter keeps the plan");
 const busyPlan = A.filterPlan(plan, "working");

@@ -3,7 +3,8 @@
 third-party assets, so the layout runs out of the box and the art carries the
 code's license.
 
-    python3 tools/build-art.py
+    python3 tools/build-art.py            # everything
+    python3 tools/build-art.py room       # only some: desks portraits boss room icons wallpaper
 
 Every picture is drawn on a small art grid, outlined (a darker edge around each
 shape, "sel-out" style), then scaled 4x with nearest-neighbour: one art pixel is
@@ -15,7 +16,8 @@ Output (relative to the repo root):
     mods/office-agents/desks/shadow.png   soft shadow under a desk    144x120
     mods/office-agents/art/<role>.png     bust portraits (tab bar)     88x88
     mods/office-agents/room/wall.png      the office's back wall      600x88
-    mods/office-agents/room/floor.png     office carpet              600x1600
+    mods/office-agents/room/floor.png     the panel's wooden floor  1824x1600
+    mods/office-agents/room/boss-office.png  the boss's office        1800x272
     mods/office-tabs/art/<files|changes|office>.png                   256x256
     mods/office-chrome/wallpaper.png      night windows behind everything   1840x1844
 """
@@ -1129,8 +1131,175 @@ def build_room() -> None:
     a.rect(0, 20, 450, 2, (20, 24, 36))
     a.big().save(os.path.join(out, "wall-wide.png"))
 
-    # Wide enough for the side panel too; the sidebar shows its left part.
-    carpet(456, 400, (30, 38, 52), seed=3).save(os.path.join(out, "floor.png"))
+    # The side panel's floor, under the rugs.
+    planks(456, 400, PLANK, seed=3).save(os.path.join(out, "floor.png"))
+    boss_office().big().save(os.path.join(out, "boss-office.png"))
+
+
+# Dark graphite boards, a touch cool: quiet enough for the rugs, cubicles and
+# their text on top. Its base is mirrored in mods/office-agents/main.js (CARPET).
+PLANK = (27, 30, 37)
+
+
+def planks(w: int, h: int, base, seed: int, art: bool = False):
+    """A floor of staggered boards, 4 art pixels deep, each its own shade, with a
+    faint grain and a dark seam at every joint."""
+    R = random.Random(seed)
+    a = Art(w, h)
+    seam = dark(base, 0.35)
+    for row in range(0, h, 4):
+        x = -R.randrange(40)
+        while x < w:
+            length = R.randint(28, 64)
+            # Each board a little lighter or darker than the next.
+            shade = mix(base, light(base, 0.12) if R.random() < 0.5 else dark(base, 0.18), R.random() * 0.6)
+            for yy in range(row, min(row + 4, h)):
+                for xx in range(max(0, x), min(x + length, w)):
+                    c = shade
+                    if yy == row:
+                        c = seam
+                    elif yy == row + 1:
+                        c = light(shade, 0.06)
+                    elif R.random() < 0.06:
+                        c = dark(shade, 0.08)
+                    a.dot(xx, yy, c)
+            if 0 <= x < w:
+                a.rect(x, row, 1, 4, seam)
+            x += length
+    return a if art else a.big()
+
+
+def frame_pic(a: Art, x: int, y: int, w: int, h: int, scene: str) -> None:
+    """A picture in a gilt frame: a landscape or a chart going up."""
+    a.rect(x, y, w, h, BRASS)
+    a.rect(x + 1, y + 1, w - 2, h - 2, dark(BRASS, 0.35))
+    ix, iy, iw, ih = x + 2, y + 2, w - 4, h - 4
+    if scene == "hills":
+        for j in range(ih):
+            a.rect(ix, iy + j, iw, 1, mix((92, 140, 196), (196, 210, 230), j / max(1, ih - 1)))
+        for i in range(iw):
+            top = iy + ih - 2 - (2 if (i // 3) % 3 == 1 else 1 if (i // 3) % 3 else 0)
+            a.rect(ix + i, top, 1, iy + ih - top, LEAF_D if i % 5 else LEAF)
+        a.rect(ix + iw - 3, iy + 1, 2, 2, (250, 236, 180))
+    else:
+        a.rect(ix, iy, iw, ih, PAPER)
+        heights = [2, 3, 3, 5, 4, 6, 7][: max(1, iw // 2)]
+        for i, bh in enumerate(heights):
+            a.rect(ix + 1 + i * 2, iy + ih - 1 - min(bh, ih - 2), 1, min(bh, ih - 2), (86, 160, 110) if i == len(heights) - 1 else (127, 168, 207))
+
+
+def tall_shelf(a: Art, x: int, top: int, bottom: int, seed: int) -> None:
+    """A bookcase from the floor up: books, a trophy, a box file."""
+    R = random.Random(seed)
+    w = 22
+    a.rect(x, top, w, bottom - top, WOOD_DK)
+    a.rect(x, top, w, 1, WOOD)
+    a.rect(x + w - 1, top + 1, 1, bottom - top - 1, dark(WOOD_DK, 0.3))
+    for y in range(top + 2, bottom - 4, 7):
+        a.rect(x + 1, y, w - 3, 6, (46, 33, 26))
+        a.rect(x + 1, y + 6, w - 3, 1, WOOD_SH)
+        bx = x + 2
+        while bx < x + w - 3:
+            if R.random() < 0.12:
+                a.rect(bx, y + 3, 3, 3, BRASS)  # a small trophy
+                a.rect(bx + 1, y + 1, 1, 2, light(BRASS, 0.3))
+                bx += 4
+                continue
+            bw = R.choice((1, 1, 2))
+            bh = R.choice((4, 5, 5, 6))
+            a.rect(bx, y + 6 - bh, bw, bh, R.choice([(186, 98, 64), (127, 168, 207), (224, 164, 74), (143, 191, 138), (180, 142, 196), PAPER_D, (150, 60, 60)]))
+            bx += bw + R.choice((0, 0, 1))
+
+
+def floor_lamp(a: Art, x: int, top: int, bottom: int) -> None:
+    a.rect(x, top, 7, 4, LAMP)
+    a.rect(x + 1, top, 5, 1, light(LAMP, 0.3))
+    a.rect(x + 1, top + 4, 5, 1, BULB)
+    a.rect(x + 3, top + 5, 1, bottom - top - 6, METAL_D)
+    a.rect(x + 1, bottom - 1, 5, 1, METAL_D)
+
+
+def big_plant(a: Art, x: int, floor_y: int) -> None:
+    """A potted fig standing on the floor."""
+    a.rect(x + 2, floor_y - 6, 9, 6, TERRA)
+    a.rect(x + 1, floor_y - 6, 11, 1, TERRA_L)
+    a.rect(x + 2, floor_y - 1, 9, 1, dark(TERRA, 0.3))
+    a.rows(x - 1, floor_y - 22, [
+        ".....G.l.......",
+        "...GlGGGG.G....",
+        "..GgGGlGGGlG...",
+        ".GGgGGGgGGGgG..",
+        "GlGGgGlGGgGGGl.",
+        ".GgGGGGGgGGlGG.",
+        "..GGlGgGGGgGG..",
+        ".GgGGGGlGGGgGG.",
+        "..GGgGGGGgGG...",
+        "...GgGlGGG.....",
+        ".....gGg.......",
+        "......g........",
+        "......g........",
+        "......g........",
+        "......g........",
+        "......g........",
+    ], {"G": LEAF, "g": LEAF_D, "l": LEAF_L})
+
+
+def boss_office(W: int = 450, H: int = 68) -> Art:
+    """The boss's office, 900x136 points: a big night window behind the boss on
+    the left, panelled walls kept plain where the band's notes and goal box sit,
+    a gallery, bookcases, a lamp and a fig further right, and a graphite floor with
+    a rug under the boss. Mirrored in main.js: WALL_H (32 art pixels), BOSS_FLOOR."""
+    a = Art(W, H)
+    wall_y = 32
+    paper, paper_d = (40, 46, 64), (35, 41, 58)
+    a.rect(0, 0, W, wall_y, paper)
+    for x in range(2, W, 5):
+        a.rect(x, 3, 1, 17, paper_d)
+    # crown moulding
+    a.rect(0, 0, W, 1, (22, 26, 38))
+    a.rect(0, 1, W, 1, WOOD_SH)
+    a.rect(0, 2, W, 1, (30, 34, 48))
+    # chair rail and wainscot panels
+    a.rect(0, 20, W, 1, WOOD)
+    a.rect(0, 21, W, 1, WOOD_SH)
+    a.rect(0, 22, W, 9, WOOD_DK)
+    for x in range(3, W - 10, 14):
+        a.rect(x, 23, 11, 7, dark(WOOD_DK, 0.15))
+        a.rect(x, 23, 11, 1, dark(WOOD_DK, 0.35))
+        a.rect(x, 29, 11, 1, light(WOOD_DK, 0.08))
+    a.rect(0, 30, W, 2, (30, 22, 18))  # skirting
+    # floor, a shade darker where it meets the wall
+    a.over(planks(W, H - wall_y, PLANK, seed=21, art=True), 0, wall_y)
+    for x in range(W):
+        a.tint(x, wall_y, (0, 0, 0), 0.45)
+        a.tint(x, wall_y + 1, (0, 0, 0), 0.2)
+    # the window the boss stands in front of, with curtains
+    window(a, 5, 4, 32, 14, 31, True)
+    for cx_ in (1, 38):
+        a.rect(cx_, 3, 4, 18, (120, 46, 52))
+        a.rect(cx_ + (3 if cx_ == 1 else 0), 3, 1, 18, (150, 64, 68))
+        a.rect(cx_, 21, 4, 1, (92, 34, 40))
+    a.rect(0, 2, 43, 1, BRASS)  # curtain rod
+    # a rug under the boss
+    a.rect(1, 55, 42, 12, (112, 38, 44))
+    a.rect(2, 56, 40, 10, (134, 50, 54))
+    a.rect(4, 58, 36, 6, (112, 38, 44))
+    for x in range(6, 38, 4):
+        a.dot(x, 61, BRASS)
+    a.rect(1, 55, 42, 1, (160, 120, 70))
+    a.rect(1, 66, 42, 1, (160, 120, 70))
+    # beyond the notes: a gallery, a clock, bookcases, a lamp and the fig
+    frame_pic(a, 236, 5, 16, 11, "hills")
+    frame_pic(a, 256, 7, 10, 9, "chart")
+    clock(a, 272)
+    tall_shelf(a, 288, 4, wall_y + 2, seed=5)
+    floor_lamp(a, 314, 8, wall_y + 2)
+    big_plant(a, 326, wall_y + 2)
+    window(a, 346, 4, 30, 14, 37, False)
+    tall_shelf(a, 384, 4, wall_y + 2, seed=8)
+    frame_pic(a, 410, 6, 14, 10, "hills")
+    big_plant(a, 432, wall_y + 2)
+    return a
 
 
 def carpet(w: int, h: int, base, seed: int) -> Image.Image:
@@ -1214,13 +1383,13 @@ def build_wallpaper() -> None:
 
 
 def main() -> None:
-    build_desks()
-    build_portraits()
-    build_boss()
-    build_room()
-    build_icons()
-    build_wallpaper()
-    print("office art written")
+    import sys
+    parts = {"desks": build_desks, "portraits": build_portraits, "boss": build_boss,
+             "room": build_room, "icons": build_icons, "wallpaper": build_wallpaper}
+    wanted = sys.argv[1:] or list(parts)
+    for name in wanted:
+        parts[name]()
+    print(f"office art written: {', '.join(wanted)}")
 
 
 if __name__ == "__main__":

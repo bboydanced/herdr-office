@@ -80,8 +80,9 @@ export function portraitPath(job) {
   return typeof job === "string" && JOB_SET.has(job) ? `${PORTRAITS_DIR}/${job}.png` : null;
 }
 
-// Every tab's desks: a desk per pane in the tab's pane order (an agent, or
-// nobody), then one per agent with no pane of its own (a sub-agent).
+// Every tab's desks: a desk per terminal pane in the tab's pane order (an agent,
+// or nobody), then one per agent with no pane of its own (a sub-agent). Mod
+// panes get none, so a tab holding only views has no cubicle.
 export function tabDesks(spaces, panes, agents) {
   const paneIds = new Set((panes ?? []).map((p) => p.pane));
   const byPane = new Map();
@@ -91,7 +92,11 @@ export function tabDesks(spaces, panes, agents) {
     else extra.set(a.tab, [...(extra.get(a.tab) ?? []), a]);
   }
   const out = new Map();
-  for (const p of panes ?? []) out.set(p.tab, [...(out.get(p.tab) ?? []), { pane: p, agent: byPane.get(p.pane) ?? null }]);
+  for (const p of panes ?? []) {
+    // A mod's pane (git-changes' diff, a commit view) is a view, not a desk.
+    if (p.mod || p.terminal === null) continue;
+    out.set(p.tab, [...(out.get(p.tab) ?? []), { pane: p, agent: byPane.get(p.pane) ?? null }]);
+  }
   for (const [tab, list] of extra) out.set(tab, [...(out.get(tab) ?? []), ...list.map((agent) => ({ pane: null, agent }))]);
   return out;
 }
@@ -408,6 +413,25 @@ export function bossBrief({ goal, playbook, argv, hires, folder, space, most = 4
     "ask the person before anything destructive (deleting files, git push, merging, force, resets, installs); never print secrets.",
     `Goal: ${task}`,
   ].join(" ");
+}
+
+// Where a boss is in its flow (plan → hire → review → report), from its own
+// status and its hires': no hire yet while it works is planning; hires at work
+// (or waiting) is hiring; hires finished while it still works is reviewing; all
+// quiet once it has had a team, or once it answered alone, is reporting.
+// -> { stage, step (0..3), live (the boss is at it), hired, busy, blocked }.
+export const BOSS_STAGES = ["plan", "hire", "review", "report"];
+export function bossStage(boss, crew) {
+  const team = Array.isArray(crew) ? crew : [];
+  const st = boss?.status ?? "idle";
+  const live = st === "working" || st === "blocked";
+  const busy = team.filter((a) => a.status === "working" || a.status === "blocked").length;
+  const blocked = st === "blocked" || team.some((a) => a.status === "blocked");
+  let stage;
+  if (busy > 0) stage = "hire";
+  else if (!team.length) stage = live || st !== "done" ? "plan" : "report";
+  else stage = live ? "review" : "report";
+  return { stage, step: BOSS_STAGES.indexOf(stage), live: live || busy > 0, hired: team.length, busy, blocked };
 }
 
 // A terminal's label (`hc label`), as one clean line; "" when it has none.

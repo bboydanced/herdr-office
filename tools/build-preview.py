@@ -491,12 +491,28 @@ def chip(d, x, y, text, on=False, size=11, color=None, w=None) -> int:
     return w
 
 
+def flow(d, x, y, step, hired) -> None:
+    """The boss's flow on a cork strip: steps behind ticked, the one it is on lit."""
+    f = font(10, bold=True)
+    notes = ["Plan", hired, "Review", "Report"]
+    texts = [f"✓ {n}" if i < step else f"{n}…" if i == step else n for i, n in enumerate(notes)]
+    w = sum(round(d.textlength(tx, font=f)) + 12 for tx in texts) + 3 * len(texts) + 5
+    d.rectangle([x, y, x + w, y + 21], fill=hexa("#5b4330"), outline=hexa("#3a2a1e"))
+    nx = x + 4
+    for i, tx in enumerate(texts):
+        nw = round(d.textlength(tx, font=f)) + 12
+        fill = "#c9b98f" if i < step else "#f0d27a" if i == step else "#e8dcb8"
+        d.rectangle([nx, y + 3, nx + nw, y + 18], fill=hexa(fill), outline=hexa("accent") if i == step else None)
+        d.text((nx + 6, y + 4), tx, font=f, fill=hexa(INK if i == step else "#6a5c45"))
+        nx += nw + 3
+
+
 def draw_panel(im: Image.Image, box, frame: int) -> None:
     """The side panel on its Office tab: header, the boss, Needs you, the floor
     (desks at sidebar size, two lines under each) and the inspector."""
     x0, y0, x1, y1 = box
     pw, ph = x1 - x0, y1 - y0
-    p = Image.new("RGBA", (pw, ph), hexa("#1e2634"))
+    p = Image.new("RGBA", (pw, ph), hexa("#1b1e25"))
     floor = load("mods/office-agents/room/floor.png")
     floor = floor.resize((floor.width // 2, floor.height // 2), Image.NEAREST)
     p.paste(floor.crop((0, 0, pw, min(ph, floor.height))), (0, 0))
@@ -522,35 +538,46 @@ def draw_panel(im: Image.Image, box, frame: int) -> None:
         d.text((tx + d.textlength(name + "  ", font=f), 9), str(count), font=f,
                fill=hexa("blocked") if key == "blocked" else hexa("dim"))
         x += w + 5
-    for i, (t, on) in enumerate((("−", True), ("+", False))):
-        bx = pw - 98 + i * 26
-        d.rectangle([bx, 6, bx + 21, 27], outline=hexa("accent") if on else mix("muted", "#161f28", 0.75))
-        d.text((bx + 6, 7), t, font=font(13), fill=hexa("foreground" if on else "muted"))
     d.text((pw - 44, 10), "21:40", font=font(11), fill=hexa("dim"))
 
-    # The boss's band (BAND_H 100), plain so its line reads: the boss on the left;
-    # what it says, the rooms row and the goal box beside it.
-    by, band, left = 34, 100, 88
-    d.rectangle([0, by, pw, by + band - 1], fill=hexa("#1a2230"))
+    # The boss's office (BAND_H 136, room/boss-office.png): the plaque and the
+    # four steps on its wall, the boss on the rug by the window; on the floor its
+    # line, then the space picker (it has a boss: no orchestrator picker) and
+    # the goal box.
+    by, band, left = 34, 136, 88
+    p.alpha_composite(load("mods/office-agents/room/boss-office.png", (900, band)).crop((0, 0, pw, band)), (0, by))
     d.line([0, by + band - 1, pw, by + band - 1], fill=hexa("#11161f"))
-    p.alpha_composite(load("mods/office-agents/boss/working.gif", (64, 88), frame), (12, by + 6))
+    px, py = left, by + 9
+    pf = font(11, bold=True)
+    room = "web-app"
+    pwid = round(d.textlength("BOSS", font=pf) + d.textlength(room, font=font(11))) + 34
+    d.rectangle([px, py, px + pwid, py + 21], fill=hexa("#3b2a1c"), outline=hexa("#6b4a2e"))
+    d.text((px + 8, py + 3), "BOSS", font=pf, fill=hexa("#f3e3c3"))
+    sx = px + 8 + round(d.textlength("BOSS", font=pf)) + 6
+    d.rectangle([sx, py + 8, sx + 5, py + 13], fill=hexa("working"))
+    d.text((sx + 11, py + 3), room, font=font(11), fill=hexa("#d8c7a6"))
     team = "team 2 · 2/4 working"
+    tx = px + pwid + 8
+    d.rectangle([tx, py + 3, tx + round(d.textlength(team, font=font(10.5))) + 10, py + 18], fill=hexa("#0d131b", 0xcc))
+    d.text((tx + 5, py + 4), team, font=font(10.5), fill=hexa("#d8c7a6"))
+    flow(d, left, by + 37, 1, "Hired 2 agents · 2 at work")
+    d.rectangle([pw - 30, by + 12, pw - 11, by + 31], fill=hexa("#0d131b", 204))
+    d.text((pw - 25, by + 14), "▴", font=font(11), fill=hexa("dim"))
+    p.alpha_composite(load("mods/office-agents/boss/working.gif", (64, 88), frame), (12, by + band - 98))
     say = "Hired frontend-nav and design-login"
-    tf, sf = font(10.5), font(11.5)
-    tw = round(d.textlength(team, font=tf))
-    shown = fit(d, say, sf, pw - left - 40 - 8 - tw)
-    d.text((left, by + 11), shown, font=sf, fill=hexa("foreground"))
-    d.text((left + round(d.textlength(shown, font=sf)) + 8, by + 12), team, font=tf, fill=hexa("muted"))
-    d.rectangle([pw - 30, by + 8, pw - 11, by + 27], fill=hexa("#0d131b", 204))
-    d.text((pw - 25, by + 10), "▴", font=font(11), fill=hexa("dim"))
-    x = left
-    for name, on, color in (("● web-app", True, "ansi6"), ("api", False, "ansi3"), ("notes", False, "ansi5")):
-        x += chip(d, x, by + 34, name, on, color=color) + 4
-    iy0 = by + 62
-    d.rectangle([left, iy0, pw - 82, iy0 + 29], fill=hexa("input"), outline=mix("muted", "#161f28", 0.5))
-    d.text((left + 10, iy0 + 7), "Tell the boss what you need…", font=font(12), fill=hexa("dim"))
-    d.rectangle([pw - 76, iy0 + 1, pw - 13, iy0 + 28], fill=hexa("accent"))
-    d.text((pw - 66, iy0 + 7), "Tell ⏎", font=font(12, bold=True), fill=hexa("#101820"))
+    d.text((left, by + 72), fit(d, say, font(11.5), pw - left - 12), font=font(11.5), fill=hexa("foreground"))
+    iy0 = by + 96
+    rw = round(d.textlength(room, font=font(11.5))) + 44
+    d.rectangle([left, iy0 + 1, left + rw, iy0 + 26], fill=hexa("#0d131b", 0xdd), outline=mix("muted", "#161f28", 0.5))
+    d.rectangle([left + 8, iy0 + 10, left + 15, iy0 + 17], fill=hexa("ansi6"))
+    d.text((left + 21, iy0 + 6), room, font=font(11.5), fill=hexa("foreground"))
+    d.text((left + rw - 14, iy0 + 5), "▾", font=font(11), fill=hexa("dim"))
+    gx = left + rw + 6
+    d.rectangle([gx, iy0, pw - 82, iy0 + 27], fill=hexa("#0b1017", 0xe6), outline=mix("muted", "#161f28", 0.45))
+    d.text((gx + 9, iy0 + 6), fit(d, "What should the team do? Paste a spec or type it · Ctrl+Enter sends", font(12), pw - 82 - gx - 16),
+           font=font(12), fill=hexa("dim"))
+    d.rectangle([pw - 76, iy0, pw - 13, iy0 + 27], fill=hexa("accent"))
+    d.text((pw - 66, iy0 + 6), "Tell ⏎", font=font(12, bold=True), fill=hexa("#101820"))
 
     # Needs you: a waiting agent's question and its choices.
     cy = by + band + 8

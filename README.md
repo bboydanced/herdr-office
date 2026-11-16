@@ -173,15 +173,25 @@ Office panel and the other panels each remember their own width. Top to
 bottom:
 
 1. **The header:** filters with their counts (`All`, `Working`, `Needs you`,
-   `Done`, remembered), `−` / `+` for desk size (sidebar size, or half as big
-   again once the panel is 480 px wide) and the time.
-2. **The boss**, on a plain band so its line reads (see below). `▴` folds it
+   `Done`, remembered), `▤` for a new group and the time.
+2. **The boss's office** (see below): a panelled room with a night window,
+   pictures, bookcases and a fig. On its wall a `BOSS · <space>` plaque with
+   the team count and, once the space has a boss, its **flow** live on a cork
+   strip: `Plan` → `Hired N agents · M at work` → `Review` → `Report`, the
+   steps behind ticked, the one it is on lit (red while someone waits for you).
+   It is read from the boss's status and its hires': working with no hire yet
+   is Plan, hires at work is Hired, hires finished while the boss works is
+   Review, all quiet is Report. The same strip sits on that space's rug on the
+   floor, and nowhere else. The boss stands on the rug by the window; on the
+   graphite floor its latest line, then the pickers (wooden nameplates opening
+   an index card: `SPACES`, `ORCHESTRATOR`) and the goal box. `▴` folds it
    to one line (its face, its latest line, its team), `▾` brings it back.
 3. **Needs you**, while an agent waits for you (see below).
 4. **The floor:** rugs, cubicles and desks. Under each desk a second line: the
    status and for how long (`Working · 12m`, `NEEDS YOU · 3m`, `✓ Done · 5m`;
    the tab's time, so agents sharing a tab share it), or an empty desk's
-   folder.
+   folder. A mod's pane (a git-changes diff or commit view) is a view, not a
+   desk: it gets none, and a tab holding only views has no cubicle.
    - **Adding:** `+ Tab` on a rug opens a new tab in that space, `Add desk`
      (the faded desk at the end of a cubicle) splits the tab beside its last
      pane, right or down, and `+ New space` at the end of the floor makes a
@@ -221,12 +231,17 @@ Only the sidebar's office sets the `agent.next` / `agent.prev` order.
 
 The boss is a team lead you give goals to; it hires agents to do the work.
 Each space has its own, in a tab named `Boss`; the panel shows one, for the
-room picked by the chips beside it (the space you are in, until you pick
-another; `●` marks rooms that have one).
+space picked in the first dropdown (the space you are in, until you pick
+another; the list marks the spaces that have a boss).
 
+- **The goal box** takes several lines and grows to six as you type or paste
+  (a spec, a list of steps); `Ctrl+Enter` or the button sends it. Later goals
+  reach the boss as pasted, lines and all; the first one goes in the boss's
+  one-line brief, so its line breaks become spaces.
 - **The first goal** for a room hires the boss: `Hire ⏎` opens a `Boss` tab in
-  that space running the agent you picked (the chips list the agents installed
-  there) with a short brief and your goal as its first message. The brief
+  that space running the orchestrator picked in the second dropdown (the
+  agents installed there; Claude Code by default, shown only while the space
+  has no boss) with a short brief and your goal as its first message. The brief
   points it at its **playbook** and repeats the rules that matter most, in
   case it can't read it.
 - **The playbook**, `mods/office-agents/boss.md`, is the job in full; edit it
