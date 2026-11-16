@@ -104,6 +104,19 @@ ok(A.spaceColor({ ansi6: "#6fb6ad", accent: "#e0a44a" }, { s1: "ansi6" }, "s1") 
 ok(A.spaceColor({ muted: "#b0a894", accent: "#e0a44a" }, { s1: "ansi6" }, "s1") === "#b0a894", "unknown key -> muted");
 ok(A.spaceColor({ accent: "#e0a44a" }, null, "s1") === "#e0a44a", "no colours, no muted -> accent");
 
+// groups you make yourself
+const G = (id, name, spaces, folded = false) => ({ id, name, spaces, folded });
+ok(A.readGroups(null).length === 0 && A.readGroups("x").length === 0 && A.readGroups([null, 3]).length === 0, "nothing in, nothing out");
+ok(A.readGroups([G("g1", "  Checkout  ", ["s1", "s1", 7]), G("g1", "dup"), { name: "no id" }]).length === 1, "one per id, spaces deduped, junk dropped");
+const g1 = A.readGroups([G("g1", "  Checkout  ", ["s1", "s1", 7])])[0];
+ok(g1.name === "Checkout" && g1.spaces.join() === "s1" && g1.folded === false, "group read clean");
+const deck = A.planGroups(plan, [G("g1", "One", ["s2"]), G("g2", "Empty", [])]);
+ok(deck.map((d) => d.band?.name ?? "-").join() === "-,One", "a group sits where its first space is, an empty one nowhere");
+ok(deck[0].rows.length === 1 && deck[0].rows[0].space.id === "s1" && deck[1].rows[0].space.id === "s2", "its spaces in the floor's order");
+ok(A.planGroups(plan, []).length === 2 && A.planGroups(null, [G("g1", "x", ["s1"])]).length === 0, "no rows: no group");
+ok(A.planGroups(plan, [G("a", "A", ["s1"]), G("b", "B", ["s1", "s2"])])[1].rows.length === 1, "a space in two groups stays in the first");
+ok(A.groupRows(plan, G("g1", "x", ["s2", "gone"])).map((r) => r.space.id).join() === "s2", "group rows: live spaces only");
+
 // wide office: filters, counts, fit, times
 ok(A.filterPlan(plan, "all") === plan && A.filterPlan(null, "working").length === 0, "no filter keeps the plan");
 const busyPlan = A.filterPlan(plan, "working");

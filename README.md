@@ -85,6 +85,16 @@ Herdr keeps the mod names in its own `seen.json`, which is harmless.
     office; hover a rug and its room lights up.
     Hovering a room also shows `+` (a new tab there, with a shell or an
     agent), `✎` (rename) and `×` (close); its name's tooltip is its folder.
+  - **Groups you make:** `▤` by the header names a **group**
+    and ticks the spaces in it, so a project whose sources are separate rooms
+    reads as one block. A group only holds spaces together in this list and on
+    the Office floor; it never changes a space's folder or order. The band sits
+    where its first space is, with its name, `N spaces`, the faces of everyone in
+    them and their status count — no door, git or actions of its own. Its spaces
+    follow as ordinary rows, each still marked with its own number. `▾` on the
+    band folds them away (kept, and the Office panel folds the same way), `▸`
+    brings them back; `⋯` edits the group. A group with no space on a machine,
+    or none left after a filter, draws no band.
   - **New space:** every `+` (the header, a machine's header, the Office
     panel's `+ New space`) opens a dialog instead of a space in home. It starts
     in the folder of the space you are in; type another, **Choose…** one with
@@ -115,6 +125,12 @@ Herdr keeps the mod names in its own `seen.json`, which is harmless.
     `Terminal` for a shell (never the long `user@host:path` title) or its
     program's name. A sub-agent without a pane of its own takes an extra desk at
     the end of its tab. Put-away tabs stay out unless someone in them needs you.
+    Spaces you put in a **group** are drawn together: a slim band with the
+    group's name and `N spaces`, then each space as its own rug exactly as it
+    would be on its own (cubicles, desks, + Tab), indented under a thin line.
+    `▾` on the band folds its spaces away; `✎`, `+` and `×` there rename it, put
+    another space in it, or delete it (the spaces stay). A group with no space on
+    the floor after a filter draws nothing.
 - **Tabs, 58 px:** square 48 px tabs showing **every agent in the tab**: one
   agent as a 44 px portrait, several as overlapping faces framed in their status
   colour (four at most, then `+n`), then a terminal mark with the count of the
