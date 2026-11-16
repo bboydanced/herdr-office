@@ -441,7 +441,7 @@ export default class Spaces extends View {
 
   menu(w) {
     // A popup is as tall as its items; height is only the most.
-    openOverlay({ mod: "menu", kind: "popup", width: 200, height: 260, props: { tab: "space", target: { id: w.id } } });
+    openOverlay({ mod: "office-menu", kind: "popup", frame: "none", width: 230, height: 260, props: { tab: "space", target: { id: w.id }, frameless: true } });
   }
 
   // A move is written to every machine that holds a space: its echo has to land
@@ -777,7 +777,7 @@ export default class Spaces extends View {
       .on_mouse_up("left", (_e, cx) => { cx.stop_propagation(); fn(); });
     const folder = place(w, panes());
     return h_flex().flex_none().gap(3)
-      .child(act("space-tab", "+", "New tab here", () => openOverlay({ mod: "office-add", kind: "popup", width: 250, height: 380,
+      .child(act("space-tab", "+", "New tab here", () => openOverlay({ mod: "office-add", kind: "popup", frame: "none", width: 250, height: 380,
         props: { mode: "tab", space: w.id, machine: w.machine ?? null, where: `${w.name} · ${this.short(folder, w.machine) || "~"}` } })).child("+"))
       .child(act("space-rename", "✎", "Rename", () => run("space.rename", { id: w.id })).child("✎"))
       .child(act("space-close", "×", "Close space (it stays under Closed rooms)", () => run("space.close", { id: w.id })).child("×"));

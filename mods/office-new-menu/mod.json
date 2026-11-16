@@ -1,0 +1,10 @@
+{
+  "place": "none",
+  "title": "New in the office",
+  "overlay": {
+    "kind": "popup",
+    "frame": "none",
+    "width": 250,
+    "height": 512
+  }
+}

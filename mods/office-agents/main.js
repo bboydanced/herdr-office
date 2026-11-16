@@ -38,9 +38,10 @@
 import { View, div, image, svg } from "gpui-kit";
 import { Input, InputState, Popover, Textarea, TextareaState, h_flex, v_flex } from "gpui-base";
 import { agents, appHome, closeOverlay, commands, exec, focused, hc, home, knownAgents, layout, openOverlay, panes, props, readTextFile, run, setAgentOrder, setShared, shared, spaces, terminals, theme } from "herdr";
-import { DESK_SHADOW, EMPTY_DESK, ago, bossBrief, bossStage, deskColumns, labelOf, deskJobs, deskLabel, deskPath, deskState, deskTip, filterPlan, findBosses, firstLine, fitAcross, isBossTab, isHire, localId, mixHex, officePlan, parsePrompt, portraitPath, roleFromName, screenLines, seatStep, shortPath, spaceColor, speechLine, splitTree, staffOf, standIn, tally, treeWidth, withAlpha } from "./lib.js";
+import { DESK_SHADOW, EMPTY_DESK, WORKTREE_PROBE, acceptMessage, ago, bossBrief, bossStage, deskColumns, labelOf, deskJobs, deskLabel, deskPath, deskState, deskTip, filterPlan, findBosses, firstLine, fitAcross, hireCommand, hireTemplate, isBossTab, isHire, isNight, localId, mixHex, morningSummary, nightEvents, officePlan, parseHours, parseProbe, parsePrompt, planNotes, portraitPath, roleFromName, screenLines, seatStep, shortPath, spaceColor, speechLine, splitTree, staffOf, standIn, tally, treeWidth, underHc, withAlpha, worktreeOf } from "./lib.js";
 import { Desk } from "./desk.js";
 import { loadGroups, planGroups, saveGroups } from "./groups.js";
+import { LAMP, cardTab, ink, line, sheet } from "./card.js";
 
 const JOBS_FILE = `${appHome()}/mods/office-agents/jobs.json`;
 // The boss's playbook; on another machine a copy goes to REMOTE_PLAYBOOK there.
@@ -88,6 +89,27 @@ const FLOW_TIPS = [
   "Review: reads each agent's changes and runs the check before calling it done",
   "Report: tells you what was done, and asks before anything destructive",
 ];
+// The whiteboard's notes, by where a piece is (planNotes).
+const NOTE = {
+  todo: { bg: "#e2ddcf", mark: "○", text: "To do" },
+  hired: { bg: "#e8dcb8", mark: "●", text: "Hired" },
+  working: { bg: STICKY, mark: "●", text: "At work" },
+  blocked: { bg: "#f0a59b", mark: "!", text: "Needs you" },
+  done: { bg: "#b9d3ea", mark: "◐", text: "To review" },
+  ok: { bg: "#bfe0b0", mark: "✓", text: "Passed review" },
+  merged: { bg: "#cdd3c9", mark: "✓", text: "Merged" },
+};
+// How often a piece done in a worktree has its diff read again.
+const DIFF_EVERY = 15000;
+// After hours: what finished or waited for you while you were away (the
+// sidebar writes it, the panel's morning memo reads it), and the switch.
+const NIGHT_LOG = "office.nightLog";
+const AFTER_HOURS = "office.afterHours";
+const readJson = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
+const afterHoursOn = () => shared(AFTER_HOURS) ?? localStorage.getItem(AFTER_HOURS) !== "off";
+const nightNow = () => afterHoursOn() && isNight(new Date(), parseHours(localStorage.getItem("office.hours")));
+const hh = (h) => `${String(h).padStart(2, "0")}:00`;
+const clockAt = (ms) => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
 // The orchestrator picked by default, when it is installed.
 const DEFAULT_BOSS = "claude";
 const BAND_FOLDED_H = 34;
@@ -265,10 +287,17 @@ export default class Office extends View {
       this.drag = null; // a desk held down: { terminal, pane, tab, space, machine, name, moved }
       this.moving = false;
       this.moveNote = null;
+      this.boardNow = null; // the whiteboard in view: { boss, machine, notes }
+      this.diffs = new Map(); // a hire in a worktree -> { cwd, at, branch, files, add, del, dirty } | { err }
+      this.probing = false;
+      this.accepting = null; // the hire whose Accept asks "Merge?"
       cx.timer.every(READ_EVERY, (cx) => this.poll(cx));
     } else {
-      // The sidebar's office runs the hires' seating: it is always there.
-      cx.timer.every(READ_EVERY, () => this.seat());
+      // The sidebar's office runs the hires' seating and keeps the night's
+      // log: it is always there.
+      this.seen = null; // address -> status, a tick ago
+      if (!Array.isArray(shared(NIGHT_LOG))) setShared(NIGHT_LOG, readJson(NIGHT_LOG, []));
+      cx.timer.every(READ_EVERY, () => { this.seat(); this.watchNight(); });
     }
     cx.spawn(async (cx) => {
       const text = await readTextFile(JOBS_FILE).catch(() => null);
@@ -341,6 +370,9 @@ export default class Office extends View {
     // Add desk; a boss stays in its Boss tab, where it is found.
     const movable = this.wide && Boolean(terminal && d.pane) && !Object.values(this.bosses()).includes(terminal);
     const held = this.drag?.moved && this.drag.terminal === terminal;
+    // After hours, wide: a desk at work keeps its lamp on, the others dim.
+    const lit = this.wide && this.night && a?.status === "working";
+    const dim = this.wide && this.night && !lit && !held;
     const picture = (path) => div().absolute().top(0).left(0).child(image(path).w(z.deskW).h(z.deskH));
     const line = (h, size) => div().h(h).max_w(z.slot).px(4).flex().items_center().text_size(size);
     const tag = (text) => line(z.label, z.text - 1.5).px(5).bg(TAG).font_bold().text_color("#fff0e6").child(div().min_w(0).truncate().child(text));
@@ -375,6 +407,8 @@ export default class Office extends View {
         })
         .on_mouse_move((_e, cx) => this.dragOver(terminal, cx)))
       .when(held, (el) => el.opacity(0.4))
+      .when(dim, (el) => el.opacity(0.5))
+      .when(lit, (el) => el.bg(withAlpha(LAMP, "24")))
       .on_click((e, cx) => {
         if (held) return;
         // In the panel a click picks them (the desk window opens); a double-click, or a click in the sidebar, goes there.
@@ -666,14 +700,14 @@ export default class Office extends View {
     if (JSON.stringify(shared("office.faces") ?? null) !== key) setShared("office.faces", faces);
   }
 
-  // Herdr's own menu for a pane, a tab or a space.
+  // Herdr's menu for a pane, a tab or a space, on an office card (office-menu).
   menu(tab, target) {
-    openOverlay({ mod: "menu", kind: "popup", width: 200, height: 260, props: { tab, target } });
+    openOverlay({ mod: "office-menu", kind: "popup", frame: "none", width: 230, height: 260, props: { tab, target, frameless: true } });
   }
 
   // The office-add popup: a new tab or desk, with a shell or an agent.
   add(spec) {
-    openOverlay({ mod: "office-add", kind: "popup", width: 250, height: 380, props: spec });
+    openOverlay({ mod: "office-add", kind: "popup", frame: "none", width: 250, height: 380, props: spec });
   }
 
   // A held desk becomes a drag once the pointer moves over another desk or an
@@ -806,6 +840,91 @@ export default class Office extends View {
       const said = this.bossSay;
       if (!said || said.key !== boss || said.seq !== seq || (agent?.status === "working" && Date.now() - said.at > 4000)) this.readBoss(boss, seq, cx);
     }
+    // The whiteboard's pieces done in a worktree: their diff, one a tick.
+    const board = this.boardNow;
+    if (board && !this.probing) {
+      const now = Date.now();
+      const due = board.notes.find((n) => n.wt && (n.state === "done" || n.state === "ok")
+        && (this.diffs.get(n.hire.address)?.cwd !== n.hire.cwd || now - this.diffs.get(n.hire.address).at > DIFF_EVERY));
+      if (due) this.probe(due, board.machine, cx);
+    }
+  }
+
+  // A worktree's branch and diff against the repo's own checkout (WORKTREE_PROBE).
+  probe(n, machine, cx) {
+    this.probing = true;
+    const { address, cwd } = n.hire;
+    cx.spawn(async (cx) => {
+      const r = await exec("sh", ["-c", WORKTREE_PROBE, "sh", n.wt.root, n.wt.path], { timeout: 10000, ...(machine ? { on: machine } : {}) }).catch(() => null);
+      const got = r?.code === 0 ? parseProbe(r.stdout) : null;
+      this.diffs.set(address, { cwd, at: Date.now(), ...(got ?? { err: true }) });
+      this.probing = false;
+      cx.notify();
+    });
+  }
+
+  // Accept on the whiteboard: the boss is told you agree to merge that branch.
+  accept(n, cx) {
+    this.accepting = null;
+    const boss = this.boardNow?.boss;
+    const d = this.diffs.get(n.hire.address);
+    if (!boss || !d?.branch) return;
+    if (this.listNow?.find((a) => a.address === boss)?.status === "blocked") {
+      return this.flash("The boss waits for your answer first", "blocked", cx, "bossNote");
+    }
+    cx.spawn(async (cx) => {
+      const r = await hc(["send", boss, "--", acceptMessage({ piece: n.piece, name: n.hire.name || n.hire.address, branch: d.branch })])
+        .catch((e) => ({ code: 1, stderr: String(e?.message ?? e) }));
+      if (r.code === 0) this.flash(`Sent to the boss: merge ${d.branch}`, "done", cx, "bossNote");
+      else this.flash(firstLine(r.stderr) || firstLine(r.stdout) || "Couldn't reach the boss", "blocked", cx, "bossNote");
+      cx.notify();
+    });
+  }
+
+  // Sidebar, every tick, after hours: who finished or started waiting for you.
+  watchNight() {
+    const list = agents();
+    const before = this.seen;
+    this.seen = new Map(list.map((a) => [a.address, a.status]));
+    if (!before || !nightNow()) return;
+    const terms = terminals() ?? [];
+    const names = new Map(list.map((a) => [a.address, terms.find((x) => x?.address === a.address)?.name || deskLabel({ agent: a })]));
+    const events = nightEvents(before, list, names, Date.now());
+    if (!events.length) return;
+    const log = [...(shared(NIGHT_LOG) ?? []), ...events].slice(-60);
+    setShared(NIGHT_LOG, log);
+    localStorage.setItem(NIGHT_LOG, JSON.stringify(log));
+  }
+
+  clearNight() {
+    setShared(NIGHT_LOG, []);
+    localStorage.setItem(NIGHT_LOG, "[]");
+  }
+
+  toggleAfterHours() {
+    const on = !afterHoursOn();
+    setShared(AFTER_HOURS, on);
+    localStorage.setItem(AFTER_HOURS, on ? "on" : "off");
+  }
+
+  // In the day, after a night with news: what finished and who waited for you.
+  morning(t) {
+    const log = shared(NIGHT_LOG);
+    if (this.night || !Array.isArray(log) || !log.length) return null;
+    const s = morningSummary(log);
+    if (!s.done.length && !s.blocked.length) return null;
+    const few = (names) => `${names.slice(0, 3).join(", ")}${names.length > 3 ? ` +${names.length - 3}` : ""}`;
+    const parts = [
+      s.done.length ? `✓ ${s.done.length} finished: ${few(s.done)}` : "",
+      s.blocked.length ? `! ${s.blocked.length} waited for you: ${few(s.blocked)}` : "",
+    ].filter(Boolean);
+    const tip = [s.done.length ? `Finished: ${s.done.join(", ")}` : "", s.blocked.length ? `Waited for you: ${s.blocked.join(", ")}` : ""].filter(Boolean).join("\n");
+    return h_flex().id("office-morning").flex_none().h(30).pl(10).pr(8).gap(8).items_center().bg(t.raised).border_b(1).border_color(t.border)
+      .child(div().w(3).h(16).flex_none().bg(LAMP))
+      .child(div().flex_none().text_size(10).font_bold().text_color(LAMP).child("MORNING"))
+      .child(div().id("office-morning-text").flex_1().min_w(0).truncate().text_size(11.5).text_color(t.foreground).tooltip(tip)
+        .child(`Since ${clockAt(log[0].at)}: ${parts.join(" · ")}`))
+      .child(this.small("office-morning-ok", "Got it", "Clear the night's notes", t, (_e, cx) => { this.clearNight(); cx.notify(); }));
   }
 
   flash(text, tone, cx, slot) {
@@ -882,6 +1001,9 @@ export default class Office extends View {
           .child(div().text_color(key === "blocked" && n.blocked ? t.blocked : t.dim).child(String(key === "all" ? total : n[key])));
       }))
       .child(div().flex_1())
+      .child(this.button("office-night", this.night ? "☾" : afterHoursOn() ? "☼" : "☾ off",
+        `After hours ${hh(this.hours.from)}–${hh(this.hours.to)}: ${afterHoursOn() ? "on" : "off"}. At night idle desks dim, desks at work keep a lamp on, and in the morning a memo says what happened.\nClick to turn it ${afterHoursOn() ? "off" : "on"}`,
+        t, (_e, cx) => { this.toggleAfterHours(); cx.notify(); }))
       .child(this.button("office-new-group", "▤", "New group of spaces", t,
         () => openGroupDialog("@new")))
       .child(div().flex_none().pl(4).text_size(11).text_color(t.dim).child(this.time));
@@ -928,8 +1050,13 @@ export default class Office extends View {
     const names = new Map([...byAddress].map(([address, t]) => [address, t.name]));
     // What the bosses say and what their hires do, as they label themselves.
     const say = new Map([...bosses.keys()].map((boss) => [boss, labelOf(byAddress.get(boss), "office.say")]));
+    const stages = new Map([...bosses.keys()].map((boss) => [boss, labelOf(byAddress.get(boss), "office.stage")]));
     const tasks = new Map([...staff.keys()].map((hire) => [hire, labelOf(byAddress.get(hire), "office.task")]));
-    return { staff, bosses, names, say, tasks };
+    // The whiteboard: each boss's plan, and the piece and folder of each hire.
+    const plans = new Map([...bosses.keys()].map((boss) => [boss, labelOf(byAddress.get(boss), "office.plan", 400)]));
+    const pieces = new Map([...staff.keys()].map((hire) => [hire, labelOf(byAddress.get(hire), "office.piece")]));
+    const cwds = new Map([...staff.keys()].map((hire) => [hire, byAddress.get(hire)?.cwd ?? ""]));
+    return { staff, bosses, names, say, stages, tasks, plans, pieces, cwds };
   }
 
   // Sidebar, every tick: while you look at a boss's tab, its next hire without a
@@ -1000,7 +1127,12 @@ export default class Office extends View {
       cx.spawn(async (cx) => {
         try {
           const r = await hc(["send", boss, "--", goal]);
-          if (r.code === 0) { this.bossInput.set_value(""); this.flash("Sent to the boss", "done", cx, "bossNote"); }
+          if (r.code === 0) {
+            this.bossInput.set_value("");
+            this.flash("Sent to the boss", "done", cx, "bossNote");
+            // A goal from here starts the flow over: Plan, until the boss says otherwise.
+            await hc(["label", boss, "office.stage=plan"]).catch(() => null);
+          }
           else this.flash(firstLine(r.stderr) || firstLine(r.stdout) || "Couldn't reach the boss", "blocked", cx, "bossNote");
         } catch (e) {
           this.flash(firstLine(String(e?.message ?? e)) || "Couldn't reach the boss", "blocked", cx, "bossNote");
@@ -1024,10 +1156,11 @@ export default class Office extends View {
     this.flash(`Hiring a boss (${pick.name})…`, "done", cx, "bossNote");
     cx.spawn(async (cx) => {
       const playbook = await this.playbookFor(room.machine ?? null);
+      const hires = known.map((k) => k.run);
+      const templates = await this.templatesFor(room.machine ?? null, [pick.run, ...hires]);
       // The goal stays in the box until the tab is open.
       try {
-        const hires = known.map((k) => k.run);
-        run("tab.new", { space: room.id, name: "Boss", argv: pick.run, task: bossBrief({ goal, playbook, argv: pick.run, hires, folder, space: room.name, most: STAFF_CAP }) });
+        run("tab.new", { space: room.id, name: "Boss", argv: underHc(pick.run), task: bossBrief({ goal, playbook, argv: pick.run, hires, templates, folder, space: room.name, most: STAFF_CAP }) });
         this.bossInput.set_value("");
       } catch (e) {
         this.flash(firstLine(String(e?.message ?? e)) || "Couldn't open the Boss tab", "blocked", cx, "bossNote");
@@ -1051,6 +1184,26 @@ export default class Office extends View {
       return r.code === 0 && r.stdout.trim() ? r.stdout.trim() : null;
     } catch {
       return null;
+    }
+  }
+
+  // The hire templates (hireTemplate) written to herdr-core's templates folder
+  // on the boss's machine, only our own office-*.md files, rewritten each hire
+  // so they follow the flags. -> { [hireCommand]: template name }, {} when they
+  // can't be written (the brief then names the commands).
+  async templatesFor(machine, argvs) {
+    const made = new Map();
+    for (const argv of argvs) {
+      const t = hireTemplate(argv);
+      if (t && ![...made.values()].some((m) => m.name === t.name)) made.set(hireCommand(argv), t);
+    }
+    if (!made.size) return {};
+    const files = [...made.values()].flatMap((t) => [t.name, t.text]);
+    try {
+      const r = await exec("sh", ["-c", 'd="$HOME/.config/herdr-core/templates"; mkdir -p "$d" || exit 1; while [ $# -ge 2 ]; do printf "%s" "$2" > "$d/$1.md" || exit 1; shift 2; done', "sh", ...files], machine ? { on: machine } : undefined);
+      return r.code === 0 ? Object.fromEntries([...made].map(([cmd, t]) => [cmd, t.name])) : {};
+    } catch {
+      return {};
     }
   }
 
@@ -1091,7 +1244,7 @@ export default class Office extends View {
     if (!addr || !this.teamNow) return null;
     const list = this.listNow ?? [];
     const hires = this.teamNow.bosses.get(addr)?.staff ?? [];
-    return bossStage(list.find((a) => a.address === addr) ?? null, list.filter((a) => hires.includes(a.address)));
+    return bossStage(list.find((a) => a.address === addr) ?? null, list.filter((a) => hires.includes(a.address)), this.teamNow.stages?.get(addr));
   }
 
   // The flow as four notes on a cork strip: steps behind ticked and faded, the
@@ -1118,8 +1271,8 @@ export default class Office extends View {
   }
 
   // A dropdown in the boss's office: the trigger a wooden nameplate like the
-  // boss's; open, an index card in a manila folder tab, one ruled line per
-  // option, the picked one highlighted and ticked.
+  // boss's; open, an office card (card.js) with a folder tab, one ruled line
+  // per option, the picked one highlighted and ticked.
   picker(id, t, value, tip, options, onPick, title) {
     const open = this.picking === id;
     const trigger = h_flex().id(`pick-${id}`).h(26).px(8).gap(6).flex_none().max_w(170).items_center()
@@ -1128,26 +1281,76 @@ export default class Office extends View {
       .child(h_flex().min_w(0).gap(5).items_center().children(value))
       .child(svg(`mods/office-chrome/chevron-${open ? "right" : "down"}.svg`).size(10).flex_none().text_color("#c9b48a"));
     const card = v_flex().id(`pick-${id}-card`).w(240).flex_none()
-      .child(h_flex().flex_none()
-        .child(div().h(18).px(10).flex().items_center().bg("#d9b86a").border_t(1).border_l(1).border_r(1).border_color("#a8863f")
-          .text_size(9.5).font_bold().text_color("#4a3518").child(title)))
-      .child(v_flex().id(`pick-${id}-list`).max_h(264).py(3).overflow_y_scrollbar().bg("#f2ead4").border(1).border_color("#a8863f")
-        .children(options.map((o) => h_flex().id(`pick-${id}-${o.key}`).h(28).px(10).gap(7).items_center().cursor_pointer()
-          .border_b(1).border_color("#dccfa9").text_size(12).text_color(INK)
-          .when(o.on, (el) => el.bg("#f6e27a"))
-          .hover((s) => s.bg("#efe0a8"))
+      .child(cardTab(title))
+      .child(sheet(v_flex().id(`pick-${id}-list`).max_h(264).py(3).overflow_y_scrollbar())
+        .children(options.map((o) => line(h_flex().id(`pick-${id}-${o.key}`), { on: o.on })
           .on_click((_e, cx) => { this.picking = null; onPick(o.key); cx.notify(); })
           .children(o.label)
-          .child(div().w(12).flex_none().text_size(11).font_bold().text_color("#2f7a4a").child(o.on ? "✓" : "")))));
+          .child(div().w(12).flex_none().text_size(11).font_bold().text_color(ink().tick).child(o.on ? "✓" : "")))));
     return Popover.new(`picker-${id}`).anchor("top_left").open(open)
       .on_open_change((on, cx) => { this.picking = on ? id : null; cx.notify(); })
       .trigger(trigger).content(card);
+  }
+
+  // The boss's whiteboard: its plan (office.plan), a note per piece coloured
+  // by where it is; a note with a hire picks its desk. A piece done in a
+  // worktree shows its diff, and Accept (asked twice) tells the boss to merge it.
+  board(t, bossAddr, room, list, team) {
+    const hires = (team.bosses.get(bossAddr)?.staff ?? []).map((address) => ({
+      address,
+      name: team.names.get(address) ?? "",
+      piece: team.pieces?.get(address) ?? "",
+      task: team.tasks.get(address) ?? "",
+      status: list.find((a) => a.address === address)?.status ?? null,
+      cwd: team.cwds?.get(address) ?? "",
+    }));
+    const notes = planNotes(team.plans?.get(bossAddr) ?? "", hires).map((n) => ({ ...n, wt: n.hire ? worktreeOf(n.hire.cwd) : null }));
+    this.boardNow = { boss: bossAddr, machine: room.machine ?? null, notes };
+    if (!notes.length) return null;
+    const passed = notes.filter((n) => n.state === "ok" || n.state === "merged").length;
+    const chip = (id, text, bg, tip, action) => div().id(id).h(14).px(4).flex().flex_none().items_center().bg(bg)
+      .text_size(9.5).font_bold().text_color("#fbf6ea").cursor_pointer().hover((s) => s.opacity(0.85)).tooltip(tip)
+      .on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); action(cx); cx.notify(); })
+      .child(text);
+    const note = (n, i) => {
+      const look = NOTE[n.state] ?? NOTE.todo;
+      const who = n.hire?.name || "";
+      const ready = n.wt && (n.state === "done" || n.state === "ok") ? this.diffs.get(n.hire.address) : null;
+      const diff = ready && ready.cwd === n.hire.cwd && !ready.err ? ready : null;
+      const can = diff && diff.files > 0 && diff.dirty === 0;
+      let foot;
+      if (can && this.accepting === n.hire.address) {
+        foot = [div().flex_1().min_w(0).truncate().child(`Merge ${diff.branch}?`),
+          chip(`wb-${i}-yes`, "✓", "#2f7a46", `Tell the boss to merge ${diff.branch}`, (cx) => this.accept(n, cx)),
+          chip(`wb-${i}-no`, "✕", "#6b6255", "Not yet", () => { this.accepting = null; })];
+      } else if (diff) {
+        foot = [div().flex_none().text_color("#2f7a46").child(`+${diff.add}`), div().flex_none().text_color("#b0453a").child(`−${diff.del}`),
+          div().flex_1().min_w(0).truncate().child(diff.dirty ? `${diff.dirty} not committed` : diff.files ? "" : "no changes"),
+          ...(can ? [chip(`wb-${i}-accept`, "Accept", "#3f6f9e", `Accept: the boss merges ${diff.branch} (asks once more)`, () => { this.accepting = n.hire.address; })] : [])];
+      } else {
+        foot = [div().flex_none().child(`${look.mark} ${look.text}`), div().flex_1().min_w(0).truncate().text_color("#6a6253").child(who)];
+      }
+      const tip = [n.piece, `${look.text}${who ? ` · ${who}` : ""}`, n.hire?.task && n.hire.task !== n.piece ? n.hire.task : "",
+        diff ? `${diff.branch}: ${diff.files} file${diff.files === 1 ? "" : "s"}, +${diff.add} −${diff.del}${diff.dirty ? `, ${diff.dirty} not committed` : ""}` : "",
+        n.hire ? "Click: their desk" : "Nobody on it yet"].filter(Boolean).join("\n");
+      return v_flex().id(`wb-${i}`).w(132).h(36).flex_none().px(6).py(3).gap(1).bg(look.bg)
+        .border(1).border_color(n.state === "blocked" ? t.blocked : "#00000026").when(n.state === "merged", (el) => el.opacity(0.7))
+        .tooltip(tip)
+        .when(Boolean(n.hire), (el) => el.cursor_pointer().on_click((_e, cx) => this.pick(n.hire.address, cx)))
+        .child(div().min_w(0).truncate().text_size(10.5).font_semibold().text_color(INK).child(n.piece))
+        .child(h_flex().h(14).gap(4).items_center().text_size(9.5).text_color("#4a4236").children(foot));
+    };
+    return v_flex().id("whiteboard").flex_none().p(4).gap(3).bg("#b4bbc1").border(2).border_color("#7b858e")
+      .child(h_flex().gap(6).items_center().text_size(9).font_bold().text_color("#46505a")
+        .child("WHITEBOARD").child(div().text_color("#5d6772").child(`${passed}/${notes.length} passed review`)))
+      .child(h_flex().flex_wrap().gap(4).children(notes.map(note)));
   }
 
   // The boss's office: its back wall with what it does pinned on it, the boss
   // standing on the left; on the floor what it says, then where the goal goes,
   // who leads a new team and the goal itself. Folded: its face and its line.
   bossBand(t, sp, list, team) {
+    this.boardNow = null;
     const room = this.room(sp);
     const bosses = this.bosses();
     const bossAddr = room ? bosses[room.id] ?? null : null;
@@ -1191,8 +1394,8 @@ export default class Office extends View {
     const rooms = room ? this.picker("room", t, [swatch(room), roomName(room)], "The space the goal goes to",
       sp.map((s) => ({ key: s.id, on: s.id === room.id,
         label: [swatch(s), div().flex_1().min_w(0).truncate().child(s.name),
-          div().flex_none().px(4).text_size(9.5).font_bold().when(Boolean(bosses[s.id]), (el) => el.bg("#3b2a1c").text_color("#f3e3c3"))
-            .when(!bosses[s.id], (el) => el.text_color("#8a7a5c")).child(bosses[s.id] ? "BOSS" : "no boss")] })),
+          div().flex_none().px(4).text_size(9.5).font_bold().when(Boolean(bosses[s.id]), (el) => el.bg(LAMP).text_color("#2a1d10"))
+            .when(!bosses[s.id], (el) => el.text_color(t.dim)).child(bosses[s.id] ? "BOSS" : "no boss")] })),
       (id) => { this.bossRoom = id; localStorage.setItem("office.bossRoom", id); }, "SPACES") : null;
     // Who leads a new team: only while the space has no boss.
     const agentsPick = bossAddr ? null
@@ -1201,13 +1404,14 @@ export default class Office extends View {
       : this.picker("agent", t, [programIcon(pick, t, 13), div().min_w(0).truncate().child(pick.name)], "The agent that leads the team (the orchestrator)",
         known.map((k) => ({ key: k.key, on: k.key === pick.key,
           label: [programIcon(k, t, 14), div().flex_1().min_w(0).truncate().child(k.name),
-            ...(k.key === DEFAULT_BOSS ? [div().flex_none().text_size(10).text_color("#8a7a5c").child("default")] : [])] })),
+            ...(k.key === DEFAULT_BOSS ? [div().flex_none().text_size(10).text_color(t.dim).child("default")] : [])] })),
         (key) => { this.bossPick = key; localStorage.setItem("office.bossAgent", key); }, "ORCHESTRATOR");
     const plaque = h_flex().flex_none().h(22).px(8).gap(6).items_center().bg("#3b2a1c").border(1).border_color("#6b4a2e")
       .child(div().text_size(11).font_bold().text_color("#f3e3c3").child("BOSS"))
       .child(div().size(6).flex_none().bg(t[state] ?? t.dim))
       .child(div().max_w(160).truncate().text_size(11).text_color("#d8c7a6").child(room?.name ?? "no space"));
     const flow = bossAddr ? this.bossFlow(room.id) : null;
+    const board = bossAddr ? this.board(t, bossAddr, room, list, team) : null;
     const left = 88;
     return div().id("boss-band").relative().min_h(BAND_H).flex_none().overflow_hidden().bg(BOSS_FLOOR).border_b(1).border_color("#11161f")
       .child(div().absolute().top(0).left(0).w(900).h(BAND_H).child(image(BOSS_ROOM).w(900).h(BAND_H)))
@@ -1221,6 +1425,7 @@ export default class Office extends View {
           .when(Boolean(crewText), (el) => el.child(div().flex_none().px(5).bg("#0d131bcc").text_size(10.5).text_color(over ? t.blocked : "#d8c7a6").child(crewText))))
         .child(h_flex().h(22).items_center().overflow_hidden()
           .when(Boolean(flow), (el) => el.child(this.flowNotes("band", flow, t))))
+        .when(Boolean(board), (el) => el.child(board))
         // On the floor: what it says, then the goal.
         .child(div().h(18).mt(4).min_w(0).truncate().text_size(11.5).text_color(lineColor).child(line))
         .child(h_flex().gap(6).items_start()
@@ -1369,6 +1574,8 @@ export default class Office extends View {
     this.z = SMALL;
     this.most = this.wide ? fitAcross(width - this.z.pad, this.z.slot, this.z.gap) : MOST_ACROSS;
     this.now = Date.now();
+    this.hours = parseHours(localStorage.getItem("office.hours"));
+    this.night = nightNow();
     const filter = this.wide ? this.filter : "all";
     // Filtered, a tab shows some of its desks: the split no longer fits them.
     const trees = filter === "all" ? this.treesFor(plan) : new Map();
@@ -1402,10 +1609,12 @@ export default class Office extends View {
       .text_color(t.foreground)
       // Letting go anywhere but a lit Add desk (which stops this) drops a drag.
       .when(this.wide, (el) => el.on_mouse_up("left", (_e, cx) => { const was = this.drag?.moved; this.drag = null; if (was) cx.notify(); }))
-      .child(div().absolute().top(0).left(0).child(image(FLOOR).w(912).h(800)))
+      .child(div().absolute().top(0).left(0).when(this.night, (el) => el.opacity(0.4)).child(image(FLOOR).w(912).h(800)))
       .when(this.wide, (el) => {
         const ask = this.needsYou(list, roles, sp, t, mono);
-        return el.child(this.header(n, list.length, t)).child(this.bossBand(t, sp, list, team)).when(Boolean(ask), (el) => el.child(ask));
+        const memo = this.morning(t);
+        return el.child(this.header(n, list.length, t)).child(this.bossBand(t, sp, list, team))
+          .when(Boolean(memo), (el) => el.child(memo)).when(Boolean(ask), (el) => el.child(ask));
       })
       .child(v_flex().id("office-floor").flex_1().min_h(0).p(this.wide ? 10 : 8).gap(this.wide ? 10 : 8).overflow_y_scrollbar()
         .when(Boolean(moveLine), (el) => el.child(div().flex_none().text_size(11).text_color(moveLine.tone).child(moveLine.text)))

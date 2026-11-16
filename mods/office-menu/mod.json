@@ -1,0 +1,10 @@
+{
+  "place": "none",
+  "title": "Office menu",
+  "overlay": {
+    "kind": "popup",
+    "frame": "none",
+    "width": 230,
+    "height": 260
+  }
+}

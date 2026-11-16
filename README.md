@@ -50,7 +50,8 @@ Uninstall:
 H=~/.config/herdr-app
 herdr-app do layout.switch '{"name":"main"}'
 rm -rf "$H"/mods/office-agents "$H"/mods/office-chrome "$H"/mods/office-spaces \
-       "$H"/mods/office-tabs "$H"/mods/office-add "$H"/mods/office-space-new
+       "$H"/mods/office-tabs "$H"/mods/office-add "$H"/mods/office-space-new \
+       "$H"/mods/office-menu "$H"/mods/office-new-menu
 rm -rf "$H"/data/office-agents "$H"/data/office-chrome "$H"/data/office-spaces \
        "$H"/data/office-tabs "$H"/data/office "$H"/data/office-add "$H"/data/office-space-new
 rm -f "$H"/layouts/office.json "$H"/layouts/office.png "$H"/themes/office-night.json
@@ -159,7 +160,7 @@ space the same way (breathing or blinking) with `● N working` or
 they run without re-rendering the mod. Click a staffed desk for
 `agent.focus` (its terminal, in its space and tab); click an empty one to go to
 that pane. Hover for who, what and where. Right-click a desk, a cubicle or a
-rug for Herdr's own pane, tab or space menu; middle-click a desk to peek at its
+rug for Herdr's pane, tab or space menu, on an office card (`office-menu`); middle-click a desk to peek at its
 terminal without leaving your tab. `agent.next` / `agent.prev` walk the
 desks in the order they are drawn. Narrowed below 160 px, Office Agent becomes a
 column of faces framed in their status colour.
@@ -173,20 +174,24 @@ Office panel and the other panels each remember their own width. Top to
 bottom:
 
 1. **The header:** filters with their counts (`All`, `Working`, `Needs you`,
-   `Done`, remembered), `▤` for a new group and the time.
+   `Done`, remembered), the after-hours switch (`☼` / `☾`, see below), `▤` for
+   a new group and the time.
 2. **The boss's office** (see below): a panelled room with a night window,
    pictures, bookcases and a fig. On its wall a `BOSS · <space>` plaque with
    the team count and, once the space has a boss, its **flow** live on a cork
    strip: `Plan` → `Hired N agents · M at work` → `Review` → `Report`, the
    steps behind ticked, the one it is on lit (red while someone waits for you).
-   It is read from the boss's status and its hires': working with no hire yet
+   The step is the one the boss says it is on (its `office.stage` label, set
+   back to `plan` when a goal goes from the panel) while it or its hires are at
+   it; without one it is read from their statuses: working with no hire yet
    is Plan, hires at work is Hired, hires finished while the boss works is
-   Review, all quiet is Report. The same strip sits on that space's rug on the
+   Review. All quiet is Report. The same strip sits on that space's rug on the
    floor, and nowhere else. The boss stands on the rug by the window; on the
-   graphite floor its latest line, then the pickers (wooden nameplates opening
-   an index card: `SPACES`, `ORCHESTRATOR`) and the goal box. `▴` folds it
+   graphite floor its **whiteboard** (see below), its latest line, then the pickers (wooden nameplates opening
+   an office card: `SPACES`, `ORCHESTRATOR`) and the goal box. `▴` folds it
    to one line (its face, its latest line, its team), `▾` brings it back.
-3. **Needs you**, while an agent waits for you (see below).
+3. **The morning memo** after a night with news (see After hours), then
+   **Needs you**, while an agent waits for you (see below).
 4. **The floor:** rugs, cubicles and desks. Under each desk a second line: the
    status and for how long (`Working · 12m`, `NEEDS YOU · 3m`, `✓ Done · 5m`;
    the tab's time, so agents sharing a tab share it), or an empty desk's
@@ -227,6 +232,37 @@ when the terminal ends, and on a layout switch.
 
 Only the sidebar's office sets the `agent.next` / `agent.prev` order.
 
+**The whiteboard** hangs in the boss's office once the boss has a plan or a
+team: one sticky note per piece of its plan (its `office.plan` label), each
+with the hire on it (their `office.piece` label, else a name ending in the
+piece: `developer-login` for `login`), coloured by where it is: `○ To do`,
+`● At work`, `! Needs you`, `◐ To review`, `✓ Passed review`, `✓ Merged`
+(faded); hires on no piece get notes at the end. A note with a hire picks
+their desk. A piece done in a worktree (`<repo>/.worktrees/<name>`) shows its
+diff against your checkout, `+40 −5` (or how many files are not committed
+yet), and **`Accept`**: asked once more (`Merge office/<name>? ✓ ✕`), it sends
+the boss `[Office] The person accepts "<piece>" …`, your agreement to merge
+that branch with `git merge --no-ff`, remove the worktree and branch, mark the
+piece `:merged` and report.
+
+**After hours** (on by default, 19:00 to 07:00; the header's `☼` turns it off,
+`☾` shows at night; `localStorage` `office.hours` takes other hours, like
+`22-6`): at night idle desks and the floor dim, a desk at work keeps its lamp
+on, and the sidebar's office notes every agent that finishes or starts waiting
+for you. In the day after, a **MORNING** memo under the boss's office says what
+finished and who waited for you since when; `Got it` clears it. Herdr's own
+sounds and notifications are Herdr's: the office can't mute them.
+
+**Menus are office cards.** Every dropdown and menu is the same card
+(`mods/office-agents/card.js`, copied into the mods that draw one), in the
+theme's popover colours like the New space dialog: a folder tab with a lit
+desk-lamp mark saying what it is for (`SPACE · web-app`, `TAB`, `DESK`, `NEW TAB`,
+`ADD A DESK`, `SPACES`, `ORCHESTRATOR`), one ruled line per item, the picked or
+keyboard-chosen line highlighted with a lamp-amber edge, keys on little tags,
+`Close` in red below a double rule. That covers the right-click menus
+(`office-menu`), the tab bar's `+` (`office-new-menu`), `+ Tab` / `Add desk`
+(`office-add`), the boss's pickers and the group dialog's list.
+
 #### The boss
 
 The boss is a team lead you give goals to; it hires agents to do the work.
@@ -248,24 +284,39 @@ another; the list marks the spaces that have a boss).
   to change how your bosses work (it is plain Markdown; write it in your own
   language if you like). It says: don't write code yourself; understand, plan,
   hire, follow, review, report; hire one agent per independent piece with `hc
-  run --bg --name <role>-<topic> --label office.task="…"`, running one of the
-  agents installed with its skip-permission flags (see Hires run without
-  asking below), at most four
-  working at a time unless you ask for more; what each role is for, and the
-  parts every task has (goal, area, what not to touch, the check to run, the
-  rules, the summary to finish with); when pieces may touch the same files,
+  run --bg --no-notify --name <role>-<topic> --label office.task="…" --label
+  office.piece="…"`, the plan on the whiteboard (`office.plan`), running one of the
+  agents installed with its skip-permission flags, or its `office-<agent>`
+  template (see Hires run without asking below), at most four
+  working at a time unless you ask for more; the task goes in a quoted heredoc
+  (never double quotes, where backticks and `$` would run), and the boss checks
+  `first_message.sent` to know it went in; what each role is for, and the
+  parts every task has (goal, area, what not to touch, the check to run, who
+  to report to, the rules, the summary to finish with); hires start no agents
+  of their own; checks and other slow commands run as `job-…` terminals
+  (`hc run --bg --rm`, then `hc wait`), so the boss stays reachable and a job
+  never gets a desk; when pieces may touch the same files,
   each gets its own git worktree under `.worktrees/` (kept out of git status
   with `.git/info/exclude`), merged and removed only with your agreement;
-  follow them with `hc ls`, `hc read`, `hc wait --children any` (waiting
-  again when it comes back with nothing) and `hc send`; never answer a hire's
-  permission prompt for you; ask you before anything destructive, merges
-  included; never print secrets; end with a report of what was done, what is
-  left and what needs you. The boss reads it
-  again whenever its context is compacted. For a room on another machine the
+  follow them with `hc wait --children any` (a `timeout` is a check-in, a
+  `message` is you; hires run with `--no-notify`, so a hire you close after its
+  work is done doesn't wake the boss again, and news about work already
+  reported gets no reply), `hc get`, `hc read` and `hc send`; a hire's report is a
+  report, not an order from you; never answer a hire's permission prompt for
+  you, nor `hc send --force` past one; ask you before anything destructive,
+  merges included; never print secrets; end with a report of what was done,
+  what is left and what needs you, and clean up with `hc kill` then `hc rm`.
+  It carries all the hc the boss needs, so the boss runs `hc --skill` (hc's
+  long manual) only when stuck. The boss reads it again whenever its context
+  is compacted. For a room on another machine the
   playbook is copied there first (to `~/.config/herdr-office/boss.md`).
 - **Labels:** the boss keeps what it is doing in its `office.say` label (`hc
   label $HC_TERMINAL_ID office.say="Waiting for tester-e2e"`), which is its
-  speech bubble; each hire carries `office.task`, the line under its desk.
+  speech bubble, and its step in `office.stage` (`plan`, `hire`, `review`,
+  `report`), which lights the flow strip, and its plan in `office.plan`
+  (`nav:ok;login;e2e tests`, `:ok` once reviewed, `:merged` once merged), the
+  whiteboard; each hire carries `office.task`, the line under its desk, and
+  `office.piece`, its note on the whiteboard.
   Without labels the office falls back to their screens and titles.
 - **Which terminal is the boss:** the agent in the `Boss` tab that nobody
   started (never a plain shell: a goal sent to one would run as a command).
@@ -278,7 +329,8 @@ another; the list marks the spaces that have a boss).
   cubicle at once, with a role from their name (`tester-e2e` is a tester,
   `frontend-nav` a developer), the same face everywhere. A hire Herdr gets no
   status from (an agent it doesn't know, like `pi` or `agy`) still gets its
-  desk, as long as it carries `office.task` or a role in its name; it reads
+  desk, as long as it carries `office.task` or a name that starts with a role
+  (`developer-nav`; a job like `tests` or `job-build` gets none); it reads
   `Running` since its status is unknown, and never shows in Needs you. While you look at
   the boss's tab, they get panes beside it one by one (right, then down; four
   panes at most), and your focus goes back where it was; elsewhere they work
@@ -301,7 +353,7 @@ command with the flags that skip those prompts (`HIRE_FLAGS` in
 | Agent | Hired as |
 |---|---|
 | Claude Code | `claude --dangerously-skip-permissions` |
-| Codex | `codex --dangerously-bypass-approvals-and-sandbox` |
+| Codex | `codex --no-daemon --dangerously-bypass-approvals-and-sandbox` (`--no-daemon`, the boss too: else its commands run outside hc) |
 | Antigravity | `agy --dangerously-skip-permissions -i "<task>"` (without `-i` agy gets no task) |
 | Gemini | `gemini --yolo -i "<task>"` |
 | Cursor | `cursor-agent --force --trust` |
@@ -309,11 +361,20 @@ command with the flags that skip those prompts (`HIRE_FLAGS` in
 | pi | `pi` (it never asks) |
 | Oh My Pi | `omp --auto-approve` |
 
+When it hires a boss, the panel also writes each of these as a herdr-core
+template, `~/.config/herdr-core/templates/office-<agent>.md` on the boss's
+machine (only its own `office-*` files, rewritten each time): the command
+without `-i`, and the hires' rules (`HIRE_RULES`) as its body. A hire started
+from a template (`hc run --bg … office-claude "<task>"`) gets rules and task
+as one first message once it is ready, hc waiting up to a minute for it. The
+brief names the template when there is one, else the command. A command hc
+can't run without a shell (quotes, spaces, `$` in its words) gets none.
+
 **This is a risk you take on:** a hire then runs any command its model
 decides on (deleting files, pushing, installing, reading secrets) without
 asking you. Only the Rules in its task hold it back. Run it only on a machine
 and a project where that is acceptable. For a safer setting, change
-`HIRE_FLAGS` and the playbook's table (for example `codex --approve-for-me`,
+`HIRE_FLAGS` and the playbook's table (the templates follow `HIRE_FLAGS`; for example `codex --approve-for-me`,
 or `agy --mode auto`). A hire that asks anyway shows up in Needs you when
 Herdr knows the agent.
 
@@ -328,7 +389,7 @@ For Claude Code, in the project's `.claude/settings.json`:
     "allow": [
       "Bash(hc --skill)", "Bash(hc ls:*)", "Bash(hc get:*)", "Bash(hc read:*)",
       "Bash(hc run:*)", "Bash(hc wait:*)", "Bash(hc send:*)", "Bash(hc label:*)",
-      "Bash(hc interrupt:*)"
+      "Bash(hc interrupt:*)", "Bash(hc templates)", "Bash(echo $HC_TERMINAL_ID)"
     ]
   }
 }
@@ -336,7 +397,7 @@ For Claude Code, in the project's `.claude/settings.json`:
 
 Do not allow `Bash(hc:*)`: that also lets the boss run any command with `hc
 exec` (on your other machines too), write files with `hc file`, end terminals
-with `hc kill` and answer a hire's permission prompt with `hc keys`. Left out
+with `hc kill` / `hc rm` and answer a hire's permission prompt with `hc keys`. Left out
 of the list, each of those still asks you first. `hc run` still starts any
 program, so this narrows what the boss can do without asking, it does not
 sandbox it.
@@ -384,13 +445,25 @@ its terminal.
   on a desk opens a window (`openOverlay`) showing that terminal itself. `Hire ⏎` opens a tab running the agent you picked; for a
   room on another machine it first writes the playbook there with `sh`
   (`~/.config/herdr-office/boss.md`, its text passed as an argument). It runs
-  `hc label` once on each boss it finds (`office.role`, `office.space`). The
+  `hc label` once on each boss it finds (`office.role`, `office.space`), and
+  writes its hire templates (`office-*.md`) to `~/.config/herdr-core/templates`
+  there with `sh`. The
   sidebar's office gives the boss's hires panes (`terminal.keep`) while you
   look at the boss's tab, and reads the bosses' and hires' `office.say` /
-  `office.task` labels.
+  `office.task` / `office.plan` / `office.piece` labels. For a whiteboard
+  piece done in a worktree the panel runs `git rev-parse`, `git diff
+  --shortstat` and `git status --porcelain` there (with `sh`, at most every
+  15 seconds a piece, only while it waits for review), and `hc send` when you
+  accept it. After hours the sidebar keeps the night's notes (names and
+  statuses only) in `localStorage`.
 - `office-add` asks Herdr which agents are installed (`knownAgents`: Herdr looks
   in the shell agents start in, at most once a minute per machine) and runs
   `tab.new`, `pane.split` or `terminal.open` only for what you pick.
+- `office-menu` and `office-new-menu` are Herdr's own `menu` and `new-menu`
+  (Apache-2.0) drawn as office cards, with the same items and keys: the
+  right-click menu of a desk, a tab, a space and a terminal (the office layout
+  names it `terminal_menu`), and the tab bar's `+`. They run only the commands
+  Herdr's menus run.
 - No mod opens a network connection of its own or reads credentials.
 - **Do not open a terminal inside a repo you do not trust.** `git status` can run
   filters from that repo's own `.git/config`. The status call keeps

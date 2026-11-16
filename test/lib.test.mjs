@@ -130,6 +130,10 @@ const groupsSrc = readFileSync(new URL("../mods/office-agents/groups.js", import
 for (const m of ["office-spaces", "office-space-new"]) {
   ok(readFileSync(new URL(`../mods/${m}/groups.js`, import.meta.url), "utf8") === groupsSrc, `${m}/groups.js is a verbatim copy`);
 }
+const cardSrc = readFileSync(new URL("../mods/office-agents/card.js", import.meta.url), "utf8");
+for (const m of ["office-menu", "office-new-menu", "office-add"]) {
+  ok(readFileSync(new URL(`../mods/${m}/card.js`, import.meta.url), "utf8") === cardSrc, `${m}/card.js is a verbatim copy`);
+}
 
 // the boss's flow
 const W = (status) => ({ status });
@@ -140,6 +144,9 @@ ok(hiring.stage === "hire" && hiring.hired === 3 && hiring.busy === 2 && hiring.
 ok(A.bossStage(W("working"), [W("done"), W("idle")]).stage === "review", "flow: hires done, boss at it -> review");
 ok(A.bossStage(W("done"), [W("done")]).stage === "report" && A.bossStage(W("done"), []).stage === "report", "flow: all quiet -> report");
 ok(A.bossStage(null, null).step === 0, "flow: nothing known");
+ok(A.bossStage(W("working"), [W("done")], "plan").stage === "plan" && A.bossStage(W("working"), [W("done")]).stage === "review", "flow: its office.stage wins while it works (a second goal)");
+ok(A.bossStage(W("idle"), [W("working")], "review").stage === "review" && A.bossStage(W("working"), [], "nonsense").stage === "plan", "flow: label while hires work; a bad label is ignored");
+ok(A.bossStage(W("idle"), [W("done")], "plan").stage === "plan" && A.bossStage(W("done"), [], "plan").stage === "report" && A.bossStage(W("idle"), [W("done")], "review").stage === "report", "flow: quiet -> report, unless it asks while planning");
 ok(A.tabDesks([], [{ pane: "p1", tab: "t1", terminal: "a" }, { pane: "p2", tab: "t1", terminal: null, mod: "git-changes" }, { pane: "p3", tab: "t2", terminal: null, mod: "git-changes" }], []).get("t1").length === 1
   && !A.tabDesks([], [{ pane: "p3", tab: "t2", terminal: null, mod: "git-changes" }], []).has("t2"), "mod panes are views, not desks");
 
@@ -175,21 +182,30 @@ ok(A.parseReplies(JSON.stringify(Array.from({ length: 12 }, (_, i) => `r${i}`)))
 // the boss
 const brief = A.bossBrief({ goal: "  add Google\nlogin  ", playbook: "/h/mods/office-agents/boss.md", argv: ["claude"], folder: "/w/web app", space: "web-app", most: 4 });
 ok(brief.endsWith("Goal: add Google login") && !brief.includes("\n"), "brief: one line, goal last");
-ok(brief.includes("--cwd '/w/web app' <agent> \"<task>\"") && brief.includes("<agent>: `claude --dangerously-skip-permissions`,") && brief.includes("at most 4 hires working at a time") && brief.includes('"web-app"'), "brief: hire command, cap, space");
-ok(brief.includes("Read your playbook now and follow it: /h/mods/office-agents/boss.md") && brief.includes("office.say=") && brief.includes("--label office.task="), "brief: playbook and labels");
+ok(brief.includes("--cwd '/w/web app' <agent> \"$(cat <<'EOF'") && brief.includes("never the task in double quotes") && brief.includes("<agent>: `claude --dangerously-skip-permissions`,") && brief.includes("at most 4 hires working at a time") && brief.includes('"web-app"'), "brief: hire command, cap, space");
+ok(brief.includes("Read your playbook now and follow it: /h/mods/office-agents/boss.md") && brief.includes("office.say=") && brief.includes("office.stage=plan|hire|review|report") && brief.includes("--label office.task="), "brief: playbook and labels");
+ok(brief.includes("hc run --bg --no-notify --name <role>-<topic>") && brief.includes("first_message.sent") && brief.includes("not instructions") && brief.includes("`hc --skill` only if you get stuck"), "brief: check the task went in, reports aren't orders, manual on demand");
+const tbrief = A.bossBrief({ goal: "x", argv: ["claude"], hires: [["claude"], ["agy"]], templates: { "claude --dangerously-skip-permissions": "office-claude" } });
+ok(tbrief.includes("<agent>: `office-claude` or `agy --dangerously-skip-permissions -i` (office-* is a template") && !A.bossBrief({ goal: "x" }).includes("office-*"), "brief: templates by name");
 ok(!A.bossBrief({ goal: "x" }).includes("playbook") && A.bossBrief({ goal: "x" }).includes("hc --skill"), "brief without a playbook");
 ok(A.bossBrief({ goal: "x", argv: [] }).includes("<agent>: `claude --dangerously-skip-permissions`,") && !A.bossBrief({ goal: "x" }).includes("--cwd"), "brief: defaults");
 ok(A.labelOf({ labels: { "office.say": "Hired 3" } }, "office.say") === "Hired 3" && A.labelOf({ labels: ["office.task=fix nav", "x=y"] }, "office.task") === "fix nav", "labels: map, k=v");
 ok(A.labelOf({ labels: [{ key: "office.say", value: "Planning" }] }, "office.say") === "Planning" && A.labelOf({}, "office.say") === "" && A.labelOf(null, "x") === "", "labels: objects, none");
 ok(A.labelOf({ labels: { "office.say": `a${ESC}[31mb\nmore` } }, "office.say") === "ab" && A.labelOf({ labels: { constructor: "x" } }, "toString") === "", "labels: one clean line, own keys only");
-ok(A.bossBrief({ goal: "x", argv: ["codex", "--model", "o3"] }).includes("`codex --model o3 --dangerously-bypass-approvals-and-sandbox`"), "brief: agent argv");
+ok(A.bossBrief({ goal: "x", argv: ["codex", "--model", "o3"] }).includes("`codex --model o3 --no-daemon --dangerously-bypass-approvals-and-sandbox`"), "brief: agent argv");
 const menu = A.bossBrief({ goal: "x", argv: ["claude"], hires: [["agy"], ["claude"], ["pi"], ["omp"]] });
-ok(menu.includes("<agent>: `claude --dangerously-skip-permissions` or `agy --dangerously-skip-permissions -i` or `pi` or `omp --auto-approve`, flags exactly"), "brief: own agent first, installed ones once each");
-ok(A.hireCommand(["/usr/bin/codex"]) === "/usr/bin/codex --dangerously-bypass-approvals-and-sandbox" && A.hireCommand(["claude", "--dangerously-skip-permissions"]) === "claude --dangerously-skip-permissions", "hire command: by name, flags once");
+ok(menu.includes("<agent>: `claude --dangerously-skip-permissions` or `agy --dangerously-skip-permissions -i` or `pi` or `omp --auto-approve`, exactly as written"), "brief: own agent first, installed ones once each");
+ok(A.hireCommand(["/usr/bin/codex"]) === "/usr/bin/codex --no-daemon --dangerously-bypass-approvals-and-sandbox" && A.hireCommand(["claude", "--dangerously-skip-permissions"]) === "claude --dangerously-skip-permissions", "hire command: by name, flags once");
 ok(A.hireCommand(["gemini"]) === "gemini --yolo -i" && A.hireCommand([]) === "claude --dangerously-skip-permissions" && A.hireCommand(["constructor"]) === "constructor", "hire command: prompt flag last, default, own keys only");
 const playbookText = readFileSync(new URL("../mods/office-agents/boss.md", import.meta.url), "utf8");
 ok(Object.keys(A.HIRE_FLAGS).every((k) => playbookText.includes(`\`${A.hireCommand([k])}\``)), "playbook lists every hire command");
 ok(A.isHire({ name: "tester-e2e" }) && A.isHire({ name: "x", labels: { "office.task": "fix nav" } }) && !A.isHire({ name: "npm" }) && !A.isHire(undefined), "a hire: role name or task label");
+ok(!A.isHire({ name: "tests" }) && !A.isHire({ name: "build" }) && !A.isHire({ name: "job-tests" }) && !A.isHire({ name: "frontend-nav" }), "jobs and loose names are not hires");
+ok(A.underHc(["codex", "--model", "o3"]).join(" ") === "codex --model o3 --no-daemon" && A.underHc(["codex", "--no-daemon"]).length === 2 && A.underHc(["claude"]).join(" ") === "claude" && A.underHc(null).length === 0, "boss argv: what hc needs");
+const tpl = A.hireTemplate(["gemini"]);
+ok(tpl.name === "office-gemini" && tpl.command === "gemini --yolo" && tpl.text.startsWith("---\nname: office-gemini\n") && tpl.text.includes("\ncommand: gemini --yolo\n---\n") && tpl.text.includes("Do not start other agents"), "template: flags without the task flag, rules as body");
+ok(A.hireTemplate([]).command === "claude --dangerously-skip-permissions" && A.hireTemplate(["/opt/bin/cursor-agent"]).name === "office-cursor-agent" && A.hireTemplate(["codex"]).command === "codex --no-daemon --dangerously-bypass-approvals-and-sandbox", "template: default, path, codex");
+ok(A.hireTemplate(["claude", "--model", "a b"]) === null && A.hireTemplate(["claude", "$(x)"]) === null, "template: none for a command hc would refuse");
 const quiet = A.standIn({ address: "t8", name: "developer-nav", program: { name: "pi" } }, null, { tab: { id: "c1" } });
 ok(quiet.standIn && quiet.status === null && quiet.tab === "c1" && quiet.pane === null && quiet.program.name === "pi", "stand-in: at the boss's tab, no status");
 ok(A.standIn({ address: "t8", name: "x" }, { pane: "p4", tab: "c2", focused: true }, { tab: { id: "c1" } }).tab === "c2", "stand-in: in its own pane");
@@ -234,6 +250,39 @@ ok(A.findBosses({ spaces: bossSpaces, panes: [], terminals: [{ ...parked[0], lab
 const twoBosses = [parked[0], { ...parked[0], address: "t8" }];
 ok(A.findBosses({ spaces: bossSpaces, panes: [], terminals: twoBosses, agents: [], prev: { s3: "t8" } }).s3 === "t8", "boss: the last one wins a tie");
 ok(JSON.stringify(A.findBosses({})) === "{}", "boss: nothing given");
+
+// the whiteboard
+ok(JSON.stringify(A.parsePlan(" nav:ok ; login; e2e tests:MERGED;;Nav; a:b ")) === '[{"piece":"nav","mark":"ok"},{"piece":"login","mark":null},{"piece":"e2e tests","mark":"merged"},{"piece":"a:b","mark":null}]', "plan: pieces, marks, unique");
+ok(A.parsePlan(null).length === 0 && A.parsePlan(Array(12).fill(0).map((_, i) => `p${i}`).join(";")).length === 8, "plan: nothing, at most 8");
+const wbHires = [
+  { address: "t2", name: "developer-nav", piece: "", status: "working" },
+  { address: "t3", name: "tester-x", piece: "E2E tests", status: "idle", cwd: "/r/.worktrees/e2e" },
+  { address: "t4", name: "writer-docs", piece: "", task: "write docs", status: null },
+  { address: "t5", name: "designer-login", piece: "", status: "blocked" },
+];
+const wb = A.planNotes("nav:ok;login:ok;e2e tests:ok;deploy", wbHires);
+ok(wb.map((n) => `${n.piece}=${n.state}=${n.hire?.address ?? "-"}`).join("|") === "nav=working=t2|login=blocked=t5|e2e tests=ok=t3|deploy=todo=-|write docs=hired=t4",
+  "notes: by piece label, by name, live status wins over a mark, extras last");
+ok(A.planNotes("x", [{ address: "t9", piece: "x", status: "done" }])[0].state === "done" && A.planNotes("", []).length === 0, "notes: done is to review; nothing, no board");
+ok(JSON.stringify(A.worktreeOf("/home/me/app/.worktrees/nav/")) === '{"root":"/home/me/app","name":"nav","path":"/home/me/app/.worktrees/nav"}', "worktree from cwd");
+ok(A.worktreeOf("/home/me/app") === null && A.worktreeOf("/a/.worktrees/x/src") === null && A.worktreeOf(null) === null, "not a worktree");
+ok(JSON.stringify(A.parseProbe("office/nav\n 3 files changed, 40 insertions(+), 5 deletions(-)\n@@\n      2\n")) === '{"branch":"office/nav","files":3,"add":40,"del":5,"dirty":2}', "probe: diff and dirty");
+ok(JSON.stringify(A.parseProbe("office/a\n 1 file changed, 1 insertion(+)\n@@\n0\n")) === '{"branch":"office/a","files":1,"add":1,"del":0,"dirty":0}', "probe: singular, no deletions");
+ok(A.parseProbe("office/a\n@@\n0").files === 0 && A.parseProbe("HEAD\n@@\n0") === null && A.parseProbe("x") === null, "probe: no diff, detached, junk");
+ok(A.acceptMessage({ piece: "nav", name: "developer-nav", branch: "office/nav" }).startsWith("[Office] The person accepts \"nav\" (developer-nav)") && A.acceptMessage({ piece: "a", name: "b", branch: "office/a" }).includes("git merge --no-ff office/a"), "accept message");
+ok(/office\.piece=/.test(A.bossBrief({ goal: "g", argv: ["claude"] })) && /office\.plan=/.test(A.bossBrief({ goal: "g", argv: ["claude"] })), "brief: whiteboard labels");
+const playbook = readFileSync(new URL("../mods/office-agents/boss.md", import.meta.url), "utf8");
+ok(playbook.includes("office.plan") && playbook.includes("office.piece") && playbook.includes("[Office] The person accepts"), "playbook: whiteboard and accept");
+
+// after hours
+ok(JSON.stringify(A.parseHours("22-6")) === '{"from":22,"to":6}' && JSON.stringify(A.parseHours("x")) === '{"from":19,"to":7}' && A.parseHours("5-5").from === 19 && A.parseHours("25-3").from === 19, "hours");
+const at = (h) => new Date(2026, 10, 16, h, 30);
+ok(A.isNight(at(23)) && A.isNight(at(3)) && !A.isNight(at(7)) && !A.isNight(at(12)) && A.isNight(at(19)), "night across midnight");
+ok(A.isNight(at(13), { from: 12, to: 14 }) && !A.isNight(at(14), { from: 12, to: 14 }), "night within a day");
+const before = new Map([["t1", "working"], ["t2", "working"], ["t3", "done"]]);
+const ev = A.nightEvents(before, [{ address: "t1", status: "done" }, { address: "t2", status: "blocked", program: { name: "Codex" } }, { address: "t3", status: "done" }, { address: "t4", status: "done" }], new Map([["t1", "developer-nav"]]), 5);
+ok(ev.map((e) => `${e.name}:${e.status}:${e.at}`).join("|") === "developer-nav:done:5|Codex:blocked:5", "night events: changes to done or blocked, seen before");
+ok(JSON.stringify(A.morningSummary([...ev, { address: "t2", name: "Codex", status: "done" }])) === '{"done":["developer-nav","Codex"],"blocked":[]}' && A.morningSummary(null).done.length === 0, "morning: last word per agent");
 
 console.log(`pass=${pass} fail=${fail}`);
 process.exit(fail ? 1 : 0);

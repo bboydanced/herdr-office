@@ -17,11 +17,10 @@ import { closeOverlay, exec, home, panes, pickFolder, props, run, setShared, sha
 import { loadGroups, newGroupId, putGroup, saveGroups } from "./groups.js";
 
 const INK = "#1d2733";
-// The group dialog's office stationery: an index card in a manila folder.
-const PAPER = "#f2ead4";
-const RULE = "#dccfa9";
-const MANILA = "#d9b86a";
-const HIGHLIGHT = "#f6e27a";
+// The group dialog's mark, a manila folder (as the new-space dialog has a door),
+// and the lamp light of the office's menus (office-agents/card.js LAMP).
+const MANILA = "#c6a457";
+const LAMP = "#f0c06e";
 const STAMP = "#2f7a4a";
 const MOST = 6;
 
@@ -188,24 +187,25 @@ export default class OfficeSpaceNew extends View {
     const list = this.candidates();
     const elsewhere = new Map();
     for (const g of this.groups()) if (g.id !== this.group) for (const s of g.spaces) if (!elsewhere.has(s)) elsewhere.set(s, g.name);
-    // The spaces as lines on an index card: a tick box stamped when picked, the
-    // line highlighted, and where it is; a space in another group says so.
+    // The spaces as ruled lines, in the theme's colours like the new-space
+    // dialog's rooms: a tick box stamped when picked, the line highlighted with
+    // a lamp-amber edge, and where it is; a space in another group says so.
     const colors = shared("space.colors") ?? {};
     const row = (r, i) => {
       const on = this.picked.has(r.s.id);
       const other = elsewhere.get(r.s.id);
-      return h_flex().id(`group-space-${i}`).h(30).px(10).gap(9).items_center().flex_none().cursor_pointer()
-        .border_b_1().border_color(RULE)
-        .when(on, (el) => el.bg(HIGHLIGHT))
-        .hover((s) => s.bg("#efe0a8"))
+      return h_flex().id(`group-space-${i}`).relative().h(30).px(10).gap(9).items_center().flex_none().cursor_pointer()
+        .border_b_1().border_color(t.border)
+        .when(on, (el) => el.bg(t.selected ?? t.hover).child(div().absolute().left(0).top(0).bottom(0).w(2).bg(LAMP)))
+        .hover((s) => s.bg(on ? t.selected ?? t.hover : t.hover))
         .on_click((_e, cx) => this.toggleSpace(r.s.id, cx))
-        .child(div().size(14).flex_none().flex().items_center().justify_center().border_1().border_color(on ? STAMP : "#a8986f")
-          .bg(on ? STAMP : "#fbf6e6").text_size(10).font_bold().text_color("#fbf6e6").child(on ? "✓" : ""))
+        .child(div().size(14).flex_none().flex().items_center().justify_center().border_1().border_color(on ? STAMP : t.input ?? t.border)
+          .bg(on ? STAMP : t.background).text_size(10).font_bold().text_color("#fbf6e6").child(on ? "✓" : ""))
         .child(div().size(8).flex_none().bg(t[colors[r.s.id]] ?? t.muted))
-        .child(div().flex_none().max_w(150).truncate().text_size(12.5).font_medium().text_color(INK).child(r.s.name))
-        .child(div().flex_1().min_w(0).truncate().text_size(11).text_color("#7a6b4e").child(r.s.machine ? `${r.s.machine} · ${r.where}` : r.where))
+        .child(div().flex_none().max_w(150).truncate().text_size(12.5).font_medium().text_color(t.foreground).child(r.s.name))
+        .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(r.s.machine ? `${r.s.machine} · ${r.where}` : r.where))
         .when(Boolean(other), (el) => el.child(div().flex_none().max_w(110).px(4).truncate().text_size(10).font_semibold()
-          .bg(on ? "#c8392f" : "#d9cba6").text_color(on ? "#ffffff" : "#5a4b30")
+          .bg(on ? "#c8392f" : t.raised).text_color(on ? "#ffffff" : t.muted)
           .child(on ? `moves from ${other}` : `in ${other}`)));
     };
     // A manila folder: the dialog's mark, as the new-space dialog has a door.
@@ -228,10 +228,11 @@ export default class OfficeSpaceNew extends View {
         .when(Boolean(this.error), (el) => el.child(div().text_size(11.5).text_color(t.blocked).child(this.error))))
       .child(v_flex().gap(4).flex_1().min_h(0)
         .child(h_flex().flex_none()
-          .child(div().h(20).px(10).flex().items_center().bg(MANILA).border_t_1().border_l_1().border_r_1().border_color("#a8863f")
-            .text_size(10).font_bold().text_color("#4a3518").child(`SPACES · ${this.picked.size} PICKED`)))
-        .child(v_flex().flex_1().min_h(150).bg(PAPER).border_1().border_color("#a8863f").overflow_y_scrollbar().mode("always")
-          .when(list.length === 0, (el) => el.child(div().p(8).text_size(11.5).text_color("#7a6b4e").child("No spaces yet.")))
+          .child(h_flex().h(20).px(9).gap(6).items_center().bg(t.raised).border_t_1().border_l_1().border_r_1().border_color(t.border)
+            .child(div().w(7).h(4).flex_none().bg(LAMP))
+            .child(div().text_size(10).font_bold().text_color(t.muted).child(`SPACES · ${this.picked.size} PICKED`))))
+        .child(v_flex().flex_1().min_h(150).border_1().border_color(t.border).overflow_y_scrollbar().mode("always")
+          .when(list.length === 0, (el) => el.child(div().p(8).text_size(11.5).text_color(t.dim).child("No spaces yet.")))
           .children(list.map(row))))
       .child(h_flex().flex_none().pt(2).gap(8).items_center()
         .when(Boolean(this.group), (el) => el.child(button("group-delete", "Delete", false, (_e, cx) => this.deleteGroup(cx))))
