@@ -873,7 +873,7 @@ export default class Office extends View {
       return this.flash("The boss waits for your answer first", "blocked", cx, "bossNote");
     }
     cx.spawn(async (cx) => {
-      const r = await hc(["send", boss, "--", acceptMessage({ piece: n.piece, name: n.hire.name || n.hire.address, branch: d.branch })])
+      const r = await hc(["send", boss, "--", acceptMessage({ piece: n.piece, name: n.hire.name || n.hire.address, branch: d.branch, root: n.wt.root })])
         .catch((e) => ({ code: 1, stderr: String(e?.message ?? e) }));
       if (r.code === 0) this.flash(`Sent to the boss: merge ${d.branch}`, "done", cx, "bossNote");
       else this.flash(firstLine(r.stderr) || firstLine(r.stdout) || "Couldn't reach the boss", "blocked", cx, "bossNote");

@@ -727,8 +727,9 @@ export function parseProbe(text) {
 }
 
 // What the boss is told when you accept a hire's piece from the whiteboard.
-export function acceptMessage({ piece, name, branch }) {
-  return `[Office] The person accepts "${piece}" (${name}) and agrees to merge it: merge ${branch} into your branch now (git merge --no-ff ${branch}), then remove its worktree and branch as your playbook says, mark the piece :merged in office.plan and report. If the merge conflicts, stop and ask.`;
+export function acceptMessage({ piece, name, branch, root }) {
+  const git = root ? `git -C ${word(root)}` : "git";
+  return `[Office] The person accepts "${piece}" (${name}) and agrees to merge it: merge ${branch} into the checked-out branch${root ? ` of ${root}` : ""} now (${git} merge --no-ff ${branch}), then remove its worktree and branch as your playbook says, mark the piece :merged in office.plan and report. If the merge conflicts, stop and ask.`;
 }
 
 // ---- after hours ----

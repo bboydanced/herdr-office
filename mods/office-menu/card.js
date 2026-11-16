@@ -2,11 +2,13 @@
 // dialog, with a folder tab saying what it is for (a lit desk-lamp mark on it),
 // one ruled line per item, the picked line highlighted with a lamp-amber edge.
 // Used by the boss's pickers, the right-click menus (office-menu), the tab bar's
-// "+" (office-new-menu) and the add menu (office-add).
+// "+" (office-new-menu), the add menu (office-add) and the Files panel
+// (office-files).
 //
 // A mod can't import outside its folder, so this file is the source and
-// office-menu/card.js, office-new-menu/card.js and office-add/card.js are
-// verbatim copies (test/lib.test.mjs fails when they drift): edit here, then copy.
+// office-menu/card.js, office-new-menu/card.js, office-add/card.js and
+// office-files/card.js are verbatim copies (test/lib.test.mjs fails when they
+// drift): edit here, then copy.
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { theme } from "herdr";

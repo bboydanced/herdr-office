@@ -138,7 +138,7 @@
                       "id": "files",
                       "type": "block",
                       "content": {
-                        "mod": "files"
+                        "mod": "office-files"
                       }
                     },
                     {

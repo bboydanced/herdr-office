@@ -51,7 +51,7 @@ H=~/.config/herdr-app
 herdr-app do layout.switch '{"name":"main"}'
 rm -rf "$H"/mods/office-agents "$H"/mods/office-chrome "$H"/mods/office-spaces \
        "$H"/mods/office-tabs "$H"/mods/office-add "$H"/mods/office-space-new \
-       "$H"/mods/office-menu "$H"/mods/office-new-menu
+       "$H"/mods/office-menu "$H"/mods/office-new-menu "$H"/mods/office-files
 rm -rf "$H"/data/office-agents "$H"/data/office-chrome "$H"/data/office-spaces \
        "$H"/data/office-tabs "$H"/data/office "$H"/data/office-add "$H"/data/office-space-new
 rm -f "$H"/layouts/office.json "$H"/layouts/office.png "$H"/themes/office-night.json
@@ -263,6 +263,32 @@ keyboard-chosen line highlighted with a lamp-amber edge, keys on little tags,
 (`office-menu`), the tab bar's `+` (`office-new-menu`), `+ Tab` / `Add desk`
 (`office-add`), the boss's pickers and the group dialog's list.
 
+**The Files panel** (`office-files`, the top bar's `Files`) stays on the repo
+of the space you are in (where the space was made, else its first
+terminal's folder): clicking another pane or an agent's `cd` no longer moves
+it. The pin in its header switches to following the focused pane instead.
+- **Changed by agents**, on top: your checkout's uncommitted files, then each
+  boss worktree (`.worktrees/<name>`: its branch's commits and what is not
+  committed yet, with the hire working there), last written first, with how
+  long ago (`5m`). The tree below marks changed files (`M`, `A`, `D`, `U`)
+  and dots the folders holding them. It reads again when something in the
+  folder changes (on this machine) and every 10 seconds.
+- **Find a file:** type in the box; the name holding what you typed comes
+  first, then the path, then the letters in order (git's files, ignored ones
+  left out).
+- **The file window:** a click opens the file in one window over everything
+  (drag it by its tab bar), a tab per file. Code with colours and line
+  numbers; Markdown formatted (`Source` shows its text). `Edit`, then
+  `Ctrl+S` or `Save`; `Ctrl+W` closes a tab, asking first when it has unsaved
+  edits. A save goes only over the text it read: when an agent wrote the file
+  meanwhile, a banner says so and you pick `Keep theirs` or `Keep mine`. A
+  file you aren't editing follows the disk. `Send to ▾` names the file, and
+  the lines you picked (`src/a.ts:12-30`), to an agent (bosses first), with
+  an optional line of what to do; `Copy path` copies the same. Files on
+  another machine are read-only here.
+- On purpose it doesn't rename, delete or create files (ask an agent), and
+  has no diff (that is `Changes`), no images or PDFs.
+
 #### The boss
 
 The boss is a team lead you give goals to; it hires agents to do the work.
@@ -464,6 +490,12 @@ its terminal.
   right-click menu of a desk, a tab, a space and a terminal (the office layout
   names it `terminal_menu`), and the tab bar's `+`. They run only the commands
   Herdr's menus run.
+- `office-files` runs `sh` (Herdr's `files` listing, Apache-2.0, and `stat`
+  for when changed files were written), `git rev-parse`, `git status`, `git
+  worktree list`, `git diff --name-status` and `git ls-files` (for the
+  filter) in the space's repo and its `.worktrees/`; it reads a file when you
+  open it and every two seconds while it is in front, writes one only when you
+  save, and runs `hc send` when you send a file to an agent.
 - No mod opens a network connection of its own or reads credentials.
 - **Do not open a terminal inside a repo you do not trust.** `git status` can run
   filters from that repo's own `.git/config`. The status call keeps

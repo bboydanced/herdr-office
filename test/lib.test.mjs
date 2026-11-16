@@ -5,6 +5,7 @@
 import * as A from "./../mods/office-agents/lib.js";
 import * as Gr from "./../mods/office-agents/groups.js";
 import * as T from "./../mods/office-tabs/lib.js";
+import * as F from "./../mods/office-files/lib.js";
 import { readFileSync } from "node:fs";
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.log("FAIL:", m); } };
@@ -131,7 +132,7 @@ for (const m of ["office-spaces", "office-space-new"]) {
   ok(readFileSync(new URL(`../mods/${m}/groups.js`, import.meta.url), "utf8") === groupsSrc, `${m}/groups.js is a verbatim copy`);
 }
 const cardSrc = readFileSync(new URL("../mods/office-agents/card.js", import.meta.url), "utf8");
-for (const m of ["office-menu", "office-new-menu", "office-add"]) {
+for (const m of ["office-menu", "office-new-menu", "office-add", "office-files"]) {
   ok(readFileSync(new URL(`../mods/${m}/card.js`, import.meta.url), "utf8") === cardSrc, `${m}/card.js is a verbatim copy`);
 }
 
@@ -269,7 +270,8 @@ ok(A.worktreeOf("/home/me/app") === null && A.worktreeOf("/a/.worktrees/x/src") 
 ok(JSON.stringify(A.parseProbe("office/nav\n 3 files changed, 40 insertions(+), 5 deletions(-)\n@@\n      2\n")) === '{"branch":"office/nav","files":3,"add":40,"del":5,"dirty":2}', "probe: diff and dirty");
 ok(JSON.stringify(A.parseProbe("office/a\n 1 file changed, 1 insertion(+)\n@@\n0\n")) === '{"branch":"office/a","files":1,"add":1,"del":0,"dirty":0}', "probe: singular, no deletions");
 ok(A.parseProbe("office/a\n@@\n0").files === 0 && A.parseProbe("HEAD\n@@\n0") === null && A.parseProbe("x") === null, "probe: no diff, detached, junk");
-ok(A.acceptMessage({ piece: "nav", name: "developer-nav", branch: "office/nav" }).startsWith("[Office] The person accepts \"nav\" (developer-nav)") && A.acceptMessage({ piece: "a", name: "b", branch: "office/a" }).includes("git merge --no-ff office/a"), "accept message");
+ok(A.acceptMessage({ piece: "nav", name: "developer-nav", branch: "office/nav" }).startsWith("[Office] The person accepts \"nav\" (developer-nav)") && A.acceptMessage({ piece: "a", name: "b", branch: "office/a" }).includes("(git merge --no-ff office/a)")
+  && A.acceptMessage({ piece: "a", name: "b", branch: "office/a", root: "/my app" }).includes("git -C '/my app' merge --no-ff office/a"), "accept message, in its repo");
 ok(/office\.piece=/.test(A.bossBrief({ goal: "g", argv: ["claude"] })) && /office\.plan=/.test(A.bossBrief({ goal: "g", argv: ["claude"] })), "brief: whiteboard labels");
 const playbook = readFileSync(new URL("../mods/office-agents/boss.md", import.meta.url), "utf8");
 ok(playbook.includes("office.plan") && playbook.includes("office.piece") && playbook.includes("[Office] The person accepts"), "playbook: whiteboard and accept");
@@ -283,6 +285,29 @@ const before = new Map([["t1", "working"], ["t2", "working"], ["t3", "done"]]);
 const ev = A.nightEvents(before, [{ address: "t1", status: "done" }, { address: "t2", status: "blocked", program: { name: "Codex" } }, { address: "t3", status: "done" }, { address: "t4", status: "done" }], new Map([["t1", "developer-nav"]]), 5);
 ok(ev.map((e) => `${e.name}:${e.status}:${e.at}`).join("|") === "developer-nav:done:5|Codex:blocked:5", "night events: changes to done or blocked, seen before");
 ok(JSON.stringify(A.morningSummary([...ev, { address: "t2", name: "Codex", status: "done" }])) === '{"done":["developer-nav","Codex"],"blocked":[]}' && A.morningSummary(null).done.length === 0, "morning: last word per agent");
+
+// office files
+ok(JSON.stringify(F.parseListing("f\0b.txt\0d\0src\0f\0a.md\0")) === '[{"name":"src","dir":true},{"name":"a.md","dir":false},{"name":"b.txt","dir":false}]', "files: listing, folders first");
+ok(JSON.stringify(F.parseStatus(" M a.js\0?? new/b.ts\0D  gone.md\0UU c.js\0A  d.js\0")) === '[{"path":"a.js","mark":"M"},{"path":"new/b.ts","mark":"A"},{"path":"gone.md","mark":"D"},{"path":"c.js","mark":"U"},{"path":"d.js","mark":"A"}]', "files: status marks");
+ok(F.parseStamps("1700000000\0a.js\0x\0b\0").get("a.js") === 1700000000000 && F.parseStamps("1700000000\0a.js\0x\0b\0").get("b") === 0, "files: stamps");
+const wtText = "worktree /r\nHEAD 1\nbranch refs/heads/main\n\nworktree /r/.worktrees/nav\nHEAD 2\nbranch refs/heads/office/nav\n\nworktree /r/.worktrees/x/deep\nHEAD 3\ndetached\n\nworktree /elsewhere\nbranch refs/heads/b\n";
+ok(JSON.stringify(F.parseWorktrees(wtText, "/r/")) === '[{"path":"/r/.worktrees/nav","branch":"office/nav"}]', "files: boss worktrees only");
+ok(JSON.stringify(F.parseNameStatus("M\0a.js\0A\0n.js\0D\0g.js\0")) === '[{"path":"a.js","mark":"M"},{"path":"n.js","mark":"A"},{"path":"g.js","mark":"D"}]', "files: branch name-status");
+ok(F.mergeChanges([{ path: "a", mark: "A" }, { path: "b", mark: "M" }], [{ path: "a", mark: "M" }]).map((x) => x.path + x.mark).join() === "aM,bM", "files: uncommitted mark wins");
+ok(F.changedList([{ path: "a", mark: "M" }, { path: "b", mark: "A" }, { path: "c", mark: "M" }], new Map([["a", 5], ["b", 9]])).map((x) => x.path).join() === "b,a,c", "files: last written first");
+ok([...F.changedDirs(["a/b/c.js", "a/d.js", "e.js"])].sort().join() === "a,a/b", "files: changed folders");
+ok(F.rankFiles(["src/app/main.js", "main.js", "docs/domain.md", "lib/remain.js", "x/m/a/i/n.txt"], "main").join() === "main.js,src/app/main.js,lib/remain.js,docs/domain.md,x/m/a/i/n.txt", "files: filter ranks names first");
+ok(F.rankFiles(["a"], "").length === 0 && F.rankFiles(["abc"], "xyz").length === 0, "files: empty query, no match");
+const txt = "one\ntwo\nthree\nfour";
+ok(F.lineRange(txt, { start: 4, end: 7 }).from === 2 && F.lineRange(txt, { start: 4, end: 7 }).to === 2, "files: one line picked");
+ok(JSON.stringify(F.lineRange(txt, { start: 0, end: 8 })) === '{"from":1,"to":2}', "files: ending at a line start leaves it out");
+ok(JSON.stringify(F.lineRange(txt, { start: 4, end: 15 })) === '{"from":2,"to":4}' && F.lineRange(txt, { start: 3, end: 3 }) === null, "files: lines, nothing picked");
+ok(F.fileRef("a.js", null) === "a.js" && F.fileRef("a.js", { from: 3, to: 3 }) === "a.js:3" && F.fileRef("a.js", { from: 3, to: 9 }) === "a.js:3-9", "files: refs");
+ok(F.refFor("/r/", "src/a.js", "/r") === "src/a.js" && F.refFor("/r", "src/a.js", "/r/.worktrees/x") === "/r/src/a.js" && F.refFor("/r", "a", null) === "/r/a", "files: relative only in the agent's root");
+ok(F.langOf("a/b.tsx") === "js" && F.langOf("Makefile") === "txt" && F.langOf("x.rs") === "rs" && F.isMarkdown("README.MD") && !F.isMarkdown("a.js"), "files: languages");
+ok(F.ago(0, 5) === "" && F.ago(1000, 30000) === "now" && F.ago(0 + 1, 1 + 5 * 60000) === "5m" && F.ago(1, 1 + 3 * 3600000) === "3h", "files: ago");
+ok(JSON.stringify(F.splitPath("a/b/c.js")) === '{"name":"c.js","dir":"a/b"}' && F.splitPath("c.js").dir === "", "files: split path");
+ok(F.parseAll("./a\0b/c\0\0").join() === "a,b/c" && F.parseAll(null).length === 0, "files: all files");
 
 console.log(`pass=${pass} fail=${fail}`);
 process.exit(fail ? 1 : 0);
