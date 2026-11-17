@@ -130,7 +130,7 @@ export default class OfficeTabs extends View {
       const name = /^tb\d+$/.test(c.name) ? program?.name ?? "Terminal" : c.name;
       const people = staff.length ? faces(c, staff) : null;
       return h_flex().id(`tab-${c.id}`).h(48).px(8).gap(7).items_center().flex_none().text_size(12.8)
-        .border(1).border_color(c.active ? t.border : t.chrome).bg(c.active ? t.raised : t.chrome).text_color(c.active ? t.foreground : t.muted)
+        .border(1).border_color(c.active ? `${t.accent}99` : t.chrome).bg(c.active ? t.raised : t.chrome).text_color(c.active ? t.foreground : t.muted)
         .hover(s => s.bg(t.hover))
         .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.pressed = i; if (e.click_count === 2) run("tab.rename", { id: c.id }); })
         .on_mouse_up("left", () => {

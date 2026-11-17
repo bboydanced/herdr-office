@@ -16,7 +16,7 @@
     "selection": "#28323d",
     "selected": "#e0a44a33",
     "working": "#7fa8cf",
-    "blocked": "#e08b4a",
+    "blocked": "#e5675c",
     "done": "#8fbf8a",
     "idle": "#6d7883",
     "unknown": "#b48ec4",
@@ -26,7 +26,7 @@
     "popover": "#1b252f",
     "raised": "#26313c",
     "hover": "#e6dfd214",
-    "border": "#e0a44a55",
+    "border": "#5f8fa84d",
     "input": "#26313c"
   }
 }

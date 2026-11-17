@@ -66,6 +66,8 @@ const TAG = "#c8392f";
 // Desks are 36x30 art pixels at 2 points a pixel, in a slot wide enough for a
 // name. pad: the floor, rug and cubicle padding around a row of desks.
 const SMALL = { deskW: 72, deskH: 60, slot: 80, label: 13, text: 10, gap: 6, pad: 40 };
+// The panel has room for a wider slot, so a desk's two lines read in full.
+const WIDE = { ...SMALL, slot: 92 };
 // In the sidebar, wider than this many desks a split tree falls back to rows.
 const MOST_ACROSS = 3;
 const FILTERS = [["all", "All"], ["working", "Working"], ["blocked", "Needs you"], ["done", "Done"]];
@@ -673,7 +675,7 @@ export default class Office extends View {
         .when(n.blocked > 0, (el) => el.child(div().flex_none().text_color(t.blocked).child(`${n.blocked} need${n.blocked === 1 ? "s" : ""} you ·`)))
         .child(div().flex_none().text_size(10.5).child(`${n.working}/${all.length} at work · ${this.time}`)))
       .child(this.wall())
-      .child(v_flex().id("office-agent-rows").flex_1().min_h(0).px(8).pb(14).gap(1).overflow_y_scrollbar()
+      .child(v_flex().id("office-agent-rows").flex_1().min_h(0).px(8).pt(4).pb(14).gap(1).bg(withAlpha(t.canvas, "d9")).overflow_y_scrollbar()
         .children(deck.flatMap((part) => (part.band ? [band(part)] : part.rows.flatMap((r) => r.staff.map((d) => row(r, d))))))
         .when(!deck.length, (el) => el.child(div().p(8).text_size(11.5).text_color(t.dim).child("Nobody in yet. Open a space to start."))));
   }
@@ -1571,7 +1573,7 @@ export default class Office extends View {
       return this.list(deck, roles, list, t);
     }
     const width = this.wide ? find(layout(), "panel")?.size?.px ?? 640 : 300;
-    this.z = SMALL;
+    this.z = this.wide ? WIDE : SMALL;
     this.most = this.wide ? fitAcross(width - this.z.pad, this.z.slot, this.z.gap) : MOST_ACROSS;
     this.now = Date.now();
     this.hours = parseHours(localStorage.getItem("office.hours"));

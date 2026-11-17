@@ -114,7 +114,7 @@
                   },
                   "border": {
                     "width": 1,
-                    "color": "#e0a44a99"
+                    "color": "border"
                   },
                   "focus": {
                     "width": 1,
@@ -210,5 +210,5 @@
     16
   ],
   "theme": "office-night",
-  "terminal_opacity": 0.62
+  "terminal_opacity": 0.86
 }

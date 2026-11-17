@@ -451,6 +451,7 @@ def draw_agents(sb: Image.Image, top: int, bottom: int) -> None:
                need, font=font(11.5), fill=hexa("blocked"))
 
     sb.alpha_composite(load("mods/office-agents/room/wall.png", (SIDEBAR, 44)), (0, top + 28))
+    tint(sb, [0, top + 72, SIDEBAR, bottom], hexa("canvas", 0xD9))
 
     owner = {name: band for band, names in GROUPS for name in names}
     y, banded = top + 80, set()
@@ -603,7 +604,7 @@ def draw_panel(im: Image.Image, box, frame: int) -> None:
 
     # The floor, at sidebar size with two lines under each desk.
     fy = cy + ch + 1 + 10
-    z = {**SMALL, "wide": True}
+    z = {**SMALL, "slot": 92, "wide": True}
     most = max(1, min(6, (pw - 40 + z["gap"]) // (z["slot"] + z["gap"])))
     inspect = 56
     floor_img = Image.new("RGBA", (pw, ph), (0, 0, 0, 0))
@@ -658,10 +659,10 @@ def main() -> None:
     pw, ph = pane[2] - pane[0], pane[3] - pane[1]
     scale = max(pw / floor.width, ph / floor.height)  # the pane background is "cover"
     im.paste(floor.resize((int(floor.width * scale) + 1, int(floor.height * scale) + 1)).crop((0, 0, pw, ph)), pane[:2])
-    tint(im, pane, hexa("background", 0x9E))  # terminal_opacity 0.62 over the floor
+    tint(im, pane, hexa("background", 0xDB))  # terminal_opacity 0.86 over the floor
     tint(im, [pane[0], pane[1], pane[2], pane[1] + 30], hexa("chrome", 0xC8))
     d = ImageDraw.Draw(im, "RGBA")
-    d.rectangle(pane, outline=hexa("accent", 0x99))
+    d.rectangle(pane, outline=hexa("border", 0x4D))
     d.text((pane[0] + 12, pane[1] + 8), "web-app / Boss — Hiring the team", font=font(13), fill=hexa("muted"))
     lines = [
         ("accent", "$ herdr-app do layout.switch '{\"name\":\"office\"}'"),
@@ -701,7 +702,7 @@ def main() -> None:
     for people, name, active, others in tabs:
         tw = 210 if len(people) > 1 else 150
         td.rectangle([x, 5, x + tw, TABS - 5], fill=hexa("raised" if active else "chrome"),
-                     outline=hexa("accent" if active else "chrome"))
+                     outline=hexa("accent", 0x99) if active else hexa("chrome"))
         fw = faces(im, x + 6, people)
         td.text((x + 14 + fw, 21), name, font=font(13), fill=hexa("foreground" if active else "muted"))
         x += tw + 3

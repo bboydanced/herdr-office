@@ -63,12 +63,15 @@ Herdr keeps the mod names in its own `seen.json`, which is harmless.
 
 - **Theme `office-night`:** ink blue background `#101820`, panel `#1b252f`,
   amber accent `#e0a44a`, paper text `#e6dfd2`, muted steel `#5f8fa8`. Square
-  corners with thin amber frames.
+  corners with thin steel frames (`border` `#5f8fa84d`); amber is kept for what
+  is yours right now — the focused pane, the tab and room you are in, the picked
+  desk, the primary button — and coral `#e5675c` only for what needs you, so the
+  two never read alike.
 - **One backdrop everywhere:** night office windows, a few lit by a lamp or a
   screen, `mods/office-chrome/wallpaper.png` (`cover`). It is the `background`
   of the sidebar, the work column (behind the translucent tab bar and between
   the panes), the side panel and every pane, where the terminal draws over it at
-  the root `terminal_opacity` of `0.62`.
+  the root `terminal_opacity` of `0.86`, enough to keep the windows out of the text.
 - **Sidebar, 300 px**, two parts (weights 0.62 and 1.38):
   - **Spaces, the room directory:** a 44 px row per space. Its door in the
     space's colour with the room number (`01`, `02`… in Spaces order) on the
@@ -122,7 +125,8 @@ Herdr keeps the mod names in its own `seen.json`, which is harmless.
     (night windows, clock, kanban board, door, water cooler, plant), then one
     30 px row per agent: its face framed in its status colour, its name and
     role, the status and for how long (`Working · 12m`, `NEEDS YOU`, `✓ Done`),
-    and the space › tab it sits in. A click goes to its terminal; right-click
+    and the space › tab it sits in, on a dimmed backing so the windows behind
+    stay out of the names. A click goes to its terminal; right-click
     opens Herdr's menu, middle-click peeks. Spaces you put in a **group** are
     banded: a slim header with the group's name, how many agents it holds and
     `! N` / `● N` when some need you or are working (seen even folded), then their rows indented under it. `▾` on the band folds them away (the
