@@ -96,7 +96,7 @@ ok(A.deskLabel({ pane: shell }) === "Terminal", "shell -> Terminal");
 ok(A.deskLabel({ pane: { program: { name: "Neovim", shell: false }, title: "x" } }) === "Neovim", "other program -> its name");
 ok(A.deskLabel({ pane: { mod: "browser", title: "" } }) === "browser", "mod pane -> mod");
 ok(A.shortPath("/home/k/smartgift/sg-AI/coyle-member-sync") === "…/sg-AI/coyle-member-sync", "short path");
-ok(A.deskTip({ job: "tester", agent: { status: "blocked", title: "e2e", program: { name: "Codex" } }, space: { name: "api" }, tab: { name: "1" } }) === "Tester · Needs you\nCodex\ne2e\napi › 1", "tip");
+ok(A.deskTip({ agent: { status: "blocked", title: "tester-e2e", program: { name: "Codex" } }, space: { name: "api" }, tab: { name: "1" } }) === "tester-e2e · Needs you\nCodex\napi › 1", "tip: its name, not its face");
 ok(A.deskTip({ pane: shell, space: { name: "api" }, tab: { name: "1" } }) === "Terminal\n…/sg-AI/coyle-member-sync\napi › 1", "terminal tip");
 ok(A.withAlpha("#6fb6ad", "24") === "#6fb6ad24" && A.withAlpha("#e0a44a55", "88") === "#e0a44a88", "alpha");
 ok(A.withAlpha("red", "24") === "red", "non-hex untouched");
@@ -210,9 +210,18 @@ ok(A.hireTemplate(["claude", "--model", "a b"]) === null && A.hireTemplate(["cla
 const quiet = A.standIn({ address: "t8", name: "developer-nav", program: { name: "pi" } }, null, { tab: { id: "c1" } });
 ok(quiet.standIn && quiet.status === null && quiet.tab === "c1" && quiet.pane === null && quiet.program.name === "pi", "stand-in: at the boss's tab, no status");
 ok(A.standIn({ address: "t8", name: "x" }, { pane: "p4", tab: "c2", focused: true }, { tab: { id: "c1" } }).tab === "c2", "stand-in: in its own pane");
-ok(A.deskState(quiet, {}, 0).text === "Running" && A.deskTip({ job: "developer", agent: quiet, space: { name: "s" }, tab: { name: "Boss" } }).startsWith("Developer · Running, no status"), "stand-in: Running, never a status");
-ok(A.roleFromName("tester-e2e") === "tester" && A.roleFromName("frontend_nav") === "developer" && A.roleFromName("ui.polish") === "designer", "role from name");
-ok(A.roleFromName("bob") === null && A.roleFromName(null) === null && A.roleFromName("x-docs") === "writer", "role from a later word, or none");
+ok(A.deskState(quiet, {}, 0).text === "Running" && A.deskTip({ agent: quiet, space: { name: "s" }, tab: { name: "Boss" } }).startsWith("developer-nav · Running, no status"), "stand-in: Running, never a status");
+// faces: one each, while the eight roles last
+const seats = new Map([["b1", "manager"], ["h1", "developer"], ["h2", "developer"], ["h3", "developer"], ["h4", "developer"]]);
+const faces = A.uniqueFaces(seats, ["b1"]);
+ok(faces.get("b1") === "manager", "faces: the boss keeps the manager's");
+ok(new Set(faces.values()).size === faces.size, "faces: no two agents share one");
+ok(faces.get("h1") === "developer" && faces.get("h2") !== "developer" && faces.get("h3") !== "developer", "faces: a team of developers is a room of different people");
+const room = A.uniqueFaces(seats, ["b1", "h1"]);
+ok(room.get("b1") === "manager" && room.get("h1") === "developer" && room.get("h2") !== "developer", "faces: the ones kept keep theirs");
+const many = new Map([...Array(10)].map((_, i) => [`a${i}`, "developer"]));
+ok(A.uniqueFaces(many).size === 10 && new Set(A.uniqueFaces(many).values()).size === 8, "faces: only past eight does one repeat");
+ok(A.uniqueFaces(new Map([["x", "wizard"]]), ["x"]).size === 0 && A.uniqueFaces(new Map(), ["nope"]).size === 0 && A.uniqueFaces(null).size === 0, "faces: unknown roles and nothing given");
 const terms = [{ address: "t3" }, { address: "t4", parent: "t3" }, { address: "t5", parent: "t3" }, { address: "t6", parent: "t9" },
   { address: "vps/t2", parent: "t1" }, { address: "vps/t1" }];
 ok(A.staffOf(terms, "t3").join() === "t4,t5" && A.staffOf(terms, "vps/t1").join() === "vps/t2" && A.staffOf(terms, "").length === 0, "boss's staff");
@@ -251,6 +260,20 @@ ok(A.findBosses({ spaces: bossSpaces, panes: [], terminals: [{ ...parked[0], lab
 const twoBosses = [parked[0], { ...parked[0], address: "t8" }];
 ok(A.findBosses({ spaces: bossSpaces, panes: [], terminals: twoBosses, agents: [], prev: { s3: "t8" } }).s3 === "t8", "boss: the last one wins a tie");
 ok(JSON.stringify(A.findBosses({})) === "{}", "boss: nothing given");
+// the tab a team leads from: its own, its hire's (a renamed Boss tab), the Boss tab
+const leadSpaces = [{ id: "s1", tabs: [{ id: "t1", name: "Boss" }, { id: "t2", name: "renamed" }] }];
+ok(A.bossTabOf(leadSpaces[0], "t2")?.id === "t2" && A.bossTabOf(leadSpaces[0], null, ["t2"])?.id === "t2" && A.bossTabOf(leadSpaces[0], null)?.id === "t1",
+  "team tab: its own, else a hire's, else the Boss tab");
+ok(A.bossTabOf({ id: "s", tabs: [{ id: "x", name: "Boss" }] }, "gone", ["gone"])?.id === "x" && A.bossTabOf({ id: "s", tabs: [] }, "t9") === null && A.bossTabOf(null) === null,
+  "team tab: a tab that is gone falls back; no tabs, none");
+// the goal it works on, and a board left by the goal before it
+ok(A.oneLine("  add Google\nlogin\n\nand a  test  ", 40) === "add Google login and a test" && A.oneLine("abcdef", 3) === "abc" && A.oneLine(null) === "", "one line: lines joined, cut, nothing");
+ok(A.goalOf({ labels: { "office.goal": "add Google login\nand a test" } }) === "add Google login", "goal: its label, one line");
+ok(A.goalOf({}, 4) === "" && A.goalOf(null) === "", "goal: none");
+ok(A.planAge({ plan: "nav;login", mark: { plan: "nav;login", goal: "old" } }).stale && A.planAge({ plan: "nav;login", mark: { plan: "nav;login", goal: "old" } }).previous === "old",
+  "board: the plan the last goal left is old");
+ok(!A.planAge({ plan: "pay;billing", mark: { plan: "nav;login", goal: "old" } }).stale && !A.planAge({ plan: "nav", mark: null }).stale
+  && !A.planAge({ plan: "", mark: { plan: "", goal: "x" } }).stale && !A.planAge({}).stale, "board: a new plan is fresh; no mark, no age");
 
 // the whiteboard
 ok(JSON.stringify(A.parsePlan(" nav:ok ; login; e2e tests:MERGED;;Nav; a:b ")) === '[{"piece":"nav","mark":"ok"},{"piece":"login","mark":null},{"piece":"e2e tests","mark":"merged"},{"piece":"a:b","mark":null}]', "plan: pieces, marks, unique");

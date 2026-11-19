@@ -89,7 +89,9 @@ EOF
   quotes: backticks and `$` in a double-quoted task run in your shell before
   the hire even starts.
 - `<role>` is one of developer, designer, tester, analyst, writer, support or
-  intern: the office gives the hire that face and a desk. `<topic>` is a word
+  intern: it says what the hire is for, and the office reads it to know the name
+  is a hire's (so keep it). It is not a face: every hire gets a face of its own,
+  so a team of developers still looks like four people. `<topic>` is a word
   or two. A name is 1-32 of a-z 0-9 - and unique among live terminals.
 - `<agent>` is one your brief lists (yours first, then the other agents
   installed), exactly as written, before the task:
@@ -123,7 +125,7 @@ EOF
 - Hired that way, a hire does not ask before it acts: the Rules (in the
   template, or in its task, see Writing a task) are what hold it back, so never
   leave them out.
-- What each role is for:
+- What each role is for (which is about the task, not the face it gets):
   - **developer**: builds or fixes the piece; runs its check before finishing.
   - **designer**: UI, styles and layout; describes what changed on screen.
   - **tester**: writes or runs tests for an area; reports each failure with

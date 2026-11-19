@@ -330,13 +330,14 @@ export function shortPath(path) {
 
 const STATUS = { working: "Working", blocked: "Needs you", done: "Done", idle: "Idle" };
 
-// Hover text for a desk: who, doing what, where.
-export function deskTip({ job, agent, pane, space, tab }) {
+// Hover text for a desk: who, doing what, where. The who is its name: a role
+// is the face it wears, not who it is.
+export function deskTip({ agent, pane, space, tab }) {
   const where = `${space?.name ?? ""} › ${tab?.name ?? ""}`;
   if (!agent) return [deskLabel({ pane }) || "Terminal", shortPath(pane?.cwd) || "No agent here", where].join("\n");
-  const who = job ? job[0].toUpperCase() + job.slice(1) : "Agent";
+  const who = deskLabel({ agent }) || "Agent";
   const said = agent.standIn ? "Running, no status from it" : STATUS[agent.status] ?? agent.status;
-  return [`${who} · ${said}`, agent.program?.name, deskLabel({ agent }), where]
+  return [`${who} · ${said}`, agent.program?.name, where]
     .filter(Boolean).join("\n");
 }
 
@@ -521,15 +522,27 @@ const ROLE_WORDS = [
   ["intern", ["intern", "helper", "misc"]],
 ];
 
-// A hired agent's role from its name ("tester-e2e", "frontend_nav"): the first
-// word that names one; null when none does.
-export function roleFromName(name) {
-  if (typeof name !== "string") return null;
-  for (const token of name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)) {
-    const hit = ROLE_WORDS.find(([, words]) => words.includes(token));
-    if (hit) return hit[0];
+// The faces of a room, all different while the eight roles last. A face someone
+// already wears stays with them (`keep`: a boss's, and the like), and the agent
+// that came wearing it moves to the next free role. A role here is only a face
+// and a desk: an agent's name says what it is for, not who it looks like, so a
+// team of developers is a room of different people.
+/** @param {Map<string, string>} roles @param {string[]} [keep] @returns {Map<string, string>} address -> role */
+export function uniqueFaces(roles, keep = []) {
+  const out = new Map([...(roles ?? [])].filter(([address, job]) => typeof address === "string" && JOB_SET.has(job)));
+  const fixed = new Set((Array.isArray(keep) ? keep : []).filter((address) => out.has(address)));
+  const held = new Set([...fixed].map((address) => out.get(address)));
+  for (const [address, job] of out) {
+    if (fixed.has(address)) continue;
+    if (!held.has(job)) { held.add(job); continue; }
+    const start = JOBS.indexOf(job);
+    const free = [...JOBS.slice(start + 1), ...JOBS.slice(0, start + 1)].find((j) => !held.has(j));
+    // All eight worn: the room is bigger than the cast, so this one shares.
+    if (!free) continue;
+    out.set(address, free);
+    held.add(free);
   }
-  return null;
+  return out;
 }
 
 // A boss's child hired as the playbook says (an office.task label, or a name
@@ -556,6 +569,15 @@ export function standIn(term, pane, at) {
 
 // A tab with this name holds a space's boss.
 export const isBossTab = (tab) => typeof tab?.name === "string" && tab.name.trim().toLowerCase() === "boss";
+
+// The tab a boss leads from: the one it sits in (`bossTab`), else its last hire's
+// (`hireTabs`), else the space's Boss tab. A renamed Boss tab takes its hires with
+// it, so its team must not vanish from the office over a tab's name.
+export function bossTabOf(space, bossTab, hireTabs) {
+  const tabs = Array.isArray(space?.tabs) ? space.tabs : [];
+  const byId = (...ids) => tabs.find((c) => ids.some((id) => id && c.id === id)) ?? null;
+  return byId(bossTab, ...(hireTabs ?? [])) ?? tabs.find(isBossTab) ?? null;
+}
 
 // Every space's boss: { space id: terminal address }. First a live agent labelled
 // office.role=boss with that space in office.space (labelled once found, so a boss
@@ -730,6 +752,26 @@ export function parseProbe(text) {
 export function acceptMessage({ piece, name, branch, root }) {
   const git = root ? `git -C ${word(root)}` : "git";
   return `[Office] The person accepts "${piece}" (${name}) and agrees to merge it: merge ${branch} into the checked-out branch${root ? ` of ${root}` : ""} now (${git} merge --no-ff ${branch}), then remove its worktree and branch as your playbook says, mark the piece :merged in office.plan and report. If the merge conflicts, stop and ask.`;
+}
+
+// A goal written to a label: its lines joined with spaces, cut at `max`. A label
+// is one line and has room for a sentence, not a pasted spec.
+export const oneLine = (text, max = 200) => (typeof text === "string" ? text.replace(/\s+/g, " ").trim().slice(0, max) : "");
+
+// The goal a boss is working on, as it was given: its office.goal label, one
+// line. A long goal (a pasted spec) is cut at `max`, for the room a label gets.
+export const goalOf = (term, max = 200) => labelOf(term, "office.goal", max);
+
+// The whiteboard of a goal the boss has moved on from: when a new goal goes to
+// a boss that already had a plan, the office marks that plan (`mark`: the plan
+// as it was, and the goal it was for). The plan is old while it is still the
+// marked one; as soon as the boss writes its next plan it is fresh again, so
+// nothing has to be cleared. -> { stale, previous } (previous: that goal, "").
+export function planAge({ plan, mark } = {}) {
+  const text = typeof plan === "string" ? plan : "";
+  const was = typeof mark?.plan === "string" ? mark.plan : "";
+  const previous = typeof mark?.goal === "string" ? mark.goal : "";
+  return { stale: Boolean(text && was && text === was), previous };
 }
 
 // ---- after hours ----

@@ -289,13 +289,9 @@ def draw_desk(sb, d, t, i, cx, cy, z, shadow, frame):
         elif st == "blocked":
             label(sb, d, cx, ly, z, f"NEEDS YOU · {since}", paper, tag=True)
         else:
-            text = {"working": f"● Working · {since}", "done": f"✓ Done · {since}"}.get(st, f"Idle · {since}")
+            text = {"working": f"● {since}", "done": f"✓ {since}"}.get(st, f"Idle · {since}")
             color = {"working": bright("working"), "done": hexa("done")}.get(st, hexa("dim"))
             label(sb, d, cx, ly, z, text, color, back=False)
-    if st == "blocked":
-        bx, by = cx + z["slot"] - 10, cy - 7
-        d.rectangle([bx, by, bx + 14, by + 14], fill=hexa(TAG), outline=paper)
-        d.text((bx + 5, by), "!", font=font(11, bold=True), fill=(255, 255, 255, 255))
 
 
 def draw_ghost(sb, d, cx, cy, z):
@@ -561,6 +557,10 @@ def draw_panel(im: Image.Image, box, frame: int) -> None:
     tx = px + pwid + 8
     d.rectangle([tx, py + 3, tx + round(d.textlength(team, font=font(10.5))) + 10, py + 18], fill=hexa("#0d131b", 0xcc))
     d.text((tx + 5, py + 4), team, font=font(10.5), fill=hexa("#d8c7a6"))
+    stop = "■ Stop"
+    sw = round(d.textlength(stop, font=font(10.5, bold=True))) + 12
+    d.rectangle([pw - 41 - sw, py + 1, pw - 41, py + 20], fill=hexa("#8a3a30"), outline=hexa("#c05a4a"))
+    d.text((pw - 41 - sw + 6, py + 3), stop, font=font(10.5, bold=True), fill=hexa("#fbf1e8"))
     flow(d, left, by + 37, 1, "Hired 2 agents · 2 at work")
     d.rectangle([pw - 30, by + 12, pw - 11, by + 31], fill=hexa("#0d131b", 204))
     d.text((pw - 25, by + 14), "▴", font=font(11), fill=hexa("dim"))
@@ -577,6 +577,9 @@ def draw_panel(im: Image.Image, box, frame: int) -> None:
     d.rectangle([gx, iy0, pw - 82, iy0 + 27], fill=hexa("#0b1017", 0xe6), outline=mix("muted", "#161f28", 0.45))
     d.text((gx + 9, iy0 + 6), fit(d, "What should the team do? Paste a spec or type it · Ctrl+Enter sends", font(12), pw - 82 - gx - 16),
            font=font(12), fill=hexa("dim"))
+    # Under the box: the goal it works on (its office.goal), dim.
+    d.text((gx + 2, iy0 + 30), fit(d, "On: add Google login and a test", font(10), pw - 82 - gx - 16),
+           font=font(10), fill=hexa("muted"))
     d.rectangle([pw - 76, iy0, pw - 13, iy0 + 27], fill=hexa("accent"))
     d.text((pw - 66, iy0 + 6), "Tell ⏎", font=font(12, bold=True), fill=hexa("#101820"))
 

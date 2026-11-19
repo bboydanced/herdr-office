@@ -38,7 +38,7 @@
 import { View, div, image, svg } from "gpui-kit";
 import { Input, InputState, Popover, Textarea, TextareaState, h_flex, v_flex } from "gpui-base";
 import { agents, appHome, closeOverlay, commands, exec, focused, hc, home, knownAgents, layout, openOverlay, panes, props, readTextFile, run, setAgentOrder, setShared, shared, spaces, terminals, theme } from "herdr";
-import { DESK_SHADOW, EMPTY_DESK, WORKTREE_PROBE, acceptMessage, ago, bossBrief, bossStage, deskColumns, labelOf, deskJobs, deskLabel, deskPath, deskState, deskTip, filterPlan, findBosses, firstLine, fitAcross, hireCommand, hireTemplate, isBossTab, isHire, isNight, localId, mixHex, morningSummary, nightEvents, officePlan, parseHours, parseProbe, parsePrompt, planNotes, portraitPath, roleFromName, screenLines, seatStep, shortPath, spaceColor, speechLine, splitTree, staffOf, standIn, tally, treeWidth, underHc, withAlpha, worktreeOf } from "./lib.js";
+import { DESK_SHADOW, EMPTY_DESK, WORKTREE_PROBE, acceptMessage, ago, bossBrief, bossStage, bossTabOf, deskColumns, goalOf, labelOf, deskJobs, deskLabel, deskPath, deskState, deskTip, filterPlan, findBosses, firstLine, fitAcross, hireCommand, hireTemplate, isBossTab, isHire, isNight, localId, mixHex, morningSummary, nightEvents, officePlan, oneLine, parseHours, parseProbe, parsePrompt, planAge, planNotes, portraitPath, screenLines, seatStep, shortPath, spaceColor, speechLine, splitTree, staffOf, standIn, tally, treeWidth, underHc, uniqueFaces, withAlpha, worktreeOf } from "./lib.js";
 import { Desk } from "./desk.js";
 import { loadGroups, planGroups, saveGroups } from "./groups.js";
 import { LAMP, cardTab, ink, line, sheet } from "./card.js";
@@ -117,6 +117,12 @@ const DEFAULT_BOSS = "claude";
 const BAND_FOLDED_H = 34;
 // How many hires the boss is told it may have at a time.
 const STAFF_CAP = 4;
+// The goals recently given, per space, so a goal you sent is still there when
+// you come back (and a long spec can be pasted again): { [space id]: [goal] }.
+const GOALS = "office.goals";
+const GOALS_KEPT = 5;
+// Each boss's plan as the goal before the current one left it: { address: { plan, goal } }.
+const BOARDS = "office.boards";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -207,11 +213,6 @@ function activity(id, status, t, ring) {
   return { under: [], over: [] };
 }
 
-// A "!" bobbing on the corner of a desk whose agent waits for you.
-const alert = (id) => div().id(`${id}-alert`).absolute().top(-7).right(-5).size(15).flex().items_center().justify_center()
-  .bg(TAG).border(1).border_color("#fff0e6").text_size(10).font_bold().text_color("#ffffff").child("!")
-  .loop("top", { from: -9, to: -5, period: 700 });
-
 // The space under the pointer, here or in Spaces: set only when it changes
 // (every mod redraws on a shared value, and a redraw reports hover again).
 function hoverSpace(id, on) {
@@ -219,8 +220,6 @@ function hoverSpace(id, on) {
   const next = on ? id : now === id ? null : now;
   if (next !== now) setShared("office.hover", next);
 }
-
-const cap = (word) => (word ? word[0].toUpperCase() + word.slice(1) : "");
 
 // Where a space works: its first terminal's folder, else where it was made.
 const spaceFolder = (space, ps) => {
@@ -272,6 +271,9 @@ export default class Office extends View {
       this.bossRoom = localStorage.getItem("office.bossRoom") || null; // a space id
       this.bossPick = localStorage.getItem("office.bossAgent") || null; // a program key
       this.picking = null; // the boss band's open picker: "room" | "agent" | null
+      this.goals = readJson(GOALS, {}); // space id -> the goals given there, newest first
+      this.boards = readJson(BOARDS, {}); // boss address -> the plan its last goal left
+      this.stopping = false; // a Stop on its way to the boss
       this.known = {}; // machine ("" here) -> installed agents (knownAgents)
       this.loadingKnown = new Set();
       // Multi-line, so a pasted spec keeps its lines (hc send pastes it whole).
@@ -388,10 +390,13 @@ export default class Office extends View {
     else {
       const state = deskState(a, c.tab, this.now);
       const tone = { working: mixHex(t.working, "#ffffff", 0.3), done: t.done }[state?.status] ?? t.dim;
+      // Working and done say so with the mark and the desk's glow: the line keeps
+      // the time, which is what a slot this narrow has room for.
       const mark = { working: "● ", done: "✓ " }[state?.status] ?? "";
+      const since = mark ? state.text.split(" · ").slice(1).join(" · ") : "";
       lines.push(name, state?.status === "blocked" ? tag(state.text.replace("Needs you", "NEEDS YOU"))
         : line(z.label - 3, z.text - 1.5).text_color(a ? tone : t.dim)
-          .child(div().min_w(0).truncate().child(a ? `${mark}${state.text}` : shortPath(d.pane?.cwd) || " ")));
+          .child(div().min_w(0).truncate().child(a ? `${mark}${since || state.text}` : shortPath(d.pane?.cwd) || " ")));
     }
     return v_flex()
       .id(id)
@@ -402,7 +407,7 @@ export default class Office extends View {
       .gap(1)
       .cursor_pointer()
       .hover((s) => s.bg(t.hover))
-      .tooltip(`${deskTip({ job, agent: a, pane: d.pane, space, tab: c.tab })}\n${this.wide && terminal ? "Click: their terminal in a window · Double-click: go there · " : ""}${movable ? "Drag to Add desk: move to that tab · " : ""}Right-click: menu${terminal ? " · Middle-click: peek" : ""}`)
+      .tooltip(`${deskTip({ agent: a, pane: d.pane, space, tab: c.tab })}\n${this.wide && terminal ? "Click: their terminal in a window · Double-click: go there · " : ""}${movable ? "Drag to Add desk: move to that tab · " : ""}Right-click: menu${terminal ? " · Middle-click: peek" : ""}`)
       .when(this.wide, (el) => el
         .on_mouse_down("left", () => {
           this.drag = movable ? { terminal, pane: d.pane.pane, tab: c.tab.id, space: space.id, machine: space.machine ?? null, name: deskLabel(d) || "the desk", moved: false } : null;
@@ -430,8 +435,7 @@ export default class Office extends View {
       .child(div().relative().w(z.deskW).h(z.deskH).child(picture(DESK_SHADOW)).child(picture(src)))
       .children(lines)
       .children(shown.over)
-      .when(picked, (el) => el.child(div().absolute().top(-4).left(-4).right(-4).bottom(-4).border(2).border_color(t.accent)))
-      .when(a?.status === "blocked", (el) => el.child(alert(id)));
+      .when(picked, (el) => el.child(div().absolute().top(-4).left(-4).right(-4).bottom(-4).border(2).border_color(t.accent)));
   }
 
   // Desks the way the tab is split: a row for side by side, a column for stacked.
@@ -624,7 +628,7 @@ export default class Office extends View {
         .cursor_pointer().hover((s) => s.bg(t.hover))
         .when(this.hot === space.id, (el) => el.bg(withAlpha(t.accent, "22")))
         .on_hover((hov) => hoverSpace(space.id, hov))
-        .tooltip(`${deskTip({ job, agent: a, pane, space, tab })}\nClick: go to its terminal · Right-click: menu · Middle-click: peek`)
+        .tooltip(`${deskTip({ agent: a, pane, space, tab })}\nClick: go to its terminal · Right-click: menu · Middle-click: peek`)
         .on_click(() => reach(a, space, tab, pane, a.address))
         .on_mouse_down("right", (_e, cx) => {
           cx.stop_propagation();
@@ -637,9 +641,7 @@ export default class Office extends View {
         .child(div().size(22).flex_none().border(1).border_color(t[state?.status] ?? t.dim).bg(t.raised)
           .when(Boolean(src), (el) => el.child(image(src).size(20))))
         .child(v_flex().flex_1().min_w(0).gap(0)
-          .child(h_flex().gap(5).items_center()
-            .child(div().min_w(0).truncate().text_size(11.5).text_color(t.foreground).child(deskLabel({ agent: a }) || "Agent"))
-            .when(Boolean(job), (el) => el.child(div().flex_none().text_size(9.5).text_color(t.dim).child(cap(job)))))
+          .child(div().min_w(0).truncate().text_size(11.5).text_color(t.foreground).child(deskLabel({ agent: a }) || "Agent"))
           .child(div().min_w(0).truncate().text_size(10).text_color(t.dim)
             .child(`${space.name} › ${tab.name}`)))
         .child(state?.status === "blocked"
@@ -956,7 +958,7 @@ export default class Office extends View {
     const job = a ? roles.get(a.address) : null;
     const src = portraitPath(job);
     const state = deskState(a, tab, this.now);
-    const title = a ? `${job ? cap(job) : "Agent"} · ${a.program?.name ?? "Agent"}` : deskLabel({ pane });
+    const title = a ? `${deskLabel({ agent: a }) || "Agent"} · ${a.program?.name ?? "Agent"}` : deskLabel({ pane });
     const place = [`${space?.name ?? ""} › ${tab?.name ?? ""}`, shortPath(pane?.cwd), pane?.branch].filter(Boolean).join(" · ");
     const tone = { working: mixHex(t.working, "#ffffff", 0.3), blocked: t.blocked, done: t.done }[state?.status] ?? t.dim;
     const go = () => {
@@ -1029,8 +1031,15 @@ export default class Office extends View {
       const term = terms.find((t) => t?.address === addr);
       if (this.marked.has(addr) || labelOf(term, "office.role") === "boss") continue;
       this.marked.add(addr);
-      cx.spawn(async () => { await hc(["label", addr, "office.role=boss", `office.space=${space}`]).catch(() => null); });
+      // A boss hired here gets the goal it was hired with, so the band says what
+      // it is on before it has said anything itself.
+      const first = this.goals[space]?.[0] ?? "";
+      cx.spawn(async () => {
+        await hc(["label", addr, "office.role=boss", `office.space=${space}`, ...(first ? [`office.goal=${oneLine(first)}`] : [])]).catch(() => null);
+      });
     }
+    // A boss that is gone takes its board's mark with it.
+    for (const addr of Object.keys(this.boards ?? {})) if (!Object.values(found).includes(addr)) this.markPlan(addr, null);
   }
 
   // Each boss's tab and hires, and where every hire sits: in the boss's tab.
@@ -1039,12 +1048,15 @@ export default class Office extends View {
     const bosses = new Map(); // boss -> { space, tab, staff }
     for (const [spaceId, boss] of Object.entries(this.bosses())) {
       const space = sp.find((s) => s.id === spaceId);
-      // A boss sent back without a pane still leads from its space's Boss tab.
-      const tabId = ps.find((p) => p.terminal === boss)?.tab ?? list.find((a) => a.address === boss)?.tab
-        ?? space?.tabs?.find(isBossTab)?.id;
-      const tab = space?.tabs?.find((c) => c.id === tabId);
-      if (!tab) continue;
+      if (!space) continue;
       const hires = staffOf(terms, boss);
+      // A boss sent back without a pane still leads from its space's tab: the one
+      // it has, or its last hire's (a renamed Boss tab keeps its team), or the
+      // Boss tab.
+      const tab = bossTabOf(space,
+        ps.find((p) => p.terminal === boss)?.tab ?? list.find((a) => a.address === boss)?.tab,
+        hires.map((h) => (ps.find((p) => p.terminal === h) ?? list.find((a) => a.address === h))?.tab));
+      if (!tab) continue;
       bosses.set(boss, { space, tab, staff: hires });
       for (const hire of hires) staff.set(hire, { space, tab, boss });
     }
@@ -1053,12 +1065,13 @@ export default class Office extends View {
     // What the bosses say and what their hires do, as they label themselves.
     const say = new Map([...bosses.keys()].map((boss) => [boss, labelOf(byAddress.get(boss), "office.say")]));
     const stages = new Map([...bosses.keys()].map((boss) => [boss, labelOf(byAddress.get(boss), "office.stage")]));
+    const goals = new Map([...bosses.keys()].map((boss) => [boss, goalOf(byAddress.get(boss))]));
     const tasks = new Map([...staff.keys()].map((hire) => [hire, labelOf(byAddress.get(hire), "office.task")]));
     // The whiteboard: each boss's plan, and the piece and folder of each hire.
     const plans = new Map([...bosses.keys()].map((boss) => [boss, labelOf(byAddress.get(boss), "office.plan", 400)]));
     const pieces = new Map([...staff.keys()].map((hire) => [hire, labelOf(byAddress.get(hire), "office.piece")]));
     const cwds = new Map([...staff.keys()].map((hire) => [hire, byAddress.get(hire)?.cwd ?? ""]));
-    return { staff, bosses, names, say, stages, tasks, plans, pieces, cwds };
+    return { staff, bosses, names, say, stages, goals, tasks, plans, pieces, cwds };
   }
 
   // Sidebar, every tick: while you look at a boss's tab, its next hire without a
@@ -1125,15 +1138,21 @@ export default class Office extends View {
       if (list.find((a) => a.address === boss)?.status === "blocked") {
         return this.flash("The boss waits for your answer first", "blocked", cx, "bossNote");
       }
+      // The plan it had is marked as the old goal's once this goal is in, so its
+      // notes never read as this goal's work; a new plan replaces it (planAge).
+      const term = (terminals() ?? []).find((t) => t?.address === boss);
+      const was = labelOf(term, "office.plan", 400);
       this.bossBusy = true;
       cx.spawn(async (cx) => {
         try {
           const r = await hc(["send", boss, "--", goal]);
           if (r.code === 0) {
             this.bossInput.set_value("");
+            this.rememberGoal(room.id, goal);
+            this.markPlan(boss, was ? { plan: was, goal: goalOf(term) } : null);
             this.flash("Sent to the boss", "done", cx, "bossNote");
             // A goal from here starts the flow over: Plan, until the boss says otherwise.
-            await hc(["label", boss, "office.stage=plan"]).catch(() => null);
+            await hc(["label", boss, "office.stage=plan", `office.goal=${oneLine(goal)}`]).catch(() => null);
           }
           else this.flash(firstLine(r.stderr) || firstLine(r.stdout) || "Couldn't reach the boss", "blocked", cx, "bossNote");
         } catch (e) {
@@ -1164,6 +1183,7 @@ export default class Office extends View {
       try {
         run("tab.new", { space: room.id, name: "Boss", argv: underHc(pick.run), task: bossBrief({ goal, playbook, argv: pick.run, hires, templates, folder, space: room.name, most: STAFF_CAP }) });
         this.bossInput.set_value("");
+        this.rememberGoal(room.id, goal);
       } catch (e) {
         this.flash(firstLine(String(e?.message ?? e)) || "Couldn't open the Boss tab", "blocked", cx, "bossNote");
       }
@@ -1231,6 +1251,45 @@ export default class Office extends View {
   foldBand(folded) {
     this.bandFolded = folded;
     localStorage.setItem("office.bossBand", folded ? "folded" : "open");
+  }
+
+  // The goals given in a space, newest first: the last one stands in the box
+  // until the next, so it is still there after the text was cleared.
+  rememberGoal(spaceId, goal) {
+    const text = String(goal ?? "").trim();
+    if (!spaceId || !text) return;
+    this.goals = { ...this.goals, [spaceId]: [text, ...(this.goals[spaceId] ?? []).filter((g) => g !== text)].slice(0, GOALS_KEPT) };
+    localStorage.setItem(GOALS, JSON.stringify(this.goals));
+  }
+
+  // The whiteboard a new goal left behind, per boss: { plan, goal }. The office's
+  // own bookkeeping, never a label the boss has to keep; null drops it.
+  markPlan(boss, mark) {
+    if (!boss) return;
+    const boards = { ...this.boards };
+    if (mark) boards[boss] = mark;
+    else delete boards[boss];
+    this.boards = boards;
+    localStorage.setItem(BOARDS, JSON.stringify(boards));
+  }
+
+  // Stop what is typing (hc interrupt each), so a team told the wrong thing
+  // stops instead of finishing it. A boss waiting for your answer is not in the
+  // list: its turn is yours to answer, not to drop.
+  stop(addrs, cx) {
+    const who = (addrs ?? []).filter(Boolean);
+    if (!who.length || this.stopping) return;
+    this.stopping = true;
+    cx.spawn(async (cx) => {
+      const bad = [];
+      for (const one of who) {
+        const r = await hc(["interrupt", one, "--json"]).catch((e) => ({ code: 1, stderr: String(e?.message ?? e) }));
+        if (r.code !== 0) bad.push(one);
+      }
+      this.flash(bad.length ? `Couldn't stop ${bad.join(", ")}` : `Stopped ${who.length} terminal${who.length === 1 ? "" : "s"}`, bad.length ? "blocked" : "done", cx, "bossNote");
+      this.stopping = false;
+      cx.notify();
+    });
   }
 
   // The orchestrator a new boss runs: the one you picked, else Claude Code, else
@@ -1306,9 +1365,14 @@ export default class Office extends View {
       status: list.find((a) => a.address === address)?.status ?? null,
       cwd: team.cwds?.get(address) ?? "",
     }));
-    const notes = planNotes(team.plans?.get(bossAddr) ?? "", hires).map((n) => ({ ...n, wt: n.hire ? worktreeOf(n.hire.cwd) : null }));
+    const plan = team.plans?.get(bossAddr) ?? "";
+    const notes = planNotes(plan, hires).map((n) => ({ ...n, wt: n.hire ? worktreeOf(n.hire.cwd) : null }));
     this.boardNow = { boss: bossAddr, machine: room.machine ?? null, notes };
     if (!notes.length) return null;
+    // A goal sent after this plan was written leaves it behind: it is still on
+    // the board, faint, labelled with the goal it was for (planAge).
+    const age = planAge({ plan, mark: this.boards[bossAddr] });
+    const goal = team.goals?.get(bossAddr) ?? "";
     const passed = notes.filter((n) => n.state === "ok" || n.state === "merged").length;
     const chip = (id, text, bg, tip, action) => div().id(id).h(14).px(4).flex().flex_none().items_center().bg(bg)
       .text_size(9.5).font_bold().text_color("#fbf6ea").cursor_pointer().hover((s) => s.opacity(0.85)).tooltip(tip)
@@ -1344,8 +1408,13 @@ export default class Office extends View {
     };
     return v_flex().id("whiteboard").flex_none().p(4).gap(3).bg("#b4bbc1").border(2).border_color("#7b858e")
       .child(h_flex().gap(6).items_center().text_size(9).font_bold().text_color("#46505a")
-        .child("WHITEBOARD").child(div().text_color("#5d6772").child(`${passed}/${notes.length} passed review`)))
-      .child(h_flex().flex_wrap().gap(4).children(notes.map(note)));
+        .child("WHITEBOARD")
+        .when(age.stale, (el) => el.child(div().flex_none().px(4).bg("#8e9187").text_color("#fbf6ea")
+          .tooltip(`Sent after this plan: the boss has not written its new one yet.\nThat plan was for: ${age.previous || "an earlier goal"}`).child("OLD GOAL")))
+        .child(div().flex_1().min_w(0).truncate().text_color("#5d6772")
+          .when(Boolean(goal), (el) => el.tooltip(`The goal the boss works on: ${goal}`).child(`for: ${goal} · `))
+          .child(`${passed}/${notes.length} passed review`)))
+      .child(h_flex().flex_wrap().gap(4).children(notes.map((n, i) => note(n, i))).when(age.stale, (el) => el.opacity(0.55)));
   }
 
   // The boss's office: its back wall with what it does pinned on it, the boss
@@ -1368,6 +1437,13 @@ export default class Office extends View {
     const said = (bossAddr && team.say.get(bossAddr)) || (bossAddr && this.bossSay?.key === bossAddr ? this.bossSay.line : "");
     const line = this.bossNote?.text ?? (said || (bossAddr ? (boss ? deskLabel({ agent: boss }) : "Getting ready…") : "No boss here yet"));
     const lineColor = this.bossNote ? t[this.bossNote.tone] ?? t.foreground : bossAddr ? t.foreground : t.dim;
+    // The goal it was given: the box keeps your last one for this space until you
+    // send another, and the label says what it is working on now.
+    const goal = bossAddr ? team.goals?.get(bossAddr) ?? "" : "";
+    const remembered = this.goals[room?.id ?? ""]?.[0] ?? "";
+    // What Stop may stop: a boss at work (not one waiting for your answer), and
+    // its hires at work.
+    const stoppable = [...(boss?.status === "working" ? [bossAddr] : []), ...crew.filter((a) => a.status === "working").map((a) => a.address)];
     const tip = bossAddr ? "The boss · click for details, double-click for its terminal" : "The boss: give it a goal and it hires the team";
     const onBoss = (e, cx) => {
       if (bossAddr) return e.click_count >= 2 ? run("agent.focus", { terminal: bossAddr }) : this.pick(bossAddr, cx);
@@ -1379,12 +1455,21 @@ export default class Office extends View {
       .tooltip(this.bandFolded ? "Show the boss" : "Fold the boss away")
       .on_click((_e, cx) => { this.foldBand(!this.bandFolded); cx.notify(); })
       .child(this.bandFolded ? "▾" : "▴");
+    // Stop, in the band and when it is folded: whoever is typing, the boss and
+    // its hires. Only while there is something to stop.
+    const stopButton = stoppable.length ? div().id("boss-stop").h(20).px(6).flex().flex_none().items_center().gap(4)
+      .text_size(10.5).font_bold().text_color("#fbf1e8").bg("#8a3a30").border(1).border_color("#c05a4a")
+      .cursor_pointer().hover((s) => s.bg("#a24438"))
+      .tooltip(`Stop ${stoppable.length === 1 ? "the one at work" : `${stoppable.length} at work`} (hc interrupt): the boss${stoppable.length > 1 || stoppable[0] !== bossAddr ? " and its hires" : ""}`)
+      .on_click((_e, cx) => this.stop(stoppable, cx))
+      .child(this.stopping ? "Stopping…" : "■ Stop") : null;
     if (this.bandFolded) {
       return h_flex().id("boss-band").h(BAND_FOLDED_H).flex_none().px(10).gap(8).items_center().bg("#1a2230").border_b(1).border_color("#11161f")
         .child(div().id("boss").size(24).flex_none().border(1).border_color(t[state] ?? t.dim).bg(t.raised).cursor_pointer().tooltip(tip).on_click(onBoss)
           .child(image(portraitPath("manager")).size(22)))
         .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(lineColor).child(line))
         .when(Boolean(crewText), (el) => el.child(div().flex_none().text_size(10.5).text_color(over ? t.blocked : t.dim).child(crewText)))
+        .when(Boolean(stopButton), (el) => el.child(stopButton))
         .child(fold);
     }
     const known = this.known[room?.machine ?? ""];
@@ -1421,10 +1506,12 @@ export default class Office extends View {
       .child(div().id("boss").absolute().left(12).top(BAND_H - 98).w(64).h(88).cursor_pointer().tooltip(tip).on_click(onBoss)
         .child(image(`${BOSS_DIR}/${["working", "blocked", "done"].includes(state) ? state : "idle"}.gif`).w(64).h(88)))
       .child(v_flex().relative().pl(left).pr(12).pt(9).pb(10).gap(6)
-        // On the wall: whose office, its team, and how it works.
+        // On the wall: whose office, its team, how it works, and Stop.
         .child(h_flex().h(22).pr(28).gap(8).items_center().overflow_hidden()
           .child(plaque)
-          .when(Boolean(crewText), (el) => el.child(div().flex_none().px(5).bg("#0d131bcc").text_size(10.5).text_color(over ? t.blocked : "#d8c7a6").child(crewText))))
+          .when(Boolean(crewText), (el) => el.child(div().flex_none().px(5).bg("#0d131bcc").text_size(10.5).text_color(over ? t.blocked : "#d8c7a6").child(crewText)))
+          .child(div().flex_1())
+          .when(Boolean(stopButton), (el) => el.child(stopButton)))
         .child(h_flex().h(22).items_center().overflow_hidden()
           .when(Boolean(flow), (el) => el.child(this.flowNotes("band", flow, t))))
         .when(Boolean(board), (el) => el.child(board))
@@ -1433,9 +1520,22 @@ export default class Office extends View {
         .child(h_flex().gap(6).items_start()
           .when(Boolean(rooms), (el) => el.child(rooms))
           .when(Boolean(agentsPick), (el) => el.child(agentsPick))
-          .child(div().id("boss-goal").flex_1().min_w(120).min_h(28).px(8).py(3).bg("#0b1017e6").border(1)
-            .border_color(withAlpha(t.muted, "77")).cursor_text().on_click(() => this.bossInput.focus())
-            .child(Textarea.new(this.bossInput).w_full().text_size(12)))
+          .child(v_flex().flex_1().min_w(120).gap(2)
+            .child(div().id("boss-goal").min_h(28).px(8).py(3).bg("#0b1017e6").border(1)
+              .border_color(withAlpha(t.muted, "77")).cursor_text().on_click(() => this.bossInput.focus())
+              .child(Textarea.new(this.bossInput).w_full().text_size(12)))
+            // The goal it works on now (its office.goal label); the box empty,
+            // your last goal for this space waits here to be sent again.
+            .when(Boolean(goal) && !(this.bossInput?.value() ?? "").trim(), (el) => el
+              .child(div().px(2).min_w(0).truncate().text_size(10).text_color("#a9b8c6")
+                .tooltip(`The goal the boss works on: ${goal}`).child(`On: ${goal}`)))
+            .when(Boolean(remembered) && !goal && !(this.bossInput?.value() ?? "").trim(), (el) => el
+              .child(h_flex().px(2).gap(4).items_center()
+                .child(div().flex_1().min_w(0).truncate().text_size(10).text_color(t.dim).child(`Last: ${oneLine(remembered)}`))
+                .child(div().id("boss-goal-again").flex_none().text_size(10).text_color(t.accent).cursor_pointer()
+                  .tooltip("Put your last goal back in the box")
+                  .on_click((_e, cx) => { this.bossInput?.set_value(remembered); cx.stop_propagation(); cx.notify(); })
+                  .child("Use it")))))
           .child(div().id("boss-assign").h(28).px(12).flex().flex_none().items_center().bg(this.bossBusy ? t.raised : t.accent)
             .text_size(12).font_bold().text_color(t.accent_foreground ?? "#101820").cursor_pointer()
             .tooltip(bossAddr ? "Send the goal to the boss (Ctrl+Enter)" : `Hire ${pick?.name ?? "an agent"} as the boss with this goal (Ctrl+Enter)`)
@@ -1502,7 +1602,7 @@ export default class Office extends View {
         .child(div().size(30).flex_none().border(1).border_color(t.blocked).bg(t.raised).when(Boolean(src), (el) => el.child(image(src).size(28))))
         .child(v_flex().flex_1().min_w(0)
           .child(div().truncate().text_size(12).font_bold().text_color(t.foreground)
-            .child(`Needs you · ${job ? cap(job) : "Agent"} · ${a.program?.name ?? "Agent"}`))
+            .child(`Needs you · ${deskLabel({ agent: a }) || "Agent"} · ${a.program?.name ?? "Agent"}`))
           .child(div().truncate().text_size(10.5).text_color(t.dim).child(`${a.space_name} › ${a.tab_name}${since ? ` · waiting ${since}` : ""}`)))
         .when(waiting.length > 1, (el) => el.child(this.small("ask-next", `${this.card + 1}/${waiting.length} ›`, "The next one waiting", t,
           (_e, cx) => { this.card = (this.card + 1) % waiting.length; cx.notify(); })))
@@ -1553,12 +1653,13 @@ export default class Office extends View {
     this.teamNow = team; // the rugs read their space's boss flow from these
     this.listNow = list;
     const plan = officePlan(sp, ps, list);
-    const roles = deskJobs(sp, ps, list, { Boss: "manager", ...this.jobs });
-    for (const boss of team.bosses.keys()) roles.set(boss, "manager");
-    for (const hire of team.staff.keys()) {
-      const role = roleFromName(team.names.get(hire));
-      if (role && roles.has(hire)) roles.set(hire, role);
-    }
+    // A face each: the boss keeps the manager's, and its hires take the room's
+    // free ones, so a team of developers is a team of different people (their
+    // names say what they do; a name no longer picks a face).
+    const seats = deskJobs(sp, ps, list, { Boss: "manager", ...this.jobs });
+    const bosses = [...team.bosses.keys()];
+    for (const boss of bosses) seats.set(boss, "manager");
+    const roles = uniqueFaces(seats, bosses);
     this.roles = roles; // the desk window's header wears the same face
     if (!this.wide) {
       this.shareFaces(roles);

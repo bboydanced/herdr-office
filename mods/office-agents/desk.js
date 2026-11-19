@@ -7,15 +7,13 @@
 // waits for an answer. Buttons stop the press, so only the header's background
 // drags the window.
 //
-// props: { desk: terminal address, job: role or null, overlay: the window }
+// props: { desk: terminal address, job: the face it wears or null, overlay: the window }
 import { div, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, appHome, closeOverlay, hc, panes, props, readTextFile, run, spaces, terminals, theme } from "herdr";
 import { DEFAULT_REPLIES, deskLabel, deskState, firstLine, mixHex, parseReplies, portraitPath, shortPath, withAlpha } from "./lib.js";
 
 const REPLIES_FILE = `${appHome()}/mods/office-agents/replies.json`;
-
-const cap = (word) => (word ? word[0].toUpperCase() + word.slice(1) : "");
 
 export class Desk {
   constructor(cx) {
@@ -66,7 +64,8 @@ export class Desk {
     // A hire Herdr gets no status from has no agent: its terminal names it.
     const term = a ? null : (terminals() ?? []).find((x) => x.address === key) ?? null;
     const what = a?.program?.name ?? term?.program?.name ?? (job ? term?.name : null) ?? (deskLabel({ pane }) || "Terminal");
-    const title = job || a ? `${job ? cap(job) : "Agent"} · ${what || "Agent"}` : what;
+    // Its name, not its face: a role says who it looks like, not who it is.
+    const title = a ? `${deskLabel({ agent: a }) || "Agent"} · ${what || "Agent"}` : what;
     const place = [space && tab ? `${space.name} › ${tab.name}` : "", shortPath(pane?.cwd), pane?.branch].filter(Boolean).join(" · ");
     const tone = { working: mixHex(t.working, "#ffffff", 0.3), blocked: t.blocked, done: t.done }[state?.status] ?? t.dim;
     const close = () => overlay && closeOverlay(overlay);

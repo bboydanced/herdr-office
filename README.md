@@ -84,7 +84,7 @@ Herdr keeps the mod names in its own `seen.json`, which is harmless.
     has its lights on, a warm tint with the amber bar.
     A space where an agent works **breathes**: a steady frame in the working
     colour over a glow that fades in and out. A space where an agent waits for
-    you **blinks** a thick orange frame over a red tint, with a `!` by its name.
+    you **blinks** a thick coral frame over a red tint, with a `!` by its name.
     Waiting wins over working. Hover a room and its rug lights up in the
     office; hover a rug and its room lights up.
     Hovering a room also shows `+` (a new tab there, with a shell or an
@@ -123,8 +123,8 @@ Herdr keeps the mod names in its own `seen.json`, which is harmless.
   - **Office Agent:** every agent as a list, not the floor. A header
     (`Office Agent`, `N need you`, `N/M at work`, the time), the back wall
     (night windows, clock, kanban board, door, water cooler, plant), then one
-    30 px row per agent: its face framed in its status colour, its name and
-    role, the status and for how long (`Working · 12m`, `NEEDS YOU`, `✓ Done`),
+    30 px row per agent: its face framed in its status colour, its name, the
+    status and for how long (`Working · 12m`, `NEEDS YOU`, `✓ Done`),
     and the space › tab it sits in, on a dimmed backing so the windows behind
     stay out of the names. A click goes to its terminal; right-click
     opens Herdr's menu, middle-click peeks. Spaces you put in a **group** are
@@ -153,7 +153,7 @@ desks fall back to pane order: up to three in a row, four as two by two.
 | Status | Screen | Staff |
 |---|---|---|
 | `working` | green, code scrolling fast, LED green | typing fast (a key every 90 ms), eyes on the screen, coffee steaming; the desk breathes: a bright frame, a glow and a wider ring fading in and out |
-| `blocked` | red, blinking `!` | one hand up, mouth open, a `!` bubble; a thick orange frame blinks over a red tint, a `!` badge bobs on the corner, the label turns into a red `NEEDS YOU` tag |
+| `blocked` | red, blinking `!` | one hand up, mouth open, a `!` bubble; a thick coral frame blinks over a red tint and the label turns into a red `NEEDS YOU` tag |
 | `done` | blue with a check mark | stretching, hands behind the head, smiling |
 | `idle` | screensaver | head down on folded arms, `zZz` |
 
@@ -197,7 +197,7 @@ bottom:
 3. **The morning memo** after a night with news (see After hours), then
    **Needs you**, while an agent waits for you (see below).
 4. **The floor:** rugs, cubicles and desks. Under each desk a second line: the
-   status and for how long (`Working · 12m`, `NEEDS YOU · 3m`, `✓ Done · 5m`;
+   status and for how long (`● 12m`, `NEEDS YOU · 3m`, `✓ 5m`, `Idle · 1h`;
    the tab's time, so agents sharing a tab share it), or an empty desk's
    folder. A mod's pane (a git-changes diff or commit view) is a view, not a
    desk: it gets none, and a tab holding only views has no cubicle.
@@ -217,7 +217,7 @@ bottom:
    - **Put away:** tabs put away (`tab.settle`) are listed at the end of the
      floor; click one to bring it back.
 5. **The inspector**, one bar under the floor: the staff member you picked,
-   their role and program, space › tab, folder, branch, status and for how
+   their name and program, space › tab, folder, branch, status and for how
    long, with `Terminal ↗` (the desk window again), `Go to desk` and `Peek`
    (look over the tab without leaving it).
 
@@ -248,6 +248,11 @@ yet), and **`Accept`**: asked once more (`Merge office/<name>? ✓ ✕`), it sen
 the boss `[Office] The person accepts "<piece>" …`, your agreement to merge
 that branch with `git merge --no-ff`, remove the worktree and branch, mark the
 piece `:merged` and report.
+
+A new goal to a boss that already had a plan leaves that plan behind: the
+board keeps its notes, faint and marked **`OLD GOAL`** (hover: the goal they
+were for), until the boss writes its next plan, which is fresh again. Nothing
+is cleared, so a team still working on the old pieces keeps its board.
 
 **After hours** (on by default, 19:00 to 07:00; the header's `☼` turns it off,
 `☾` shows at night; `localStorage` `office.hours` takes other hours, like
@@ -304,6 +309,14 @@ another; the list marks the spaces that have a boss).
   (a spec, a list of steps); `Ctrl+Enter` or the button sends it. Later goals
   reach the boss as pasted, lines and all; the first one goes in the boss's
   one-line brief, so its line breaks become spaces.
+- **Which goal it is on** shows under the box (`On: add Google login`), from the
+  boss's `office.goal` label, set each time you send one, so you can come back
+  later and see what the team was asked to do. The last goal you sent to a space
+  stays in `localStorage` (`office.goals`, five per space): with the box empty and
+  no goal yet, it waits there as `Last: …` with **`Use it`** to put it back.
+- **`■ Stop`** (on the wall, and in the folded band) stops what is typing: the
+  boss and its hires at work, each with `hc interrupt`. A boss waiting for your
+  answer is left alone: answer it, or close its terminal.
 - **The first goal** for a room hires the boss: `Hire ⏎` opens a `Boss` tab in
   that space running the orchestrator picked in the second dropdown (the
   agents installed there; Claude Code by default, shown only while the space
@@ -342,22 +355,27 @@ another; the list marks the spaces that have a boss).
   playbook is copied there first (to `~/.config/herdr-office/boss.md`).
 - **Labels:** the boss keeps what it is doing in its `office.say` label (`hc
   label $HC_TERMINAL_ID office.say="Waiting for tester-e2e"`), which is its
-  speech bubble, and its step in `office.stage` (`plan`, `hire`, `review`,
+  speech bubble, its step in `office.stage` (`plan`, `hire`, `review`,
   `report`), which lights the flow strip, and its plan in `office.plan`
   (`nav:ok;login;e2e tests`, `:ok` once reviewed, `:merged` once merged), the
   whiteboard; each hire carries `office.task`, the line under its desk, and
-  `office.piece`, its note on the whiteboard.
+  `office.piece`, its note on the whiteboard. The panel writes `office.goal`
+  itself when you send a goal, so the office knows which goal the plan is for.
   Without labels the office falls back to their screens and titles.
 - **Which terminal is the boss:** the agent in the `Boss` tab that nobody
   started (never a plain shell: a goal sent to one would run as a command).
   Once found it is labelled `office.role=boss` and `office.space=<space id>`,
   so it stays the boss when you send it back without a pane or rename its tab.
+  Its team leads from the tab the boss sits in; if it has no pane, from the tab
+  of its last hire, then the `Boss` tab, so renaming `Boss` doesn't take the
+  team off the floor.
   A `Boss` tab with no boss running in it (still starting, or its agent gone)
   hires nobody new: wait, or close the tab to hire again.
 - **Later goals** go to the boss you already have (`Tell ⏎`, `hc send`).
 - **Its hires** are its children in herdr-core: they get a desk in its
-  cubicle at once, with a role from their name (`tester-e2e` is a tester,
-  `frontend-nav` a developer), the same face everywhere. A hire Herdr gets no
+  cubicle at once, each with a face of its own (a hire's name says what it is
+  for, never which face it wears, so four developers are four people), the
+  same face everywhere. A hire Herdr gets no
   status from (an agent it doesn't know, like `pi` or `agy`) still gets its
   desk, as long as it carries `office.task` or a name that starts with a role
   (`developer-nav`; a job like `tests` or `job-build` gets none); it reads
@@ -444,12 +462,17 @@ its terminal.
 
 ## Customize
 
-- **Who is who:** `mods/office-agents/jobs.json` maps a tab name to a role.
-  Roles: `manager`, `developer`, `designer`, `analyst`, `writer`, `tester`,
-  `support`, `intern`. A tab's first agent wears the tab's role and the other
-  agents in that tab get roles of their own, so faces repeat only past eight.
+- **Who is who:** `mods/office-agents/jobs.json` maps a tab name to a face.
+  Faces: `manager`, `developer`, `designer`, `analyst`, `writer`, `tester`,
+  `support`, `intern` (each with a portrait and a desk for every status). A
+  role is a face and a desk, not a rank or a job title: an agent's name says
+  what it does. A tab's first agent wears the tab's face and the other agents
+  in that tab get faces of their own, and the office hands out no face twice
+  while the eight last (`uniqueFaces`), so a boss's team of developers is a
+  room of different people.
   The tab bar and the office work this out the same way (`tabDesks`,
-  `deskJobs`); Spaces shows the faces the office shares (`office.faces`). Copy the file to every machine to get the same faces everywhere.
+  `deskJobs`, `uniqueFaces`); Spaces shows the faces the office shares
+  (`office.faces`). Copy the file to every machine to get the same faces everywhere.
 - **Project colours** come from the Spaces list (`space.colors`), so the door
   and the rug of a space always match.
 - **Art:** drawn by `tools/build-art.py`; `tools/build-preview.py` composes the
