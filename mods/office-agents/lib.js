@@ -447,8 +447,10 @@ export function hireTemplate(argv) {
 // full), the rules that matter most in case it can't read it, then the goal.
 // The agents it may hire: its own first, then the others installed (`hires`,
 // their argv); one with a template (`templates`: { [hireCommand]: name }) is
-// named by it. One line, so every agent takes it as one message.
-export function bossBrief({ goal, playbook, argv, hires, templates, folder, space, most = 4 } = {}) {
+// named by it. With `hire` (the path of hire.sh) hires start at the size of
+// their seat, not hc's headless 200 columns. One line, so every agent takes it
+// as one message.
+export function bossBrief({ goal, playbook, argv, hires, templates, folder, space, hire, most = 4 } = {}) {
   const task = typeof goal === "string" ? goal.replace(/\s+/g, " ").trim() : "";
   const named = templates && typeof templates === "object" ? templates : {};
   const agents = [...new Set([argv, ...(Array.isArray(hires) ? hires : [])].map(hireCommand))]
@@ -460,8 +462,12 @@ export function bossBrief({ goal, playbook, argv, hires, templates, folder, spac
       ? `Read your playbook now and follow it: ${playbook} (read it again whenever your context is compacted; run \`hc --skill\` only if you get stuck).`
       : "Run `hc --skill` once to learn hc.",
     `In short: do not write code yourself; at most ${most} hires working at a time, each hired with`,
-    `hc run --bg --no-notify --name <role>-<topic> --label office.task="<the task in a few words>" --label office.piece="<its piece of the plan>"${cwd} <agent> "$(cat <<'EOF'`,
-    "then the task on lines of its own, then a line EOF, then )\" (a quoted heredoc, never the task in double quotes: backticks and $ in it would run;",
+    ...(typeof hire === "string" && hire
+      ? [`sh ${word(hire)} --name <role>-<topic> --task "<the task in a few words>" --piece "<its piece of the plan>"${cwd} <agent> <<'EOF'`,
+        "then the task on lines of its own, then a line EOF (a quoted heredoc, never the task in double quotes: backticks and $ in it would run;",
+        "it starts the hire at the width of the pane it gets; if it fails, hire with hc run as your playbook says;"]
+      : [`hc run --bg --no-notify --name <role>-<topic> --label office.task="<the task in a few words>" --label office.piece="<its piece of the plan>"${cwd} <agent> "$(cat <<'EOF'`,
+        "then the task on lines of its own, then a line EOF, then )\" (a quoted heredoc, never the task in double quotes: backticks and $ in it would run;"]),
     "role: developer, designer, tester, analyst, writer, support or intern;",
     `<agent>: ${agents.join(" or ")}${Object.keys(named).length ? " (office-* is a template with the hires' rules)" : ""}, exactly as written so it never stops for permission);`,
     "then check first_message.sent in its output;",

@@ -47,6 +47,9 @@ const JOBS_FILE = `${appHome()}/mods/office-agents/jobs.json`;
 // The boss's playbook; on another machine a copy goes to REMOTE_PLAYBOOK there.
 const PLAYBOOK = `${appHome()}/mods/office-agents/boss.md`;
 const REMOTE_PLAYBOOK = ".config/herdr-office/boss.md";
+// What hires the boss's staff at the size of their seat (see hire.sh).
+const HIRE = `${appHome()}/mods/office-agents/hire.sh`;
+const REMOTE_HIRE = ".config/herdr-office/hire.sh";
 // The inspector's height; how often the panel reads the questions of those
 // waiting for you and the boss's screen (and the sidebar seats hires).
 const INSPECT_H = 56;
@@ -1177,11 +1180,12 @@ export default class Office extends View {
     this.flash(`Hiring a boss (${pick.name})…`, "done", cx, "bossNote");
     cx.spawn(async (cx) => {
       const playbook = await this.playbookFor(room.machine ?? null);
+      const hire = await this.fileFor(room.machine ?? null, HIRE, REMOTE_HIRE);
       const hires = known.map((k) => k.run);
       const templates = await this.templatesFor(room.machine ?? null, [pick.run, ...hires]);
       // The goal stays in the box until the tab is open.
       try {
-        run("tab.new", { space: room.id, name: "Boss", argv: underHc(pick.run), task: bossBrief({ goal, playbook, argv: pick.run, hires, templates, folder, space: room.name, most: STAFF_CAP }) });
+        run("tab.new", { space: room.id, name: "Boss", argv: underHc(pick.run), task: bossBrief({ goal, playbook, argv: pick.run, hires, templates, folder, space: room.name, hire, most: STAFF_CAP }) });
         this.bossInput.set_value("");
         this.rememberGoal(room.id, goal);
       } catch (e) {
@@ -1197,12 +1201,19 @@ export default class Office extends View {
   // written to REMOTE_PLAYBOOK there (the text goes as an argument, never
   // through the shell's parsing). null when there is none: the brief then
   // carries the rules that matter most on its own.
-  async playbookFor(machine) {
-    const text = await readTextFile(PLAYBOOK).catch(() => null);
+  playbookFor(machine) {
+    return this.fileFor(machine, PLAYBOOK, REMOTE_PLAYBOOK);
+  }
+
+  // A file of ours the boss uses (`local`), as a path on its machine: a copy at
+  // `remote` (under that machine's home) when it is another one; null when
+  // there is none.
+  async fileFor(machine, local, remote) {
+    const text = await readTextFile(local).catch(() => null);
     if (typeof text !== "string" || !text.trim()) return null;
-    if (!machine) return PLAYBOOK;
+    if (!machine) return local;
     try {
-      const r = await exec("sh", ["-c", 'f="$HOME/$1"; mkdir -p "$(dirname "$f")" && printf "%s" "$2" > "$f" && printf "%s" "$f"', "sh", REMOTE_PLAYBOOK, text], { on: machine });
+      const r = await exec("sh", ["-c", 'f="$HOME/$1"; mkdir -p "$(dirname "$f")" && printf "%s" "$2" > "$f" && printf "%s" "$f"', "sh", remote, text], { on: machine });
       return r.code === 0 && r.stdout.trim() ? r.stdout.trim() : null;
     } catch {
       return null;

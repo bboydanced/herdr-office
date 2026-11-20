@@ -189,6 +189,9 @@ ok(brief.includes("hc run --bg --no-notify --name <role>-<topic>") && brief.incl
 const tbrief = A.bossBrief({ goal: "x", argv: ["claude"], hires: [["claude"], ["agy"]], templates: { "claude --dangerously-skip-permissions": "office-claude" } });
 ok(tbrief.includes("<agent>: `office-claude` or `agy --dangerously-skip-permissions -i` (office-* is a template") && !A.bossBrief({ goal: "x" }).includes("office-*"), "brief: templates by name");
 ok(!A.bossBrief({ goal: "x" }).includes("playbook") && A.bossBrief({ goal: "x" }).includes("hc --skill"), "brief without a playbook");
+const hbrief = A.bossBrief({ goal: "x", argv: ["claude"], folder: "/w/web app", hire: "/h/mods/office-agents/hire.sh" });
+ok(hbrief.includes("sh /h/mods/office-agents/hire.sh --name <role>-<topic> --task \"<the task in a few words>\" --piece \"<its piece of the plan>\" --cwd '/w/web app' <agent> <<'EOF'") && !hbrief.includes("hc run --bg") && !hbrief.includes("\n"), "brief: hire.sh when there is one");
+ok(A.bossBrief({ goal: "x", hire: "" }).includes("hc run --bg --no-notify") && A.bossBrief({ goal: "x", hire: null }).includes("then )\""), "brief: hc run without hire.sh");
 ok(A.bossBrief({ goal: "x", argv: [] }).includes("<agent>: `claude --dangerously-skip-permissions`,") && !A.bossBrief({ goal: "x" }).includes("--cwd"), "brief: defaults");
 ok(A.labelOf({ labels: { "office.say": "Hired 3" } }, "office.say") === "Hired 3" && A.labelOf({ labels: ["office.task=fix nav", "x=y"] }, "office.task") === "fix nav", "labels: map, k=v");
 ok(A.labelOf({ labels: [{ key: "office.say", value: "Planning" }] }, "office.say") === "Planning" && A.labelOf({}, "office.say") === "" && A.labelOf(null, "x") === "", "labels: objects, none");

@@ -74,17 +74,35 @@ At each step, set your step label (see Reporting): `plan`, `hire`, `review`,
 
 ## Hiring
 
+Hire with `hire.sh`, the script your brief names (beside this playbook):
+
 ```sh
-hc run --bg --no-notify --name <role>-<topic> --label office.task="<the task in a few words>" \
-  --label office.piece="<its piece, as in office.plan>" --cwd <project folder> <agent> "$(cat <<'EOF'
+sh <hire.sh> --name <role>-<topic> --task "<the task in a few words>" \
+  --piece "<its piece, as in office.plan>" --cwd <project folder> <agent> <<'EOF'
 <the task, written as in Writing a task>
 EOF
-)"
 ```
 
-- Keep `--no-notify`: without it hc types a note into your terminal at every
-  turn a hire ends and when it exits, so a hire the person closes after its
-  work is done would wake you again for nothing.
+- Why not plain `hc run --bg`: it starts the hire 200 columns wide. The
+  office later seats it in a pane about half your width, and what it already
+  drew (your task, first of all) comes apart there: split lines, grey blank
+  rows. `hire.sh` starts it at that half width instead. It does what
+  `hc run --bg --no-notify` does otherwise (you are its parent; `--task` and
+  `--piece` become its `office.task` and `office.piece`) and prints the same
+  JSON.
+- If your brief names no `hire.sh`, or it fails, hire with hc run:
+
+  ```sh
+  hc run --bg --no-notify --name <role>-<topic> --label office.task="<the task in a few words>" \
+    --label office.piece="<its piece, as in office.plan>" --cwd <project folder> <agent> "$(cat <<'EOF'
+  <the task, written as in Writing a task>
+  EOF
+  )"
+  ```
+
+  Keep `--no-notify` there: without it hc types a note into your terminal at
+  every turn a hire ends and when it exits, so a hire the person closes after
+  its work is done would wake you again for nothing.
 - Pass the task in a quoted heredoc (`<<'EOF'`) as above, never in double
   quotes: backticks and `$` in a double-quoted task run in your shell before
   the hire even starts.
@@ -116,7 +134,7 @@ EOF
   | pi | `pi` (it never asks) |
   | Oh My Pi | `omp --auto-approve` |
 
-- **Check that the task went in.** `hc run` prints JSON with
+- **Check that the task went in.** `hire.sh` (or `hc run`) prints JSON with
   `first_message.sent`. If it is `false`, the task was not sent (its
   `reason` says why, often a dialog at start-up): `hc read <name>` first. A
   trust dialog may need `hc keys <name> down enter`; a permission prompt is
