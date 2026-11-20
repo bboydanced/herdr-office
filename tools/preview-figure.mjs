@@ -27,9 +27,9 @@ const el = () => {
 };
 const div = el;
 `;
-// room.js imports figure.js's grid; one module holds both here.
-const room = readFileSync(new URL("../mods/office-agents/room.js", import.meta.url), "utf8")
-  .replace(/^import .*$/gm, "");
+// room.js imports figure.js's grid and neon.js's signs; one module holds all three here.
+const bare = (file) => readFileSync(new URL(`../mods/office-agents/${file}`, import.meta.url), "utf8").replace(/^import .*$/gm, "");
+const room = bare("room.js") + bare("neon.js");
 const code = src.replace(/^import \{ div \} from "gpui-kit";$/m, mock) + room;
 const mod = await import(`data:text/javascript,${encodeURIComponent(code)}`);
 // Written out in full before exiting (a pipe takes it in 64 KB pieces).

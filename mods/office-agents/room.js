@@ -6,15 +6,16 @@
 // and an antenna's light blink with native `.loop()` on opacity.
 import { div } from "gpui-kit";
 import { grid } from "./figure.js";
+import { neonBoard } from "./neon.js";
 
 const NIGHT = {
   wall: "#181b33", wallTop: "#121428", floor: "#2b3050", floorTop: "#353b62", skirt: "#0f1124",
   tile: "#242738", joint: "#1f2231", tileLit: "#2c2f42",
   frame: "#0e1124", glass: "#121633", haze: "#171c40", far: "#1d2350", near: "#262d5c",
   lit: ["#e9c45a", "#f3dc93", "#e0a944"], farLit: "#8f7c4c", moon: "#f3e8c0", star: "#aab3d6", sill: "#5a6290", sillDark: "#3a4170",
-  edge: "#0c0e1d", leaf: "#5fb565", leafDark: "#3c8a4c", leafHi: "#8fd68a",
-  pot: "#e8e4dc", potDark: "#bdb7ab", terra: "#d9844f", terraDark: "#ae6236",
+  edge: "#0c0e1d",
   ink: "#2a2230", red: "#f0645a", paper: "#eef0f7",
+  panel: "#1b1f3b", panelIn: "#1e2342", panelEdge: "#13162b", rail: "#262b4d", railHi: "#30365e",
 };
 const BOOKS = ["#f0645a", "#f6d36a", "#8fc6ea", "#a6da95", "#c6aee8", "#f29a86"];
 
@@ -22,24 +23,32 @@ const BOOKS = ["#f0645a", "#f6d36a", "#8fc6ea", "#a6da95", "#c6aee8", "#f29a86"]
 const seeded = (s) => () => (s = (s * 16807) % 2147483647) / 2147483647;
 const twinkler = (id) => (el, key, from, to, period) => el.id(`${id}-${key}`).loop("opacity", { from, to, period });
 
+// Things whose left edge (in cells) is past `shown` points are left out: what
+// holds the picture clips them anyway, and every block is a node to lay out.
+const upTo = (shown) => (x, draw) => (x * 2 < shown ? draw() : []);
+
 // The sidebar's back wall, `w` x `h` points: the wall, then a strip of floor
-// the things stand on (cells of 2 points, 150x22 at 300x44).
-export function sidebarWall(id, w = 300, h = 44) {
+// the things stand on (cells of 2 points, 150x22 at 300x44). In neon as the
+// boss's office is: a plant swaying, between its windows the OA sign, small,
+// a cooler's bottle bubbling, a rack's lights blinking and scanning, a cup
+// steaming on the coffee table and a cactus with its flower blinking.
+export function sidebarWall(id, w = 300, h = 44, shown = w) {
   const g = grid(2);
   const { r } = g;
   const tw = twinkler(id);
+  const fits = upTo(shown);
   const W = w / 2, B = h / 2, F = B - 5;
   const p = [
     r(0, 0, W, F, NIGHT.wall), r(0, 0, W, 1, NIGHT.wallTop),
     r(0, F, W, B - F, NIGHT.floor), r(0, F, W, 0.5, NIGHT.floorTop), r(0, F - 0.5, W, 0.5, NIGHT.skirt),
-    ...plant(g, 2, B - 1, "monstera"),
-    ...cityWindow(g, tw, "w1", 14, 2, 27, 13, 7, false),
-    ...clock(g, 44, 3, 10),
-    ...cityWindow(g, tw, "w2", 57, 2, 27, 13, 19, true),
-    ...cooler(g, 88, B - 1),
-    ...rack(g, tw, 101, 1, B - 1),
-    ...coffeeTable(g, tw, 116, B - 1),
-    ...plant(g, 137, B - 1, "cactus"),
+    ...neonPlant(g, `${id}-fern`, 1, B - 1, "mini"),
+    ...fits(13, () => cityWindow(g, tw, "w1", 14, 2, 27, 13, 7, false)),
+    ...fits(42.5, () => neonBoard(2, `${id}-oa`, 42.5, 3, "OA", { hang: 1, flicker: 1 }).parts),
+    ...fits(56, () => cityWindow(g, tw, "w2", 57, 2, 27, 13, 19, true)),
+    ...fits(88, () => cooler(g, `${id}-cooler`, 88, B - 1)),
+    ...fits(101, () => rack(g, tw, `${id}-rack`, 101, 1, B - 1)),
+    ...fits(116, () => coffeeTable(g, `${id}-coffee`, 116, B - 1)),
+    ...fits(136, () => neonCactus(g, `${id}-cactus`, 137, B - 1)),
   ];
   return div().relative().w(w).h(h).flex_none().overflow_hidden().children(p);
 }
@@ -47,31 +56,48 @@ export function sidebarWall(id, w = 300, h = 44) {
 // The boss's office, `w` x `h` points: the dark wall down to `wallH`, then a
 // tiled floor like the room's. Behind the boss (left), a wide window and a rug;
 // the wall stays clear for the band's words up to x 470, its things past it.
-export function bossOffice(id, w = 900, h = 136, wallH = 64) {
+export function bossOffice(id, w = 900, h = 136, wallH = 64, shown = w) {
   const g = grid(2);
   const { r } = g;
   const tw = twinkler(id);
+  const fits = upTo(shown);
   const W = w / 2, F = wallH / 2, B = h / 2;
   const p = [];
   const add = (...els) => p.push(...els);
   // The floor: 24-point tiles, a dark joint and a faint lit edge.
   add(r(0, F, W, B - F, NIGHT.tile));
   for (let y = F + 12; y < B; y += 12) add(r(0, y, W, 1, NIGHT.joint), r(0, y + 1, W, 0.5, NIGHT.tileLit));
-  for (let x = 12; x < W; x += 12) add(r(x, F, 1, B - F, NIGHT.joint));
-  // The wall, its skirting and the shadow it casts.
+  for (let x = 12; x < W; x += 12) add(...fits(x, () => [r(x, F, 1, B - F, NIGHT.joint)]));
+  // The wall, its skirting and the shadow it casts; panelling along its foot
+  // and strip lights under the ceiling, which read the same behind the words.
   add(r(0, 0, W, F, NIGHT.wall), r(0, 0, W, 1, NIGHT.wallTop), r(0, F - 1, W, 1, NIGHT.floor), r(0, F, W, 1, NIGHT.skirt));
+  add(...wainscot(g, fits, W, F - 12, F - 1));
+  for (const x of [58, 122, 282, 392]) add(...fits(x - 1, () => tubeLight(g, x, 26)));
   // Behind the boss: a wide window, a rug under its feet.
   add(...cityWindow(g, tw, "bw1", 3, 3, 44, 22, 3, true));
   add(r(2, B - 12, 44, 9, "#33407a", 4, NIGHT.edge), r(4, B - 10.5, 40, 6, "#00000000", 3, "#e9c45a"), r(6, B - 9, 36, 3, "#3d4c8f", 1.5));
-  // Past the words: a clock, a poster, shelves with a trophy, plants, a second
-  // window, a lamp and a sofa.
-  add(...clock(g, 238, 6, 12));
-  add(...poster(g, 256, 5, 18, 15));
-  add(...shelf(g, 281, F + 3, 26, 5));
-  add(...plant(g, 311, F + 3, "tall"));
-  add(...cityWindow(g, tw, "bw2", 328, 3, 50, 22, 11, false));
-  add(...lamp(g, 383, F + 3));
-  add(...sofa(g, 396, F + 4));
+  // Where the words end: a neon plant at the wall's foot and the OA (Office
+  // Agent) sign in neon, its A flickering now and then.
+  add(...fits(171, () => neonPlant(g, `${id}-fern`, 172, F + 3)));
+  add(...fits(185, () => neonBoard(2, `${id}-oa`, 188, 3.5, "OA", { unit: 1.5, pad: 6.5, padY: 2, hang: 1, underline: true, flicker: 1 }).parts));
+  // Past the words, neon among the furniture (the sidebar wall's too): a cactus
+  // with its flower blinking, a clock ticking over a printer on a cabinet, a
+  // chart with its bars rising over a cooler bubbling and a rack blinking and
+  // scanning, shelves with a trophy, a tall plant swaying, a second window over
+  // a sideboard, a cup steaming on a side table, a sofa and a lamp.
+  add(...fits(224, () => neonCactus(g, `${id}-cactus`, 225, F + 3)));
+  add(...fits(236, () => cabinet(g, tw, 236, F + 3)));
+  add(...fits(236, () => neonClock(g, `${id}-clock`, 238, 6, 12)));
+  add(...fits(252, () => cooler(g, `${id}-cooler`, 252, F + 3)));
+  add(...fits(255, () => neonChart(g, `${id}-chart`, 256, 3, 18, 12)));
+  add(...fits(264, () => rack(g, tw, `${id}-rack`, 264, 17, F + 3)));
+  add(...fits(281, () => shelf(g, 281, F + 3, 26, 5)));
+  add(...fits(310, () => neonPlant(g, `${id}-fig`, 311, F + 3, "tall")));
+  add(...fits(327, () => cityWindow(g, tw, "bw2", 328, 3, 50, 22, 11, false)));
+  add(...fits(330, () => sideboard(g, 330, F + 3, 46)));
+  add(...fits(377, () => coffeeTable(g, `${id}-coffee`, 377, F + 3)));
+  add(...fits(398, () => sofa(g, 399, F + 4)));
+  add(...fits(441, () => lamp(g, 441, F + 3)));
   return div().relative().w(w).h(h).flex_none().overflow_hidden().children(p);
 }
 
@@ -121,82 +147,190 @@ function cityWindow(g, tw, key, x, y, w, h, seed, moon) {
   return out;
 }
 
-function clock(g, x, y, s) {
+// Panelling from `top` down to `bottom`: a rail, then a row of sunk panels.
+function wainscot(g, fits, W, top, bottom) {
   const { r } = g;
+  const out = [r(0, top, W, bottom - top, NIGHT.panel), r(0, top, W, 1, NIGHT.rail), r(0, top, W, 0.5, NIGHT.railHi)];
+  for (let x = 2; x < W - 4; x += 20) {
+    out.push(...fits(x, () => [r(x, top + 2.5, Math.min(17, W - 2 - x), bottom - top - 4, NIGHT.panelIn, 0.5, NIGHT.panelEdge)]));
+  }
+  return out;
+}
+
+// A strip light `w` cells long under the ceiling at `x`: its housing, the lit
+// tube and a faint glow just below, all above the band's first row of words.
+function tubeLight(g, x, w) {
+  const { r } = g;
+  return [
+    r(x - 1, 3, w + 2, 2.5, "#eef0f712", 1.25),
+    r(x, 1, w, 1.5, "#3a4170", 0.5, NIGHT.edge), r(x + 1, 2.5, w - 2, 0.5, "#f4f1e4"),
+  ];
+}
+
+// Neon pieces for the boss's wall, in cells: tubes 2 points thick with a ring
+// of glow round them, bars of light, boxes to hold things, and loops keyed by `id`.
+const GLOW = { cyan: "#7fe3f0", pink: "#ff7ab6", green: "#7dffa0", gold: "#ffe27a", orange: "#ff9a5a", violet: "#c6a0f6" };
+function neonKit(g, id) {
+  const { q } = g;
+  const box = (x, y, w, h) => div().absolute().left(q(x)).top(q(y)).w(Math.max(1, q(x + w) - q(x))).h(Math.max(1, q(y + h) - q(y)));
+  const tube = (x, y, w, h, c, rad = 0) => [
+    box(x - 1, y - 1, w + 2, h + 2).rounded(q(rad + 1)).border(2).border_color(`${c}40`),
+    box(x, y, w, h).rounded(q(rad)).border(2).border_color(c),
+  ];
+  const bar = (x, y, w, h, c, rad = 0) => box(x, y, w, h).rounded(q(rad)).bg(c);
+  const loop = (el, key, prop, from, to, period, easing) => el.id(`${id}-${key}`).loop(prop, { from, to, period, ...(easing ? { easing } : {}) });
+  return { q, box, tube, bar, loop };
+}
+
+// A neon clock `s` cells across: a cyan ring with its four marks, pink hands,
+// a second hand ticking between two places and a halo breathing round it.
+function neonClock(g, id, x, y, s) {
+  const k = neonKit(g, id);
   const c = s / 2;
   return [
-    r(x, y, s, s, "#3a4170", s * 0.32, NIGHT.edge), r(x + 1, y + 1, s - 2, s - 2, NIGHT.paper, s * 0.28),
-    ...[[c - 0.5, 1.5], [c - 0.5, s - 2.5], [1.5, c - 0.5], [s - 2.5, c - 0.5]].map(([tx, ty]) => r(x + tx, y + ty, 1, 1, "#9aa3c0")),
-    r(x + c - 0.5, y + 2.5, 1, c - 2, NIGHT.ink), r(x + c, y + c - 0.5, c - 2, 1, NIGHT.ink), r(x + c - 0.5, y + c - 0.5, 1, 1, NIGHT.red, 0.5),
+    k.loop(k.box(x - 2, y - 2, s + 4, s + 4).rounded(k.q(c + 2)).bg(`${GLOW.cyan}1f`), "halo", "opacity", 1, 0.3, 2400),
+    ...k.tube(x, y, s, s, GLOW.cyan, c),
+    k.bar(x + c - 0.5, y + 1.5, 1, 1.5, GLOW.cyan), k.bar(x + c - 0.5, y + s - 3, 1, 1.5, GLOW.cyan),
+    k.bar(x + 1.5, y + c - 0.5, 1.5, 1, GLOW.cyan), k.bar(x + s - 3, y + c - 0.5, 1.5, 1, GLOW.cyan),
+    k.bar(x + c - 0.5, y + 3, 1, c - 2.5, GLOW.pink, 0.5), k.bar(x + c - 3, y + c - 0.5, 3, 1, GLOW.pink, 0.5),
+    k.loop(k.bar(x + c, y + c - 0.25, c - 2, 0.5, GLOW.gold), "tick", "opacity", 1, 0, 2000, "ease-in"),
+    k.loop(k.bar(x + c - 0.25, y + c, 0.5, c - 2, GLOW.gold), "tock", "opacity", 0, 1, 2000, "ease-in"),
+    k.loop(k.bar(x + c - 1, y + c - 1, 2, 2, "#ffffff", 1), "pin", "opacity", 1, 0.5, 1000),
   ];
 }
 
-// A potted plant standing on `f`: a monstera in a white pot, a cactus in clay, or a tall fig.
-function plant(g, x, f, kind) {
-  const { r } = g;
-  const { leaf, leafDark, leafHi, edge } = NIGHT;
-  if (kind === "cactus") {
-    return [
-      r(x + 3.5, f - 15, 3.5, 11, leaf, 1.75, edge), r(x + 4.5, f - 14, 1, 8, leafHi, 0.5),
-      r(x + 0.5, f - 12, 2.5, 4, leaf, 1.25, edge), r(x + 1.5, f - 9, 2.5, 1.5, leaf), r(x + 7.5, f - 13, 2.5, 4.5, leaf, 1.25, edge), r(x + 6.5, f - 10, 2, 1.5, leaf),
-      r(x + 1.5, f - 5, 8, 5, NIGHT.terra, 1, edge), r(x + 7, f - 4.5, 1.5, 4, NIGHT.terraDark), r(x + 1, f - 5.5, 9, 1.5, NIGHT.terra, 0.5, edge),
-    ];
-  }
-  if (kind === "tall") {
-    return [
-      r(x + 6.5, f - 14, 1, 8, "#6b4a33"),
-      r(x + 1, f - 25, 12, 9, leafDark, 4, edge), r(x - 1, f - 20, 8, 7, leaf, 3, edge), r(x + 7, f - 21, 8, 7, leaf, 3, edge), r(x + 3, f - 27, 8, 7, leaf, 3, edge),
-      r(x + 5, f - 26, 2, 2, leafHi, 1), r(x + 1, f - 18, 2, 2, leafHi, 1), r(x + 10, f - 19, 2, 2, leafHi, 1),
-      r(x + 2, f - 7, 10, 7, NIGHT.pot, 1, edge), r(x + 9, f - 6, 2, 5, NIGHT.potDark),
-    ];
-  }
+// A neon plant standing on `f` at `x`: a pot outlined in orange, a stem and
+// green leaves, the leaves swaying a little. `tall`: a bigger one, more leaves.
+// A leaf: an oval of tube with its midrib along it, in a plant's box.
+const PLANTS = {
+  mini: { pot: [1.5, 4.5, 6], stem: [4.25, 9.5, 5], box: [12, 8, 16], leaves: [[0, 3.5, 5.5, 3.5], [6.5, 3, 5.5, 3.5], [3.25, 0, 5.5, 3.5]] },
+  small: { pot: [2, 6, 8], stem: [5.5, 13, 7], box: [16, 12, 20], leaves: [[0, 6, 7, 4.5], [9, 5, 7, 4.5], [4.5, 0, 7, 4.5]] },
+  tall: { pot: [2.5, 6, 10], stem: [6.9, 16, 10], box: [17, 20, 30], leaves: [[0, 9, 8, 4.5], [9, 8, 8, 4.5], [0.5, 2, 8, 4.5], [8.5, 0, 8, 4.5], [4.5, 14, 8, 4]] },
+};
+
+// A neon plant standing on `f` at `x`: a pot outlined in orange, a stem and
+// green leaves, the leaves swaying a little. `size`: mini, small or tall.
+function neonPlant(g, id, x, f, size = "small") {
+  const k = neonKit(g, id);
+  const P = PLANTS[size];
+  const pot = [x + P.pot[0], f - P.pot[1], P.pot[2], P.pot[1]];
+  const stem = k.bar(x + P.stem[0], f - P.stem[1], 1, P.stem[2], GLOW.green);
+  // The leaves in a box of their own (positions inside it), which sways.
+  const [lw, lh, rise] = P.box;
+  const leaf = (lx, ly, w, h) => [...k.tube(lx, ly, w, h, GLOW.green, Math.min(w, h) / 2), k.bar(lx + 2, ly + h / 2 - 0.25, w - 4, 0.5, `${GLOW.green}b3`)];
   return [
-    r(x + 1, f - 15, 8, 8, leafDark, 3, edge), r(x - 1, f - 12, 5, 4.5, leaf, 2, edge), r(x + 6, f - 13, 5, 5, leaf, 2.5, edge), r(x + 2.5, f - 16, 4.5, 4.5, leaf, 2, edge),
-    r(x + 3, f - 15, 1.5, 1.5, leafHi, 0.75), r(x + 7, f - 12, 1.5, 1.5, leafHi, 0.75), r(x + 4.5, f - 9, 1, 3, leafDark),
-    r(x + 1.5, f - 6, 7, 6, NIGHT.pot, 1, edge), r(x + 6.5, f - 5, 1.5, 4, NIGHT.potDark),
+    k.loop(k.box(x - 1, f - rise, lw, lh).children(P.leaves.flatMap((l) => leaf(...l))), "sway", "left", k.q(x - 1), k.q(x - 1) + 2, size === "tall" ? 3000 : 2400),
+    stem,
+    ...k.tube(...pot, GLOW.orange, 1),
+    k.bar(pot[0] + 1, pot[1] + 1.5, pot[2] - 2, 0.5, `${GLOW.orange}80`),
   ];
 }
 
-function cooler(g, x, f) {
-  const { r } = g;
+// A neon chart in a violet frame: five bars of light rising and falling, each
+// at its own pace (anchored at the bottom, so they grow up).
+function neonChart(g, id, x, y, w, h) {
+  const k = neonKit(g, id);
+  const inner = h - 3;
+  const bars = [[0.55, GLOW.cyan], [0.4, GLOW.green], [0.7, GLOW.gold], [0.5, GLOW.orange], [0.85, GLOW.pink]];
+  const step = (w - 3) / bars.length;
   return [
-    r(x + 1, f - 18, 7, 7, "#7fbde8", 2, NIGHT.edge), r(x + 2, f - 17, 1.5, 4, "#c4e4f8", 0.75), r(x + 3.5, f - 11.5, 2, 1, "#4f7fa8"),
+    ...k.tube(x, y, w, h, GLOW.violet, 1),
+    k.box(x + 1.5, y + 1.5, w - 3, inner).children(bars.map(([v, c], i) => {
+      const lo = k.q(inner * v * 0.55), hi = k.q(inner * v);
+      return div().id(`${id}-bar${i}`).absolute().left(k.q(i * step + 0.5)).bottom(0).w(k.q(step - 1)).h(hi).rounded(1).bg(c)
+        .loop("height", { from: hi, to: lo, period: 1300 + i * 370 });
+    })),
+  ];
+}
+
+// A low filing cabinet standing on `f`, a printer on it with its light on.
+function cabinet(g, tw, x, f) {
+  const { r } = g;
+  const top = f - 9;
+  return [
+    r(x, top, 14, 9, "#3a4170", 1, NIGHT.edge),
+    r(x + 1.5, top + 1.5, 11, 2.5, "#454e7e", 0.5), r(x + 1.5, top + 5, 11, 2.5, "#454e7e", 0.5),
+    r(x + 6, top + 2.5, 2, 0.5, "#9aa3c0"), r(x + 6, top + 6, 2, 0.5, "#9aa3c0"),
+    r(x + 2.5, top - 6, 9, 1.5, "#c9cee0", 0.25), r(x + 0.5, top - 5, 13, 5, NIGHT.paper, 1, NIGHT.edge),
+    r(x + 2, top - 2.5, 7, 0.5, NIGHT.ink), tw(r(x + 10.5, top - 3.5, 1, 1, "#a6da95", 0.5), "printer", 1, 0.3, 2000),
+  ];
+}
+
+// A low sideboard `w` cells long standing on `f`: three doors, books and a cup on it.
+function sideboard(g, x, f, w) {
+  const { r } = g;
+  const top = f - 6;
+  const dw = (w - 3) / 3;
+  const out = [r(x, top, w, 6, "#3a4170", 1, NIGHT.edge), r(x + 1, top + 0.5, w - 2, 0.5, "#4a5284")];
+  for (let i = 0; i < 3; i++) {
+    const dx = x + 1.5 + i * dw;
+    out.push(r(dx, top + 1.5, dw - 1, 3.5, "#454e7e", 0.5), r(dx + dw / 2 - 1, top + 3, 1, 0.5, "#9aa3c0"));
+  }
+  out.push(
+    r(x + 4, top - 3, 1.5, 3, BOOKS[0]), r(x + 5.5, top - 2.5, 1.5, 2.5, BOOKS[2]), r(x + 7, top - 3, 1.5, 3, BOOKS[3]),
+    r(x + w - 7, top - 2, 2.5, 2, "#f29a86", 0.75, NIGHT.edge),
+  );
+  return out;
+}
+
+// A water cooler: its bottle a cyan neon outline with bubbles rising and
+// falling in it, on the white dispenser.
+function cooler(g, id, x, f) {
+  const { r } = g;
+  const k = neonKit(g, id);
+  const bubble = (bx, from, to, period, key) => k.loop(k.bar(bx, from, 1, 1, "#e6fbff", 0.5), key, "top", k.q(from), k.q(to), period);
+  return [
+    ...k.tube(x + 1, f - 18, 7, 6.5, GLOW.cyan, 2), k.bar(x + 3.5, f - 11.5, 2, 0.5, GLOW.cyan),
+    bubble(x + 3, f - 13.5, f - 16.5, 1500, "b1"), bubble(x + 5, f - 13, f - 17, 2100, "b2"),
     r(x, f - 11, 9, 11, NIGHT.paper, 1, NIGHT.edge), r(x + 7, f - 10, 1, 9, "#c9cee0"),
     r(x + 2, f - 8, 1.5, 1.5, NIGHT.red, 0.5), r(x + 5, f - 8, 1.5, 1.5, "#7fbde8", 0.5), r(x + 2, f - 5, 5, 1, "#a3abc4", 0.5),
   ];
 }
 
-function rack(g, tw, x, y, f) {
+// A server rack from `y` down to `f`: as many units as fit (up to five), their
+// lights in neon colours each blinking at its own pace, and a line of cyan
+// light scanning down its front.
+function rack(g, tw, id, x, y, f) {
   const { r } = g;
-  const leds = ["#a6da95", "#f0645a", "#8fd6c0", "#a6da95", "#f6d36a"];
+  const k = neonKit(g, id);
+  const leds = [GLOW.green, GLOW.pink, GLOW.cyan, GLOW.green, GLOW.gold].slice(0, Math.max(1, Math.floor((f - y - 2.5) / 3.5)));
   const out = [r(x, y, 11, f - y, "#20254a", 1, NIGHT.edge), r(x + 1, y + 1, 9, 0.5, "#2f3768")];
   leds.forEach((c, i) => {
     const uy = y + 2 + i * 3.5;
-    const led = r(x + 2, uy + 0.75, 1, 1, c, 0.5);
-    out.push(r(x + 1, uy, 9, 2.5, "#2a3160", 0.5), r(x + 4, uy + 1, 5, 0.5, "#3c4680"), i % 2 ? tw(led, `led${i}`, 1, 0.2, 500 + i * 230) : led);
+    out.push(r(x + 1, uy, 9, 2.5, "#2a3160", 0.5), r(x + 4, uy + 1, 5, 0.5, "#3c4680"), tw(r(x + 2, uy + 0.75, 1, 1, c, 0.5), `led${i}`, 1, 0.2, 400 + i * 230));
   });
+  out.push(k.loop(k.bar(x + 1, y + 1.5, 9, 0.5, `${GLOW.cyan}99`), "scan", "top", k.q(y + 1.5), k.q(f - 2), 2600, "linear"));
   return out;
 }
 
-// A small table with a coffee machine (its light on) and two cups.
-function coffeeTable(g, tw, x, f) {
+// A small table with a neon cup on it, steam rising off it and fading, and a
+// cup of its own beside it.
+function coffeeTable(g, id, x, f) {
   const { r } = g;
+  const k = neonKit(g, id);
+  // A wisp of steam: rising (the outer box) and fading (the inner one).
+  const wisp = (sx, period, key) => k.loop(k.box(sx, f - 16, 0.5, 2.5),
+    key, "top", k.q(f - 16), k.q(f - 19), period).child(k.loop(div().absolute().top(0).left(0).w(1).h(k.q(2.5)).bg("#f4f1e4"), `${key}-o`, "opacity", 0.9, 0, period));
   return [
     r(x + 1, f - 7, 1, 7, "#3a4170"), r(x + 16, f - 7, 1, 7, "#3a4170"),
     r(x, f - 8, 18, 1.5, "#c9cfe0", 0.5, NIGHT.edge),
-    r(x + 2, f - 17, 7, 9, "#3a3f55", 1, NIGHT.edge), r(x + 3, f - 16, 5, 2, "#545a74", 0.5), tw(r(x + 3.5, f - 15.5, 1, 1, "#a6da95", 0.5), "coffee", 1, 0.3, 1800),
-    r(x + 4, f - 11, 3, 2.5, NIGHT.paper, 0.5),
-    r(x + 11, f - 10.5, 2.5, 2.5, "#f29a86", 0.75, NIGHT.edge), r(x + 14.5, f - 10.5, 2.5, 2.5, "#8fc6ea", 0.75, NIGHT.edge),
+    ...k.tube(x + 3, f - 13.5, 6, 5, GLOW.orange, 1.5), ...k.tube(x + 9, f - 12.5, 2.5, 3, GLOW.orange, 1),
+    wisp(x + 4.5, 1700, "w1"), wisp(x + 6, 2200, "w2"), wisp(x + 7.5, 1900, "w3"),
+    r(x + 14, f - 10.5, 2.5, 2.5, "#8fc6ea", 0.75, NIGHT.edge),
   ];
 }
 
-// A framed poster: bars going up.
-function poster(g, x, y, w, h) {
-  const { r } = g;
-  const bars = [[2.5, 9, "#8aadf4"], [5.5, 7.5, "#a6da95"], [8.5, 8, "#f6d36a"], [11.5, 5, "#f29a86"], [14.5, 3, "#e9c45a"]];
+// A neon cactus in an orange pot: its arms off the trunk, a pink flower on
+// top blinking, a green halo breathing round it.
+function neonCactus(g, id, x, f) {
+  const k = neonKit(g, id);
   return [
-    r(x, y, w, h, NIGHT.paper, 0.5, NIGHT.edge), r(x + 1.5, y + 1.5, w - 3, h - 3, "#2a3160"),
-    ...bars.map(([px, py, c]) => r(x + px, y + py, 1.5, h - 3 - py, c, 0.25)),
+    k.loop(k.box(x - 1, f - 17, 12, 13).rounded(k.q(4)).bg(`${GLOW.green}17`), "halo", "opacity", 1, 0.3, 2600),
+    ...k.tube(x + 3.5, f - 14, 3.5, 9.5, GLOW.green, 1.75),
+    ...k.tube(x + 0.5, f - 11.5, 2.5, 4, GLOW.green, 1.25), k.bar(x + 2.5, f - 9, 1.5, 1, GLOW.green),
+    ...k.tube(x + 7.5, f - 12.5, 2.5, 4.5, GLOW.green, 1.25), k.bar(x + 6.5, f - 10, 1.5, 1, GLOW.green),
+    k.loop(k.bar(x + 4.5, f - 15.5, 1.5, 1.5, GLOW.pink, 0.75), "flower", "opacity", 1, 0.25, 1300),
+    ...k.tube(x + 1.5, f - 4.5, 8, 4.5, GLOW.orange, 1),
   ];
 }
 

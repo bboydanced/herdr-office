@@ -51,7 +51,8 @@ H=~/.config/herdr-app
 herdr-app do layout.switch '{"name":"main"}'
 rm -rf "$H"/mods/office-agents "$H"/mods/office-chrome "$H"/mods/office-spaces \
        "$H"/mods/office-tabs "$H"/mods/office-add "$H"/mods/office-space-new \
-       "$H"/mods/office-menu "$H"/mods/office-new-menu "$H"/mods/office-files
+       "$H"/mods/office-menu "$H"/mods/office-new-menu "$H"/mods/office-files \
+       "$H"/mods/office-lobby
 rm -rf "$H"/data/office-agents "$H"/data/office-chrome "$H"/data/office-spaces \
        "$H"/data/office-tabs "$H"/data/office "$H"/data/office-add "$H"/data/office-space-new
 rm -f "$H"/layouts/office.json "$H"/layouts/office.png "$H"/themes/office-night.json
@@ -81,26 +82,35 @@ Herdr keeps the mod names in its own `seen.json`, which is harmless.
   a chibi at a laptop in a night office, drawn in blocks), then two parts
   (weights 0.62 and 1.38):
   - **Spaces, the room directory:** a 44 px row per space. Its door in the
-    space's colour with the room number (`01`, `02`… in Spaces order) on the
-    plate, a lamp over it (off; breathing while an agent works; blinking while
-    one waits for you) and a window lit while any agent is in. Then the name,
+    space's colour with the room number (`01`, `02`… in Spaces order) in neon
+    across its top, lit while any agent is in and off when the room is empty,
+    and a lamp over it (off; breathing while an agent works; blinking while
+    one waits for you). Then the name,
     the branch when unusual, and one line: git as sticky notes (`3 changed`
     yellow, `↑2 unpushed` green, `no remote` red) and the faces of the staff in
     the room, framed in their status colour, the same faces as at their desks
     (five, then `+n`; click them to open the Office panel). The room you are in
     has its lights on, a warm tint with the amber bar.
-    A space where an agent works **breathes**: a steady frame in the working
-    colour over a glow that fades in and out. A space where an agent waits for
-    you **blinks** a thick coral frame over a red tint, with a `!` by its name.
+    A space where an agent works **breathes**: a glow in the working colour
+    fading in and out. A space where an agent waits for you **blinks** a red
+    tint, with a `!` by its name. Rooms have no frame round them for now.
     Waiting wins over working. Hover a room and its rug lights up in the
     office; hover a rug and its room lights up.
     Hovering a room also shows `+` (a new tab there, with a shell or an
     agent), `✎` (rename) and `×` (close); its name's tooltip is its folder.
+    A space whose folder is a git worktree of another room's repo is its own
+    space in Herdr, listed under that room (`├─` / `└─`, a branch for its
+    door); Spaces shares which ones as `space.trees` so the Office floor puts
+    their rugs under that room's too (`mods/office-agents/worktrees.js`, copied
+    into Spaces). A space whose terminals are on several branches says how
+    many (`2 branches`, each in the tooltip), here and on its rug.
   - **Groups you make:** `▤` by the header names a **group**
     and ticks the spaces in it, so a project whose sources are separate rooms
     reads as one block. A group only holds spaces together in this list and on
     the Office floor; it never changes a space's folder or order. The band sits
-    where its first space is, with its name, `N spaces`, the faces of everyone in
+    where its first space is, with its name, `N spaces` (worktrees' rooms,
+    which have no number of their own, counted apart: `1 space · 2 worktrees`,
+    here and on the Office floor), the faces of everyone in
     them and their status count — no door, git or actions of its own. Its spaces
     follow as ordinary rows, each still marked with its own number. `▾` on the
     band folds them away (kept, and the Office panel folds the same way), `▸`
@@ -116,8 +126,20 @@ Herdr keeps the mod names in its own `seen.json`, which is harmless.
     the system's folder picker (this computer only), or click one of the
     recent rooms. The name is optional (empty: Herdr names it after its repo or
     folder). A folder that isn't there is said so before anything opens.
-  - **Closed rooms:** Herdr closes a space with its last tab. The room stays
-    under **Closed rooms** (per machine, foldable, the last 12), its door shut
+  - **Rooms stay open:** Herdr closes a space with its last tab, so every
+    room keeps a **lobby** (`mods/office-lobby/`): a tab whose only pane is a
+    small page, no terminal and no process, that the tab bar and the floor
+    never show and that is put away (`tab.settle`) while the room has other
+    tabs. Close your last tab and the room stays, showing the lobby: an `OPEN`
+    sign, the room and its folder, **+ Terminal**, **+ Agent** (the add menu)
+    and **Close room**, on the terminals' background at their opacity, like
+    the panes beside it. Spaces keeps one in every room (made where missing,
+    a second one closed, left for your nearest tab when the room shows it
+    beside others: `mods/office-agents/lobby.js`, copied into Spaces and the
+    tab bar). A room closes only when you close it: `×`, the menu's Close,
+    **Close room**, or closing the lobby itself. A machine that can't hold
+    one (tried three times) keeps the old way.
+  - **Closed rooms:** a room you close stays under **Closed rooms** (per machine, foldable, the last 12), its door shut
     and dark: a click opens it again in the same folder, with its name and
     colour; `×` forgets it. Only the place comes back, not what was running.
     A machine that is away doesn't count as closing its rooms.
@@ -125,8 +147,10 @@ Herdr keeps the mod names in its own `seen.json`, which is harmless.
     container) says so where its name is, with **Connect**: the machine is
     forgotten and added again under the same name, so its rooms keep their
     places. A machine that needs a login shows the command to copy.
-  - **Narrow:** dragged below 160 px, Spaces becomes a rail: one numbered cell
-    per room with its status dot, and one cell per machine.
+  - **Narrow:** dragged below 160 px, Spaces becomes a rail: one cell per room
+    with its door (its number in neon, its lamp for its status), the room you
+    are in lit, a dot when it needs you; a worktree by its branch,
+    a group by its count in a cyan tube, and one cell per machine.
   - **Office Agent:** every agent as a list, not the floor. A header
     (`Office Agent`, `N need you`, `N/M at work`, the time), the back wall
     (night windows, clock, kanban board, door, water cooler, plant), then one
@@ -142,8 +166,11 @@ Herdr keeps the mod names in its own `seen.json`, which is harmless.
 - **Tabs, 58 px:** square 48 px tabs showing **every agent in the tab**: one
   agent as a 44 px portrait, several as overlapping faces framed in their status
   colour (four at most, then `+n`), then a terminal mark with the count of the
-  tab's other panes. Faces match the desks in the office. Files, Changes
-  and Office buttons open the right panel.
+  tab's other panes. Faces match the desks in the office. The tab you are in
+  is lit like a neon sign: a tube in the accent round it, its glow breathing.
+  Files, Changes and Office open the right panel: each its picture and a neon
+  sign in its own colour (cyan, green, Office's pink like the `OA` sign), lit
+  while its panel is open and off otherwise.
 
 Herdr's mod API gives a tab's panes in order but not where a split put them.
 The office reads that from Herdr's own layout document, which herdr-core keeps
@@ -158,7 +185,7 @@ desks fall back to pane order: up to three in a row, four as two by two.
 ### At the desk
 
 Every desk, the boss and the portraits are drawn in rounded blocks by
-`mods/office-agents/figure.js`: in the panel 96x80 points a desk (on a 36x30
+`mods/office-agents/figure.js`: in the panel 84x70 points a desk (on a 36x30
 grid, every edge rounded to a whole pixel, the big shapes outlined as pixel art
 is; the head at a desk drawn at 0.8 of the portraits', `DESK_HEAD`) on quiet
 floor tiles. Each role's look is a line of `LOOKS`; `tools/preview-figure.mjs`
@@ -166,8 +193,8 @@ draws them all on one sheet without Herdr.
 
 | Status | Screen | Staff |
 |---|---|---|
-| `working` | lines of code fading in and out | typing, a steaming mug; the desk breathes: a bright frame, a glow and a wider ring fading in and out |
-| `blocked` | red, flashing, a white `!` | one hand up, mouth open, a `!` bubble; a thick coral frame blinks over a red tint and the label turns into a red `NEEDS YOU` tag |
+| `working` | lines of code fading in and out | typing, a steaming mug; the desk breathes: one thin frame and a glow fading in and out |
+| `blocked` | red, flashing, a white `!` | one hand up, mouth open, a `!` bubble; a thin coral frame blinks over a red tint and the label turns into a red `NEEDS YOU` tag |
 | `done` | green with a check mark | hopping, eyes closed and smiling, sparkles |
 | `idle` | a dim screensaver | head down on folded arms under floating `z`s |
 | no agent | the shell's prompt, its cursor blinking | an empty chair |
@@ -175,11 +202,40 @@ draws them all on one sheet without Herdr.
 The sidebar's back wall and the boss's office are blocks too (`room.js`, 2 points a
 cell), a night office after Pixel HQ: a dark wall, big windows onto a city
 (lit windows and an antenna's light blinking), few things but big ones, flat in
-two tones with a thin dark edge. The sidebar's: a monstera, a clock, a water
-cooler, a server rack with blinking lights, a coffee table, a cactus. The
-boss's: a wide window behind the boss and a rug under it, then (past the
-band's words) a clock, a chart poster, shelves with a trophy, a fig, a second
-window, a lamp and a sofa, on floor tiles like the room's (`--room` previews them).
+two tones with a thin dark edge. The sidebar's, in neon like the boss's: a
+small plant swaying, a small `OA` (Office Agent) sign between its windows, a
+water cooler whose bottle bubbles, a server rack with its lights blinking and a
+line of light scanning down it, a cup steaming on the coffee table, a cactus
+with its flower blinking. The boss's: panelling and strip
+lights the length of the wall, a wide window behind the boss and a rug under
+it, a neon plant (its leaves swaying) and the big neon `OA` sign where the
+band's words end, then the sidebar's things too: a neon cactus, a neon clock
+(its second hand ticking) over a printer, a neon chart (its bars rising and
+falling) over a bubbling water cooler and a blinking, scanning server rack,
+shelves with a trophy, a tall neon plant, a second window over a sideboard, a
+cup steaming on a side table, a sofa and a lamp, on floor tiles like
+the room's (`--room` previews them). The neon is `mods/office-agents/neon.js`
+(Spaces and the tab bar carry verbatim copies, the tests check they match):
+letters and digits as tubes on a dark board (`GLYPHS`), a dark colour lifted
+until it reads as lit (`neonColor`), a white-hot core; the glow and the tubes
+breathe together, each sign at its own pace, and the `OA` signs' A goes off
+now and then and hums as it comes back, all native loops. `neonSign` puts each
+room's number up in its own colour, on its rug in the office and on its door in
+Spaces; the font has the capitals too, for the tab bar's panel signs.
+`neonFrame` edges things in one thin tube, part see-through so it reads as
+light, not a line (a glow ring outside it only where asked, the tab bar's tab):
+each rug in its colour
+(breathing; a working or waiting rug's activity frames take over), the tab you
+are in (in its space's colour in the office, in amber in the tab bar) and the
+group bands (cyan, still). Faces move with their
+status in Spaces and in the Office Agent list: bobbing at work, shaking while
+they wait for you.
+
+A worktree's rug sits right under its repo's room on a line from it, as in
+Spaces: in that room's colour, fainter, a branch where the number goes (the
+number in its tooltip). In a room on several branches each desk says its own
+under its name (the last part, `xaa-usage` for `office/xaa-usage`; all of it
+in the tooltip).
 
 Every desk is lit by its screen. A rug shows its
 space the same way (breathing or blinking) with `● N working` or
@@ -200,38 +256,52 @@ across as the panel fits. It opens at 640 px; drag its edge up to 900. The
 Office panel and the other panels each remember their own width. Top to
 bottom:
 
-1. **The header:** filters with their counts (`All`, `Working`, `Needs you`,
-   `Done`, remembered), the after-hours switch (`☼` / `☾`, see below), `▤` for
+1. **The header:** filters with their counts (`All` counts every desk on the
+   floor, a terminal's too; `Working`, `Needs you`, `Done` count agents;
+   remembered), the after-hours switch (`☼` / `☾`, see below), `▤` for
    a new group and the time.
-2. **The boss's office** (see below): a panelled room with a night window,
-   pictures, bookcases and a fig. On its wall a `BOSS · <space>` plaque with
-   the team count and, once the space has a boss, its **flow** live on a cork
-   strip: `Plan` → `Hired N agents · M at work` → `Review` → `Report`, the
-   steps behind ticked, the one it is on lit (red while someone waits for you).
+2. **The boss's office** (see below): a panelled room under strip lights,
+   night windows onto the city, a neon `OA` sign, a neon clock, chart and
+   plants, a printer on a cabinet, bookcases, a sideboard and a sofa (only what the panel's
+   width shows is drawn). On its wall its nameplate, which is also the
+   `SPACES` picker for where the goal goes (`BOSS ● <space>` once the space has
+   a boss, else only the space), a dark board edged in a neon tube of the
+   space's colour (lit full and breathing while open), opening a dark card in
+   the same tube with `SPACES` on it as a small neon sign, the picked line lit
+   in the colour and ticked. Then the team count on a dark board and, once the
+   space has a boss, its **flow** live on a dark strip in neon:
+   `Plan` → `Hired N agents · M at work` → `Review` → `Report`, the steps
+   behind ticked in green, the one it is on lit in a tube (amber at work, red
+   while someone waits for you, breathing while live), the rest off.
    The step is the one the boss says it is on (its `office.stage` label, set
    back to `plan` when a goal goes from the panel) while it or its hires are at
    it; without one it is read from their statuses: working with no hire yet
    is Plan, hires at work is Hired, hires finished while the boss works is
    Review. All quiet is Report. The same strip sits on that space's rug on the
    floor, and nowhere else. The boss stands on the rug by the window; on the
-   graphite floor its **whiteboard** (see below), its latest line, then the pickers (wooden nameplates opening
-   an office card: `SPACES`, `ORCHESTRATOR`) and the goal box. `▴` folds it
+   graphite floor its **whiteboard** (see below), its latest line, then, while
+   the space has no boss, the `ORCHESTRATOR` picker (the same board and card
+   in pink neon, as tall as the goal box) and the goal box. `▴` folds it
    to one line (its face, its latest line, its team), `▾` brings it back.
 3. **The morning memo** after a night with news (see After hours), then
    **Needs you**, while an agent waits for you (see below).
-4. **The floor:** rugs, cubicles and desks. Under each desk a second line: the
+4. **The floor:** rugs, cubicles and desks. Each rug opens with its room
+   number in neon, in the space's colour: the number on its door in Spaces.
+   Under each desk a second line: the
    status and for how long (`● 12m`, `NEEDS YOU · 3m`, `✓ 5m`, `Idle · 1h`;
    the tab's time, so agents sharing a tab share it), or an empty desk's
-   folder. A mod's pane (a git-changes diff or commit view) is a view, not a
+   folder when it is not the space's own (the rug already says that one). A mod's pane (a git-changes diff or commit view) is a view, not a
    desk: it gets none, and a tab holding only views has no cubicle.
    - **Adding:** `+ Tab` on a rug opens a new tab in that space, `Add desk`
-     (the faded desk at the end of a cubicle) splits the tab beside its last
+     (a small taped `+` at the end of a cubicle's name row, shown while the
+     pointer is over the cubicle) splits the tab beside its last
      pane, right or down, and `+ New space` at the end of the floor makes a
      space. Tab and desk ask what to start: a terminal, or one of the agents
      installed where the space lives (Herdr's `knownAgents`, most picked
      first). A desk with an agent starts in its neighbour's folder.
-   - **Moving:** drag a desk onto `Add desk` in another tab of the same
-     machine (it lights up as `Move here`) and its terminal moves there, still
+   - **Moving:** drag a desk and every other tab of the same machine opens a
+     spot taped out at a desk's size (`Move here`); drop it there and its
+     terminal moves to that tab, still
      running. Herdr's `pane.move` does it when Herdr has it; until then the
      office parks the terminal, relabels its `herdr.space` / `herdr.tab` and
      keeps it again, so it lands in that tab with a new pane, not where the
@@ -260,10 +330,12 @@ when the terminal ends, and on a layout switch.
 Only the sidebar's office sets the `agent.next` / `agent.prev` order.
 
 **The whiteboard** hangs in the boss's office once the boss has a plan or a
-team: one sticky note per piece of its plan (its `office.plan` label), each
-with the hire on it (their `office.piece` label, else a name ending in the
-piece: `developer-login` for `login`), coloured by where it is: `○ To do`,
-`● At work`, `! Needs you`, `◐ To review`, `✓ Passed review`, `✓ Merged`
+team, in neon like the wall: a dark board under a `PLAN` sign, one note per
+piece of its plan (its `office.plan` label), each with the hire on it (their
+`office.piece` label, else a name ending in the piece: `developer-login` for
+`login`), edged and written in the neon of where it is: `○ To do` (grey),
+`● Hired` (violet), `● At work` and `! Needs you` (the theme's colours,
+breathing), `◐ To review` (cyan), `✓ Passed review` (green), `✓ Merged`
 (faded); hires on no piece get notes at the end. A note with a hire picks
 their desk. A piece done in a worktree (`<repo>/.worktrees/<name>`) shows its
 diff against your checkout, `+40 −5` (or how many files are not committed
@@ -328,8 +400,10 @@ Each space has its own, in a tab named `Boss`; the panel shows one, for the
 space picked in the first dropdown (the space you are in, until you pick
 another; the list marks the spaces that have a boss).
 
-- **The goal box** takes several lines and grows to six as you type or paste
-  (a spec, a list of steps); `Ctrl+Enter` or the button sends it. Later goals
+- **The goal box** (a dark board in a faint cyan tube) takes several lines and
+  grows to six as you type or paste (a spec, a list of steps); `Ctrl+Enter` or
+  the button (`Hire ⏎` / `Tell ⏎`, a lit amber neon sign, dim while busy)
+  sends it. Later goals
   reach the boss as pasted, lines and all; the first one goes in the boss's
   one-line brief, so its line breaks become spaces.
 - **Which goal it is on** shows under the box (`On: add Google login`), from the

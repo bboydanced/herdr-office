@@ -1,13 +1,18 @@
 // Office tab bar: the built-in tabs with the faces of every agent in the tab
 // (the same people as at its desks in the office) and a terminal mark for its
-// other panes, square corners and image buttons for the side panels (Office: the
-// whole office, wider).
+// other panes, the tab you are in lit like a neon sign, and for the side panels
+// (Office: the whole office, wider) their picture and a neon sign lit while open.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { agents, spaces, panes, run, openOverlay, theme, window, shared, layout, settings, appHome, readTextFile } from "herdr";
 import { deskJobs, portraitPath, tabDesks } from "./lib.js";
+import { NEON, neonFrame, neonSign } from "./neon.js";
+import { lobbyTabs } from "./lobby.js";
 
 const JOBS_FILE = `${appHome()}/mods/office-agents/jobs.json`;
+// The side panels' buttons are neon signs, each in its own colour (Office's
+// as the office's OA sign): lit while its panel is open.
+const SIGN = { files: "#7fe3f0", changes: "#a6da95", office: NEON };
 // The Office panel opens this wide the first time (the others keep the width
 // the panel had); dragged, each remembers its own, up to the layout's max.
 const OFFICE_PX = 640;
@@ -93,8 +98,10 @@ export default class OfficeTabs extends View {
   render() {
     const t = theme();
     const space = spaces().find(p => p.active);
-    const shown = space?.tabs ?? [];
     const sp = spaces(), ps = panes(), list = agents();
+    // A room's lobby (lobby.js) is never a tab here.
+    const lobbies = lobbyTabs(ps);
+    const shown = (space?.tabs ?? []).filter((c) => !lobbies.has(c.id));
     const desks = tabDesks(sp, ps, list);
     // The office's own faces when it has shared them (they know the boss and its
     // hires); else the same reckoning here, with a "Boss" tab as the manager.
@@ -129,9 +136,11 @@ export default class OfficeTabs extends View {
       const program = ps.find(p => p.tab === c.id && p.program?.agent)?.program ?? ps.find(p => p.tab === c.id)?.program;
       const name = /^tb\d+$/.test(c.name) ? program?.name ?? "Terminal" : c.name;
       const people = staff.length ? faces(c, staff) : null;
-      return h_flex().id(`tab-${c.id}`).h(48).px(8).gap(7).items_center().flex_none().rounded(8).text_size(12.8)
+      return h_flex().id(`tab-${c.id}`).relative().h(48).px(8).gap(7).items_center().flex_none().rounded(8).text_size(12.8)
         .border(1).border_color(c.active ? `${t.accent}99` : t.chrome).bg(c.active ? t.raised : t.chrome).text_color(c.active ? t.foreground : t.muted)
         .hover(s => s.bg(t.hover))
+        // The tab you are in, lit like a neon sign: a tube round it and its glow breathing.
+        .when(c.active, el => el.children(neonFrame(`tab-neon-${c.id}`, t.accent, 8, { width: 2, glow: "40" })))
         .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.pressed = i; if (e.click_count === 2) run("tab.rename", { id: c.id }); })
         .on_mouse_up("left", () => {
           const from = this.pressed; this.pressed = null;
@@ -159,14 +168,16 @@ export default class OfficeTabs extends View {
     this.syncPanel(space, panel, body, enabled);
     this.fitPanel(panel, body);
     const panelButton = (id, label, icon) => {
-      const on = panel && !panel.hidden && body?.active === id;
-      return h_flex().id(`panel-${id}`).h(26).px(8).gap(5).flex_none().items_center()
-        .text_size(12).bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted)
+      const on = Boolean(panel && !panel.hidden && body?.active === id);
+      return h_flex().id(`panel-${id}`).h(26).px(6).gap(6).flex_none().items_center().rounded(5)
         .hover(s => s.bg(t.hover)).on_mouse_down("left", stop)
+        .tooltip(on ? `Close ${label}` : `Open ${label}`)
         .on_click(() => {
           if (on) run("layout.hide", { id: "panel" });
           else { run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
-        }).child((icon.endsWith(".svg") ? svg(icon).size(20).text_color(on ? t.foreground : t.muted) : image(icon).size(20)).flex_none()).child(label);
+        })
+        .child((icon.endsWith(".svg") ? svg(icon).size(20).text_color(on ? t.foreground : t.muted) : image(icon).size(20)).flex_none().opacity(on ? 1 : 0.75))
+        .child(neonSign(`panel-sign-${id}`, label, SIGN[id] ?? NEON, 2, { lit: on }));
     };
     return h_flex().size_full().min_w(0).px(10).pl(lightsPadding).gap(3).items_center()
       .on_mouse_up("left", () => { this.pressed = null; })

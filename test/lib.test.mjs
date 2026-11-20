@@ -6,6 +6,8 @@ import * as A from "./../mods/office-agents/lib.js";
 import * as Gr from "./../mods/office-agents/groups.js";
 import * as T from "./../mods/office-tabs/lib.js";
 import * as F from "./../mods/office-files/lib.js";
+import * as L from "./../mods/office-agents/lobby.js";
+import * as Wt from "./../mods/office-agents/worktrees.js";
 import { readFileSync } from "node:fs";
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.log("FAIL:", m); } };
@@ -133,6 +135,60 @@ ok(Gr.regroup([G("a", "A", ["s1"])], ["zz"], []) === null, "regroup: nothing cha
 const groupsSrc = readFileSync(new URL("../mods/office-agents/groups.js", import.meta.url), "utf8");
 for (const m of ["office-spaces", "office-space-new"]) {
   ok(readFileSync(new URL(`../mods/${m}/groups.js`, import.meta.url), "utf8") === groupsSrc, `${m}/groups.js is a verbatim copy`);
+}
+const neonSrc = readFileSync(new URL("../mods/office-agents/neon.js", import.meta.url), "utf8");
+for (const m of ["office-spaces", "office-tabs", "office-lobby"]) {
+  ok(readFileSync(new URL(`../mods/${m}/neon.js`, import.meta.url), "utf8") === neonSrc, `${m}/neon.js is a verbatim copy`);
+}
+const treesSrc = readFileSync(new URL("../mods/office-agents/worktrees.js", import.meta.url), "utf8");
+ok(readFileSync(new URL("../mods/office-spaces/worktrees.js", import.meta.url), "utf8") === treesSrc, "office-spaces/worktrees.js is a verbatim copy");
+{
+  const room = { id: "s1", tabs: [{ id: "t1" }, { id: "t2" }] };
+  const br = Wt.branchesOf(room, [
+    { tab: "t1", terminal: "a", branch: "office/x" }, { tab: "t2", terminal: "b", branch: "office/y" },
+    { tab: "t1", terminal: "c", branch: "office/x" }, { tab: "t2", terminal: null, mod: "office-lobby", branch: null },
+    { tab: "t9", terminal: "d", branch: "main" }, { tab: "t1", terminal: "e", branch: null },
+  ]);
+  ok(br.join() === "office/x,office/y", "branchesOf: each once, in pane order, only its own terminals");
+  ok(Wt.branchesOf(null, null).length === 0, "branchesOf: nothing, none");
+  const R = (id) => ({ space: { id } });
+  const nested = Wt.nestRows([R("a"), R("b"), R("c"), R("d")], { b: "a", d: "a", c: "zz" });
+  ok(nested.map((r) => `${r.space.id}:${r.kids.map((k) => k.space.id).join("+")}`).join() === "a:b+d,c:", "nestRows: worktrees under their room, an absent room leaves it on its own");
+  ok(Wt.nestRows([R("a"), R("b"), R("c")], { b: "a", a: "c" }).map((r) => `${r.space.id}:${r.kids.map((k) => k.space.id).join("+")}`).join() === "b:,c:a",
+    "nestRows: only under a room that is under no other");
+  ok(Wt.roomCount(1, 2) === "1 space · 2 worktrees" && Wt.roomCount(2) === "2 spaces" && Wt.roomCount(3, 1) === "3 spaces · 1 worktree",
+    "roomCount: rooms, then worktrees apart");
+  ok(Wt.nestRows([R("a")], { a: "a" })[0].kids.length === 0 && Wt.nestRows(null, null).length === 0, "nestRows: not under itself; nothing, nothing");
+}
+const lobbySrc = readFileSync(new URL("../mods/office-agents/lobby.js", import.meta.url), "utf8");
+for (const m of ["office-spaces", "office-tabs"]) {
+  ok(readFileSync(new URL(`../mods/${m}/lobby.js`, import.meta.url), "utf8") === lobbySrc, `${m}/lobby.js is a verbatim copy`);
+}
+
+{
+// lobbies: a tab whose panes are all the lobby mod; one per room, put away beside other tabs
+const lob = L.lobbyTabs([
+  { pane: "p1", tab: "t1", mod: "office-lobby", terminal: null },
+  { pane: "p2", tab: "t2", terminal: "x" },
+  { pane: "p3", tab: "t3", mod: "office-lobby", terminal: null }, { pane: "p4", tab: "t3", terminal: "y" },
+  { pane: "p5", tab: "t4", mod: "office-files", terminal: null },
+]);
+ok([...lob].join() === "t1", "lobbyTabs: only tabs that are nothing but the lobby");
+ok(L.lobbyTabs(null).size === 0, "lobbyTabs: no panes, no lobbies");
+const lobbyTab = (id, index, extra = {}) => ({ id, index, active: false, settled: false, ...extra });
+const lobbyRoom = (id, tabs, active = false) => ({ id, active, tabs });
+const lp = (spaces, lobbies) => L.lobbyPlan(spaces, new Set(lobbies));
+const none = (p) => !p.add.length && !p.close.length && !p.settle.length && !p.leave.length;
+ok(lp([lobbyRoom("s1", [lobbyTab("a", 1, { active: true })])], []).add.join() === "s1", "lobbyPlan: a room without a lobby gets one");
+ok(none(lp([lobbyRoom("s1", [lobbyTab("L", 1, { active: true })], true)], ["L"])), "lobbyPlan: a lobby alone is left showing");
+ok(lp([lobbyRoom("s1", [lobbyTab("a", 1, { active: true }), lobbyTab("L", 2)])], ["L"]).settle.join() === "L", "lobbyPlan: put away beside other tabs");
+ok(none(lp([lobbyRoom("s1", [lobbyTab("a", 1, { active: true }), lobbyTab("L", 2, { settled: true })])], ["L"])), "lobbyPlan: already away, nothing to do");
+const two = lp([lobbyRoom("s1", [lobbyTab("a", 1, { active: true }), lobbyTab("L", 2, { settled: true }), lobbyTab("M", 3, { settled: true })])], ["L", "M"]);
+ok(two.close.join() === "M" && !two.settle.length, "lobbyPlan: a second lobby closes, the first stays");
+ok(JSON.stringify(lp([lobbyRoom("s1", [lobbyTab("a", 1), lobbyTab("L", 2, { active: true }), lobbyTab("b", 3)], true)], ["L"]).leave) === '[{"space":"s1","to":"b"}]',
+  "lobbyPlan: shown beside tabs, the nearest after it instead");
+ok(lp([lobbyRoom("s1", [lobbyTab("a", 1), lobbyTab("L", 3, { active: true }), lobbyTab("b", 6)], true)], ["L"]).leave[0].to === "a", "lobbyPlan: the nearer one wins over after");
+ok(none(lp([lobbyRoom("s1", [lobbyTab("a", 1), lobbyTab("L", 2, { active: true })], false)], ["L"])), "lobbyPlan: a room not shown is left as it is");
 }
 const cardSrc = readFileSync(new URL("../mods/office-agents/card.js", import.meta.url), "utf8");
 for (const m of ["office-menu", "office-new-menu", "office-add", "office-files"]) {
