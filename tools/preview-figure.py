@@ -41,15 +41,22 @@ def shape(d, x0, y0, x1, y1, rt, rb, fill):
 
 def paint(img, n, ox, oy, pw, ph):
     s = n["s"]
-    x = ox + (num(s.get("left")) or 0)
-    y = oy + (num(s.get("top")) or 0)
+    left, top, right, bottom = (num(s.get(k)) for k in ("left", "top", "right", "bottom"))
+    w = pw if s.get("w_full") is not None else num(s.get("w"))
+    h = ph if s.get("h_full") is not None else num(s.get("h"))
+    # Pinned to opposite sides (a frame round its parent): as wide or tall as that leaves.
+    if w is None and left is not None and right is not None:
+        w = pw - left - right
+    if h is None and top is not None and bottom is not None:
+        h = ph - top - bottom
+    # Pinned to the right or the bottom only (a chart's bars grow up).
+    x = ox + (left if left is not None else pw - right - w if right is not None and w else 0)
+    y = oy + (top if top is not None else ph - bottom - h if bottom is not None and h else 0)
     for lp in n["loops"]:
         if lp["prop"] == "top":
             y = oy + lp["from"]
         if lp["prop"] == "left":
             x = ox + lp["from"]
-    w = pw if s.get("w_full") is not None else num(s.get("w"))
-    h = ph if s.get("h_full") is not None else num(s.get("h"))
     alpha = 1.0
     for lp in n["loops"]:
         if lp["prop"] == "opacity":
@@ -63,18 +70,18 @@ def paint(img, n, ox, oy, pw, ph):
         x0, y0, x1, y1 = x * K, y * K, (x + w) * K, (y + h) * K
         bw = (num(s.get("border")) or 0) * K
         if bw and s.get("border_color"):
-            shape(d, x0, y0, x1, y1, rt * K, rb * K, rgba(s["border_color"]))
+            c = rgba(s["border_color"])
+            shape(d, x0, y0, x1, y1, rt * K, rb * K, c[:3] + (int(c[3] * alpha),))
             x0, y0, x1, y1 = x0 + bw, y0 + bw, x1 - bw, y1 - bw
             rt, rb = max(0, rt - bw / K), max(0, rb - bw / K)
-        if s.get("bg"):
-            c = rgba(s["bg"])
-            if bw and c[3] == 0:
-                # an outlined ring: punch the inside out
-                inner = Image.new("L", img.size, 0)
-                shape(ImageDraw.Draw(inner), x0, y0, x1, y1, rt * K, rb * K, 255)
-                layer.putalpha(Image.composite(Image.new("L", img.size, 0), layer.getchannel("A"), inner))
-            else:
-                shape(d, x0, y0, x1, y1, rt * K, rb * K, c[:3] + (int(c[3] * alpha),))
+        bg = rgba(s["bg"]) if s.get("bg") else None
+        if bw and (bg is None or bg[3] == 0):
+            # an outlined ring (no fill, or a clear one): punch the inside out
+            inner = Image.new("L", img.size, 0)
+            shape(ImageDraw.Draw(inner), x0, y0, x1, y1, rt * K, rb * K, 255)
+            layer.putalpha(Image.composite(Image.new("L", img.size, 0), layer.getchannel("A"), inner))
+        elif bg:
+            shape(d, x0, y0, x1, y1, rt * K, rb * K, bg[:3] + (int(bg[3] * alpha),))
         img.alpha_composite(layer)
     if n.get("text"):
         d = ImageDraw.Draw(img)

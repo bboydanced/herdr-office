@@ -6,7 +6,8 @@
 //     (the second writes the portraits, mods/office-agents/art/<role>.png, 88x88)
 //   node tools/preview-figure.mjs --room | python3 tools/preview-figure.py /dev/stdin room.png
 //     (room.js: the sidebar's wall and the boss's office)
-//   node tools/preview-figure.mjs --parts   (every piece by name, for tools/build-preview.py)
+//   node tools/preview-figure.mjs --parts [--signs '[[text, color, lit, u], …]']
+//     (every piece by name, for tools/build-preview.py; neon.js's signs as asked)
 import { readFileSync } from "node:fs";
 
 const src = readFileSync(new URL("../mods/office-agents/figure.js", import.meta.url), "utf8");
@@ -58,7 +59,7 @@ if (process.argv.includes("--parts")) {
   const parts = {};
   const put = (key, el, w, h) => { parts[key] = { node: el.__node, w, h }; };
   // Desks at the sidebar's size and the panel's: desk-<role>-<state>-<width>, desk-empty-<width>.
-  for (const [w, h] of [[72, 60], [96, 80]]) {
+  for (const [w, h] of [[72, 60], [84, 70], [96, 80]]) {
     for (const job of roles) {
       for (const st of job ? states : ["empty"]) put(`desk-${job ?? "empty"}${job ? `-${st}` : ""}-${w}`, mod.deskFigure("p", job, st, w, h, theme), w, h);
     }
@@ -67,6 +68,12 @@ if (process.argv.includes("--parts")) {
   put("wall", mod.sidebarWall("wall", 300, 44), 300, 44);
   put("boss-office", mod.bossOffice("boss-room", 900, 136, 64), 900, 136);
   put("logo", logo(32), 32, 32);
+  // Neon signs (neonSign), each sign-<text>-<color>-<lit|off>.
+  const at = process.argv.indexOf("--signs");
+  for (const [text, color, lit, u] of at > 0 ? JSON.parse(process.argv[at + 1]) : []) {
+    const size = mod.signSize(text, u);
+    put(`sign-${text}-${color}-${lit ? "lit" : "off"}`, mod.neonSign(`s-${text}-${color}`, text, color, u, { lit }), size.w, size.h);
+  }
   await emit(parts);
 }
 // The sizes the Office draws: a desk 96x80 points (Blocks), the boss 64x88.
