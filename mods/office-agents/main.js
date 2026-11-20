@@ -38,8 +38,10 @@
 import { View, div, image, svg } from "gpui-kit";
 import { Input, InputState, Popover, Textarea, TextareaState, h_flex, v_flex } from "gpui-base";
 import { agents, appHome, closeOverlay, commands, exec, focused, hc, home, knownAgents, layout, openOverlay, panes, props, readTextFile, run, setAgentOrder, setShared, shared, spaces, terminals, theme } from "herdr";
-import { DESK_SHADOW, EMPTY_DESK, WORKTREE_PROBE, acceptMessage, ago, bossBrief, bossStage, bossTabOf, deskColumns, goalOf, labelOf, deskJobs, deskLabel, deskPath, deskState, deskTip, filterPlan, findBosses, firstLine, fitAcross, hireCommand, hireTemplate, isBossTab, isHire, isNight, localId, mixHex, morningSummary, nightEvents, officePlan, oneLine, parseHours, parseProbe, parsePrompt, planAge, planNotes, portraitPath, screenLines, seatStep, shortPath, spaceColor, speechLine, splitTree, staffOf, standIn, tally, treeWidth, underHc, uniqueFaces, withAlpha, worktreeOf } from "./lib.js";
+import { WORKTREE_PROBE, acceptMessage, ago, backings, bossBrief, bossStage, bossTabOf, deskColumns, goalOf, labelOf, deskJobs, deskLabel, deskState, deskTip, filterPlan, findBosses, firstLine, fitAcross, hireCommand, hireTemplate, isBossTab, isHire, isNight, localId, mixHex, morningSummary, nightEvents, officePlan, oneLine, parseHours, parseProbe, parsePrompt, planAge, planNotes, portraitPath, screenLines, seatStep, shortPath, spaceColor, speechLine, splitTree, staffOf, standIn, tally, treeWidth, underHc, uniqueFaces, withAlpha, worktreeOf } from "./lib.js";
 import { Desk } from "./desk.js";
+import { LOOKS, bossFigure, deskFigure } from "./figure.js";
+import { bossOffice, sidebarWall } from "./room.js";
 import { loadGroups, planGroups, saveGroups } from "./groups.js";
 import { LAMP, cardTab, ink, line, sheet } from "./card.js";
 
@@ -60,29 +62,30 @@ const DESK_WINDOW = "office-desk";
 const DESK_HEAD_H = 76;
 // herdr-core keeps every app's shared documents here, Herdr's layout among them.
 const CORE_DOCS = ".local/state/herdr-core/default/docs.json";
-const WALL = "mods/office-agents/room/wall.png";
-// The panel's graphite floor, 456x400 art pixels at 2 points each; past its
-// bottom, its base colour (build-art.py PLANK) carries on.
-const FLOOR = "mods/office-agents/room/floor.png";
-const CARPET = "#1b1e25";
+// The panel's floor: quiet carpet tiles, 912x800 points; past its bottom, its
+// base colour (build-art.py PLANK) carries on.
+const FLOOR = "mods/office-agents/room/floor-tiles.png";
+const CARPET = "#242738";
 const TAG = "#c8392f";
-// Desks are 36x30 art pixels at 2 points a pixel, in a slot wide enough for a
-// name. pad: the floor, rug and cubicle padding around a row of desks.
+// Corner radii: tags and plates, buttons and chips, cubicles and rows, rugs and cards.
+const R = { tag: 3, control: 5, card: 6, room: 8 };
+// A hard pixel shadow: a dark bar just under a box, clear of its corners (no blur).
+const dropShadow = (r) => div().absolute().left(r).right(r).bottom(-2).h(2).bg("#00000066");
+// Desks (figure.js) on its 36x30 grid, in a slot wide enough for a name. pad:
+// the floor, rug and cubicle padding around a row of desks. The sidebar's at 2
+// points a unit; the panel's bigger so faces read, 96x80 (figure.js rounds
+// every edge to a whole pixel), with room for a desk's two lines.
 const SMALL = { deskW: 72, deskH: 60, slot: 80, label: 13, text: 10, gap: 6, pad: 40 };
-// The panel has room for a wider slot, so a desk's two lines read in full.
-const WIDE = { ...SMALL, slot: 92 };
+const WIDE = { deskW: 96, deskH: 80, slot: 108, label: 15, text: 11, gap: 8, pad: 40 };
 // In the sidebar, wider than this many desks a split tree falls back to rows.
 const MOST_ACROSS = 3;
 const FILTERS = [["all", "All"], ["working", "Working"], ["blocked", "Needs you"], ["done", "Done"]];
-// The boss: standing, 32x44 art pixels at 2 points each, one picture per status.
-// Its band, on a plain backing so its words read: the boss on the left; what it
-// says, the rooms row and the goal box beside it; folded, one line.
-const BOSS_DIR = "mods/office-agents/boss";
-// The boss's office (room/boss-office.png, 900x136 points): its wall down to
-// WALL_H, then the floor it stands on. The band grows with the goal box; the
-// floor's colour carries on below the picture.
+// The boss: standing, 64x88 points (bossFigure). Its band: the boss on the
+// left; what it says, the rooms row and the goal box beside it; folded, one line.
+// The boss's office (room.js, 900x136 points): its wall down to WALL_H, then
+// the floor it stands on. The band grows with the goal box; the floor's colour
+// carries on below the picture.
 const BAND_H = 136;
-const BOSS_ROOM = "mods/office-agents/room/boss-office.png";
 const WALL_H = 64;
 const BOSS_FLOOR = CARPET;
 const STICKY = "#f0d27a";
@@ -195,9 +198,9 @@ async function moveTerminal(from, to) {
 // Busy: a steady bright frame, a glow breathing under it and (ring) a wider
 // frame breathing around it. Waiting: a thick frame blinking fast over a red
 // tint. The pulses run natively; nothing re-renders for them.
-function activity(id, status, t, ring) {
-  const fill = () => div().absolute().top(0).left(0).right(0).bottom(0);
-  const frame = (n) => div().absolute().top(-n).left(-n).right(-n).bottom(-n);
+function activity(id, status, t, ring, r = 0) {
+  const fill = () => div().absolute().top(0).left(0).right(0).bottom(0).rounded(r);
+  const frame = (n) => div().absolute().top(-n).left(-n).right(-n).bottom(-n).rounded(r + n);
   if (status === "working") {
     return {
       under: [fill().id(`${id}-glow`).bg(withAlpha(t.working, "2e")).loop("opacity", { from: 0.15, to: 1, period: 1100 })],
@@ -367,10 +370,9 @@ export default class Office extends View {
     const { space } = row;
     const a = d.agent;
     const job = a ? roles.get(a.address) : null;
-    const src = (a && deskPath(job, a.status)) || EMPTY_DESK;
     const focused = a ? a.focused : d.pane.focused;
     const id = `desk-${a ? a.address : d.pane.pane}`;
-    const shown = activity(id, a?.status, t, true);
+    const shown = activity(id, a?.status, t, true, R.card);
     const terminal = a?.address ?? d.pane?.terminal ?? null;
     const picked = this.wide && terminal !== null && terminal === this.selected;
     // Wide, a desk with a terminal in a pane can be dragged to another tab's
@@ -380,10 +382,9 @@ export default class Office extends View {
     // After hours, wide: a desk at work keeps its lamp on, the others dim.
     const lit = this.wide && this.night && a?.status === "working";
     const dim = this.wide && this.night && !lit && !held;
-    const picture = (path) => div().absolute().top(0).left(0).child(image(path).w(z.deskW).h(z.deskH));
-    const line = (h, size) => div().h(h).max_w(z.slot).px(4).flex().items_center().text_size(size);
+    const line = (h, size) => div().h(h).max_w(z.slot).px(4).flex().items_center().text_size(size).rounded(R.tag);
     const tag = (text) => line(z.label, z.text - 1.5).px(5).bg(TAG).font_bold().text_color("#fff0e6").child(div().min_w(0).truncate().child(text));
-    const name = line(z.label, z.text).bg("#0d131bb8")
+    const name = line(z.label, z.text).bg(withAlpha(this.bk.shade, "b8"))
       .text_color(focused ? t.accent : a ? t.foreground : t.muted)
       .child(div().min_w(0).truncate().child(deskLabel(d) || " "));
     // The sidebar has room for one line: who, or that they wait for you. Wide,
@@ -408,6 +409,7 @@ export default class Office extends View {
       .flex_none()
       .items_center()
       .gap(1)
+      .rounded(R.card)
       .cursor_pointer()
       .hover((s) => s.bg(t.hover))
       .tooltip(`${deskTip({ agent: a, pane: d.pane, space, tab: c.tab })}\n${this.wide && terminal ? "Click: their terminal in a window · Double-click: go there · " : ""}${movable ? "Drag to Add desk: move to that tab · " : ""}Right-click: menu${terminal ? " · Middle-click: peek" : ""}`)
@@ -435,10 +437,10 @@ export default class Office extends View {
         if (terminal) run("terminal.peek", { terminal });
       })
       .children(shown.under)
-      .child(div().relative().w(z.deskW).h(z.deskH).child(picture(DESK_SHADOW)).child(picture(src)))
+      .child(deskFigure(`fig-${a ? a.address : d.pane.pane}`, a && LOOKS[job] ? job : null, a?.status, z.deskW, z.deskH, t))
       .children(lines)
       .children(shown.over)
-      .when(picked, (el) => el.child(div().absolute().top(-4).left(-4).right(-4).bottom(-4).border(2).border_color(t.accent)));
+      .when(picked, (el) => el.child(div().absolute().top(-4).left(-4).right(-4).bottom(-4).rounded(R.card + 4).border(2).border_color(t.accent)));
   }
 
   // Desks the way the tab is split: a row for side by side, a column for stacked.
@@ -481,10 +483,11 @@ export default class Office extends View {
         this.drag = null;
         this.moveDesk(from, to, cx);
       })
-      .child(div().relative().w(z.deskW).h(z.deskH).border(drop ? 2 : 1).border_color(drop ? t.accent : withAlpha(t.muted, "40"))
-        .child(div().absolute().top(0).left(0).opacity(0.25).child(image(EMPTY_DESK).w(z.deskW).h(z.deskH)))
-        .child(div().absolute().top(0).left(0).w(z.deskW).h(z.deskH).flex().items_center().justify_center()
-          .text_size(Math.round(z.deskH * 0.4)).text_color(t.muted).child("+")))
+      // An empty spot on the floor, a "+" in a round button.
+      .child(div().relative().w(z.deskW).h(z.deskH).flex().items_center().justify_center().rounded(R.room)
+        .bg(drop ? withAlpha(t.accent, "1f") : withAlpha(this.bk.shade, "40")).border(drop ? 2 : 1).border_color(drop ? t.accent : withAlpha(t.muted, "33"))
+        .child(div().size(34).rounded(17).flex().items_center().justify_center().bg(withAlpha(t.muted, drop ? "40" : "22"))
+          .text_size(20).text_color(drop ? t.accent : t.muted).child("+")))
       .child(div().h(z.label).px(4).flex().items_center().text_size(z.text).text_color(drop ? t.accent : t.dim).child(drop ? "Move here" : "Add desk"));
   }
 
@@ -511,9 +514,10 @@ export default class Office extends View {
       .px(this.wide ? 5 : 4)
       .pb(this.wide ? 5 : 4)
       .gap(z.gap)
-      .bg("#080c1270")
+      .rounded(R.card)
+      .bg(withAlpha(this.bk.shade, "70"))
       .border(1)
-      .border_color(here ? t.accent : withAlpha(color, "88"))
+      .border_color(here ? t.accent : withAlpha(color, "1f"))
       .on_mouse_down("right", (_e, cx) => {
         cx.stop_propagation();
         this.menu("tab", { id: c.tab.id, space: row.space.id });
@@ -530,7 +534,7 @@ export default class Office extends View {
     const staff = row.tabs.flatMap((c) => c.desks.filter((d) => d.agent).map((d) => d.agent));
     const status = urgent(staff);
     const count = staff.filter((a) => a.status === status).length;
-    const shown = activity(`rug-${row.space.id}`, status, t, false);
+    const shown = activity(`rug-${row.space.id}`, status, t, false, R.room);
     const hot = this.hot === row.space.id;
     const flow = this.wide ? this.bossFlow(row.space.id) : null;
     return v_flex()
@@ -541,20 +545,22 @@ export default class Office extends View {
       .pt(this.wide ? 5 : 3)
       .pb(this.wide ? 8 : 6)
       .gap(this.wide ? 7 : 5)
+      .rounded(R.room)
       .bg(withAlpha(color, hot ? "3a" : "24"))
       .border(1)
-      .border_color(hot ? color : withAlpha(color, "66"))
+      .border_color(hot ? color : withAlpha(color, "44"))
       .on_hover((hov) => hoverSpace(row.space.id, hov))
       .on_mouse_down("right", (_e, cx) => {
         cx.stop_propagation();
         this.menu("space", { id: row.space.id });
       })
+      .child(dropShadow(R.room))
       .children(shown.under)
       .child(h_flex().h(this.wide ? 18 : 15).gap(6).items_center()
-        .child(div().size(this.wide ? 9 : 7).flex_none().bg(color))
+        .child(div().size(this.wide ? 9 : 7).flex_none().rounded(2).bg(color))
         .child(div().min_w(0).truncate().text_size(this.wide ? 12.5 : 11).font_semibold().text_color(t.foreground).child(row.space.name))
         .child(div().flex_1().min_w(0).truncate().text_size(10.5).text_color(t.dim).child(this.wide ? where(row.space) : ""))
-        .when(status === "blocked", (el) => el.child(div().flex_none().px(4).bg(TAG).text_size(10).font_bold().text_color("#ffffff")
+        .when(status === "blocked", (el) => el.child(div().flex_none().px(5).rounded(R.tag).bg(TAG).text_size(10).font_bold().text_color("#ffffff")
           .child(`! ${count} need${count === 1 ? "s" : ""} you`)))
         .when(status === "working", (el) => el.child(div().flex_none().text_size(10).text_color(mixHex(t.working, "#ffffff", 0.3))
           .child(`● ${count} working`)))
@@ -586,24 +592,24 @@ export default class Office extends View {
       .flex_none()
       .gap(this.wide ? 8 : 6)
       .child(h_flex().h(this.wide ? 26 : 22).gap(7).items_center().px(4)
-        .bg("#080c1299").border(1).border_color(withAlpha(t.muted, "44")).rounded(4)
+        .bg(withAlpha(this.bk.shade, "99")).border(1).border_color(withAlpha(t.muted, "44")).rounded(R.card)
         .child(div().id(`group-fold-${g.id}`).size(14).flex_none().flex().items_center().justify_center()
           .cursor_pointer().hover((s) => s.opacity(0.7))
           .tooltip(g.folded ? "Show its spaces" : "Fold its spaces away")
           .on_click((_e, cx) => this.foldGroup(g.id, cx))
           .child(svg(`mods/office-chrome/chevron-${g.folded ? "right" : "down"}.svg`).size(10).flex_none().text_color(t.muted)))
         .child(div().min_w(0).truncate().text_size(this.wide ? 13 : 11.5).font_semibold().text_color(t.foreground).child(g.name))
-        .child(div().flex_none().px(4).bg(withAlpha(t.muted, "33")).text_size(9.5).text_color(t.foreground)
+        .child(div().flex_none().px(6).rounded(R.control).bg(withAlpha(t.muted, "33")).text_size(9.5).text_color(t.foreground)
           .child(`${part.rows.length} space${part.rows.length === 1 ? "" : "s"}`))
         .child(div().flex_1().min_w(0))
-        .when(status === "blocked", (el) => el.child(div().flex_none().px(4).bg(TAG).text_size(10).font_bold()
+        .when(status === "blocked", (el) => el.child(div().flex_none().px(5).rounded(R.tag).bg(TAG).text_size(10).font_bold()
           .text_color("#ffffff").child(`! ${count} need${count === 1 ? "s" : ""} you`)))
         .when(status === "working", (el) => el.child(div().flex_none().text_size(10).text_color(mixHex(t.working, "#ffffff", 0.3))
           .child(`\u25cf ${count} working`)))
         .child(this.button(`group-edit-${g.id}`, "\u270e", "Rename this group, or change its spaces", t, () => openGroupDialog(g.id)))
         .child(this.button(`group-drop-${g.id}`, "\u00d7", "Delete the group (the spaces stay)", t, () => this.dropGroup(g.id))))
       .when(!g.folded, (el) => el.child(v_flex().flex_none().gap(this.wide ? 10 : 8).pl(this.wide ? 12 : 8)
-        .border_l(1).border_color(withAlpha(t.muted, "44"))
+        .border_l(1).border_color(withAlpha(t.muted, "2e"))
         .children(part.rows.map((row) => this.rug(row, roles, colors, trees, t)))));
   }
 
@@ -627,7 +633,7 @@ export default class Office extends View {
       const src = portraitPath(job);
       const state = deskState(a, tab, now);
       const tone = state?.status === "working" ? mixHex(t.working, "#ffffff", 0.3) : t[state?.status] ?? t.dim;
-      return h_flex().id(`agent-${a.address}`).flex_none().h(30).px(6).gap(6).items_center()
+      return h_flex().id(`agent-${a.address}`).flex_none().h(30).px(6).gap(6).items_center().rounded(R.card)
         .cursor_pointer().hover((s) => s.bg(t.hover))
         .when(this.hot === space.id, (el) => el.bg(withAlpha(t.accent, "22")))
         .on_hover((hov) => hoverSpace(space.id, hov))
@@ -641,14 +647,14 @@ export default class Office extends View {
           cx.stop_propagation();
           run("terminal.peek", { terminal: a.address });
         })
-        .child(div().size(22).flex_none().border(1).border_color(t[state?.status] ?? t.dim).bg(t.raised)
+        .child(div().size(22).flex_none().rounded(R.control).overflow_hidden().border(1).border_color(t[state?.status] ?? t.dim).bg(t.raised)
           .when(Boolean(src), (el) => el.child(image(src).size(20))))
         .child(v_flex().flex_1().min_w(0).gap(0)
           .child(div().min_w(0).truncate().text_size(11.5).text_color(t.foreground).child(deskLabel({ agent: a }) || "Agent"))
           .child(div().min_w(0).truncate().text_size(10).text_color(t.dim)
             .child(`${space.name} › ${tab.name}`)))
         .child(state?.status === "blocked"
-          ? div().flex_none().px(4).bg(TAG).text_size(9.5).font_bold().text_color("#fff0e6").child("NEEDS YOU")
+          ? div().flex_none().px(5).rounded(R.tag).bg(TAG).text_size(9.5).font_bold().text_color("#fff0e6").child("NEEDS YOU")
           : div().flex_none().text_size(10).text_color(tone).child(state ? state.text : "Terminal"));
     };
     const band = (part) => {
@@ -656,8 +662,8 @@ export default class Office extends View {
       const status = urgent(staff);
       const count = staff.filter((a) => a.status === status).length;
       return v_flex().flex_none().gap(1)
-      .child(h_flex().id(`agent-group-${part.band.id}`).h(22).px(4).gap(6).items_center()
-        .bg("#080c1299").border_b(1).border_color(withAlpha(t.muted, "44"))
+      .child(h_flex().id(`agent-group-${part.band.id}`).h(22).px(6).gap(6).items_center().rounded(R.card)
+        .bg(withAlpha(this.bk.shade, "99"))
         .child(div().size(12).flex_none().flex().items_center().justify_center().cursor_pointer()
           .hover((s) => s.opacity(0.7))
           .tooltip(part.band.folded ? "Show its agents" : "Fold its agents away")
@@ -665,7 +671,7 @@ export default class Office extends View {
           .child(svg(`mods/office-chrome/chevron-${part.band.folded ? "right" : "down"}.svg`).size(9).flex_none().text_color(t.dim)))
         .child(div().min_w(0).truncate().text_size(10.5).font_semibold().text_color(t.foreground).child(part.band.name))
         .child(div().flex_1())
-        .when(status === "blocked", (el) => el.child(div().flex_none().px(4).bg(TAG).text_size(9.5).font_bold()
+        .when(status === "blocked", (el) => el.child(div().flex_none().px(5).rounded(R.tag).bg(TAG).text_size(9.5).font_bold()
           .text_color("#ffffff").child(`! ${count}`)))
         .when(status === "working", (el) => el.child(div().flex_none().text_size(10).text_color(mixHex(t.working, "#ffffff", 0.3))
           .child(`\u25cf ${count}`)))
@@ -691,7 +697,7 @@ export default class Office extends View {
     return v_flex().id("office-rail").size_full().min_h(0).items_center().gap(4).py(6).overflow_y_scrollbar()
       .children(seated.map((a) => {
         const src = portraitPath(roles.get(a.address));
-        return div().id(`face-${a.address}`).size(30).flex_none().border(2).border_color(t[a.status] ?? t.dim)
+        return div().id(`face-${a.address}`).size(30).flex_none().rounded(R.card).overflow_hidden().border(2).border_color(t[a.status] ?? t.dim)
           .cursor_pointer().tooltip(deskLabel({ agent: a }))
           .on_click(() => reach(a, null, null, null, a.address))
           .when(Boolean(src), (el) => el.child(image(src).size(26)));
@@ -747,8 +753,8 @@ export default class Office extends View {
   }
 
   button(id, label, tip, t, action) {
-    return div().id(id).h(20).px(7).flex().flex_none().items_center().text_size(10.5).text_color(t.muted)
-      .border(1).border_color(withAlpha(t.muted, "55")).bg("#0d131b99")
+    return div().id(id).h(20).px(7).flex().flex_none().items_center().rounded(R.control).text_size(10.5).text_color(t.muted)
+      .border(1).border_color(withAlpha(t.muted, "55")).bg(withAlpha(this.bk.shade, "99"))
       .cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
       .tooltip(tip).on_click(action).child(label);
   }
@@ -758,9 +764,9 @@ export default class Office extends View {
   storage(sp, t) {
     const away = sp.flatMap((s) => (s.tabs ?? []).filter((tab) => tab.settled && tab.status !== "blocked").map((tab) => ({ s, tab })));
     if (!away.length) return null;
-    return v_flex().flex_none().gap(5).p(8).bg("#080c1270").border(1).border_color(withAlpha(t.muted, "33"))
+    return v_flex().flex_none().gap(5).p(8).rounded(R.room).bg(withAlpha(this.bk.shade, "70")).border(1).border_color(withAlpha(t.muted, "33"))
       .child(div().text_size(10.5).text_color(t.dim).child(`Put away · ${away.length}`))
-      .child(h_flex().flex_wrap().gap(5).children(away.map(({ s, tab }) => div().id(`away-${tab.id}`).h(20).px(7).flex().items_center()
+      .child(h_flex().flex_wrap().gap(5).children(away.map(({ s, tab }) => div().id(`away-${tab.id}`).h(20).px(7).flex().items_center().rounded(R.control)
         .text_size(11).text_color(t.muted).bg(t.raised).cursor_pointer().hover((st) => st.bg(t.hover).text_color(t.foreground))
         .tooltip("Bring it back")
         .on_click(() => { if (!s.active) run("space.select", { id: s.id }); run("tab.select", { id: tab.id }); })
@@ -941,8 +947,8 @@ export default class Office extends View {
   }
 
   small(id, label, tip, t, action, tone) {
-    return div().id(id).h(22).px(8).flex().flex_none().items_center().text_size(11).text_color(tone ?? t.muted)
-      .border(1).border_color(withAlpha(t.muted, "55")).bg("#0d131b")
+    return div().id(id).h(22).px(8).flex().flex_none().items_center().rounded(R.control).text_size(11).text_color(tone ?? t.muted)
+      .border(1).border_color(withAlpha(t.muted, "55")).bg(this.bk.button)
       .cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
       .tooltip(tip).on_click(action).child(div().min_w(0).truncate().child(label));
   }
@@ -952,7 +958,7 @@ export default class Office extends View {
   inspector(roles, t) {
     const target = this.target();
     const frame = h_flex().id("office-inspector").h(INSPECT_H).flex_none().px(12).gap(10).items_center()
-      .bg("#121a23").border_t(2).border_color(t.accent);
+      .bg(this.bk.panel).border_t(2).border_color(t.accent);
     if (!target) {
       return frame.child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.dim)
         .child("Click a desk: their terminal opens in a window. Double-click goes to it."));
@@ -969,7 +975,7 @@ export default class Office extends View {
       reach(a, space, tab, pane, key);
     };
     return frame
-      .child(div().size(36).flex_none().border(1).border_color(state ? t[state.status] ?? t.dim : t.dim).bg(t.raised)
+      .child(div().size(36).flex_none().rounded(R.card).overflow_hidden().border(1).border_color(state ? t[state.status] ?? t.dim : t.dim).bg(t.raised)
         .when(Boolean(src), (el) => el.child(image(src).size(34))))
       .child(v_flex().flex_1().min_w(0).gap(1)
         .child(h_flex().gap(6).items_center()
@@ -989,7 +995,7 @@ export default class Office extends View {
 
   // The sidebar's back wall, over the list.
   wall() {
-    return div().h(44).flex_none().overflow_hidden().child(image(WALL).w(300).h(44));
+    return div().h(44).flex_none().overflow_hidden().child(sidebarWall("wall", 300, 44));
   }
 
   // The wide header: the filters with their counts, the time.
@@ -998,12 +1004,13 @@ export default class Office extends View {
       .child(div().flex_none().pr(6).text_size(12.5).font_semibold().text_color(t.foreground).child("Office"))
       .children(FILTERS.map(([key, label]) => {
         const on = this.filter === key;
-        return h_flex().id(`filter-${key}`).h(22).px(8).gap(5).flex_none().items_center().text_size(11)
-          .border(1).border_color(on ? t.accent : withAlpha(t.border, "33")).text_color(on ? t.foreground : t.muted)
-          .when(on, (el) => el.bg(t.selected))
+        const hue = key === "all" ? t.accent : t[key] ?? t.dim;
+        return h_flex().id(`filter-${key}`).h(22).px(9).gap(5).flex_none().items_center().text_size(11).rounded(R.control)
+          .border(1).border_color(on ? hue : withAlpha(t.border, "33")).text_color(on ? t.foreground : t.muted)
+          .when(on, (el) => el.bg(withAlpha(hue, "26")))
           .cursor_pointer().hover((s) => s.bg(t.hover))
           .on_click((_e, cx) => this.setFilter(key, cx))
-          .when(key !== "all", (el) => el.child(div().size(6).flex_none().bg(t[key] ?? t.dim)))
+          .when(key !== "all", (el) => el.child(div().size(6).flex_none().rounded(3).bg(t[key] ?? t.dim)))
           .child(label)
           .child(div().text_color(key === "blocked" && n.blocked ? t.blocked : t.dim).child(String(key === "all" ? total : n[key])));
       }))
@@ -1329,12 +1336,12 @@ export default class Office extends View {
       "Report",
     ];
     const finished = !f.live && f.stage === "report";
-    return h_flex().id(`flow-${id}`).flex_none().h(22).px(3).gap(3).items_center().bg("#5b4330").border(1).border_color("#3a2a1e")
+    return h_flex().id(`flow-${id}`).flex_none().h(22).px(3).gap(3).items_center().rounded(R.control).bg("#5b4330").border(1).border_color("#3a2a1e")
       .children(labels.map((text, i) => {
         const past = i < f.step || (finished && i === f.step);
         const now = i === f.step && !finished;
         const ring = now ? (f.blocked ? t.blocked : f.live ? t.accent : "#c9b48a") : null;
-        return div().id(`flow-${id}-${i}`).relative().h(16).px(6).flex().flex_none().items_center().gap(3)
+        return div().id(`flow-${id}-${i}`).relative().h(16).px(6).flex().flex_none().items_center().gap(3).rounded(R.tag)
           .bg(past ? "#c9b98f" : now ? STICKY : "#e8dcb8").border(1).border_color(ring ?? "#00000000")
           .text_size(10).font_semibold().text_color(past || !now ? "#6a5c45" : INK).opacity(now || past ? 1 : 0.7)
           .tooltip(FLOW_TIPS[i])
@@ -1347,7 +1354,7 @@ export default class Office extends View {
   // per option, the picked one highlighted and ticked.
   picker(id, t, value, tip, options, onPick, title) {
     const open = this.picking === id;
-    const trigger = h_flex().id(`pick-${id}`).h(26).px(8).gap(6).flex_none().max_w(170).items_center()
+    const trigger = h_flex().id(`pick-${id}`).h(26).px(8).gap(6).flex_none().max_w(170).items_center().rounded(R.control)
       .text_size(11.5).text_color("#f3e3c3").bg("#3b2a1c").border(1)
       .border_color(open ? "#e0b45a" : "#6b4a2e").cursor_pointer().hover((s) => s.bg("#4a3524")).tooltip(tip)
       .child(h_flex().min_w(0).gap(5).items_center().children(value))
@@ -1417,10 +1424,10 @@ export default class Office extends View {
         .child(div().min_w(0).truncate().text_size(10.5).font_semibold().text_color(INK).child(n.piece))
         .child(h_flex().h(14).gap(4).items_center().text_size(9.5).text_color("#4a4236").children(foot));
     };
-    return v_flex().id("whiteboard").flex_none().p(4).gap(3).bg("#b4bbc1").border(2).border_color("#7b858e")
+    return v_flex().id("whiteboard").flex_none().p(4).gap(3).rounded(R.card).bg("#b4bbc1").border(2).border_color("#7b858e")
       .child(h_flex().gap(6).items_center().text_size(9).font_bold().text_color("#46505a")
         .child("WHITEBOARD")
-        .when(age.stale, (el) => el.child(div().flex_none().px(4).bg("#8e9187").text_color("#fbf6ea")
+        .when(age.stale, (el) => el.child(div().flex_none().px(4).rounded(R.tag).bg("#8e9187").text_color("#fbf6ea")
           .tooltip(`Sent after this plan: the boss has not written its new one yet.\nThat plan was for: ${age.previous || "an earlier goal"}`).child("OLD GOAL")))
         .child(div().flex_1().min_w(0).truncate().text_color("#5d6772")
           .when(Boolean(goal), (el) => el.tooltip(`The goal the boss works on: ${goal}`).child(`for: ${goal} · `))
@@ -1461,21 +1468,21 @@ export default class Office extends View {
       if (this.bandFolded) { this.foldBand(false); cx.notify(); }
       this.bossInput.focus();
     };
-    const fold = div().id("boss-fold").size(20).flex().flex_none().items_center().justify_center().bg("#0d131bcc")
+    const fold = div().id("boss-fold").size(20).flex().flex_none().items_center().justify_center().rounded(R.control).bg(withAlpha(this.bk.shade, "cc"))
       .text_size(11).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.foreground))
       .tooltip(this.bandFolded ? "Show the boss" : "Fold the boss away")
       .on_click((_e, cx) => { this.foldBand(!this.bandFolded); cx.notify(); })
       .child(this.bandFolded ? "▾" : "▴");
     // Stop, in the band and when it is folded: whoever is typing, the boss and
     // its hires. Only while there is something to stop.
-    const stopButton = stoppable.length ? div().id("boss-stop").h(20).px(6).flex().flex_none().items_center().gap(4)
+    const stopButton = stoppable.length ? div().id("boss-stop").h(20).px(6).flex().flex_none().items_center().gap(4).rounded(R.control)
       .text_size(10.5).font_bold().text_color("#fbf1e8").bg("#8a3a30").border(1).border_color("#c05a4a")
       .cursor_pointer().hover((s) => s.bg("#a24438"))
       .tooltip(`Stop ${stoppable.length === 1 ? "the one at work" : `${stoppable.length} at work`} (hc interrupt): the boss${stoppable.length > 1 || stoppable[0] !== bossAddr ? " and its hires" : ""}`)
       .on_click((_e, cx) => this.stop(stoppable, cx))
       .child(this.stopping ? "Stopping…" : "■ Stop") : null;
     if (this.bandFolded) {
-      return h_flex().id("boss-band").h(BAND_FOLDED_H).flex_none().px(10).gap(8).items_center().bg("#1a2230").border_b(1).border_color("#11161f")
+      return h_flex().id("boss-band").h(BAND_FOLDED_H).flex_none().px(10).gap(8).items_center().bg(this.bk.panel).border_b(1).border_color(this.bk.edge)
         .child(div().id("boss").size(24).flex_none().border(1).border_color(t[state] ?? t.dim).bg(t.raised).cursor_pointer().tooltip(tip).on_click(onBoss)
           .child(image(portraitPath("manager")).size(22)))
         .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(lineColor).child(line))
@@ -1504,23 +1511,23 @@ export default class Office extends View {
           label: [programIcon(k, t, 14), div().flex_1().min_w(0).truncate().child(k.name),
             ...(k.key === DEFAULT_BOSS ? [div().flex_none().text_size(10).text_color(t.dim).child("default")] : [])] })),
         (key) => { this.bossPick = key; localStorage.setItem("office.bossAgent", key); }, "ORCHESTRATOR");
-    const plaque = h_flex().flex_none().h(22).px(8).gap(6).items_center().bg("#3b2a1c").border(1).border_color("#6b4a2e")
+    const plaque = h_flex().flex_none().h(22).px(8).gap(6).items_center().rounded(R.control).bg("#3b2a1c").border(1).border_color("#6b4a2e")
       .child(div().text_size(11).font_bold().text_color("#f3e3c3").child("BOSS"))
-      .child(div().size(6).flex_none().bg(t[state] ?? t.dim))
+      .child(div().size(6).flex_none().rounded(3).bg(t[state] ?? t.dim))
       .child(div().max_w(160).truncate().text_size(11).text_color("#d8c7a6").child(room?.name ?? "no space"));
     const flow = bossAddr ? this.bossFlow(room.id) : null;
     const board = bossAddr ? this.board(t, bossAddr, room, list, team) : null;
     const left = 88;
-    return div().id("boss-band").relative().min_h(BAND_H).flex_none().overflow_hidden().bg(BOSS_FLOOR).border_b(1).border_color("#11161f")
-      .child(div().absolute().top(0).left(0).w(900).h(BAND_H).child(image(BOSS_ROOM).w(900).h(BAND_H)))
+    return div().id("boss-band").relative().min_h(BAND_H).flex_none().overflow_hidden().bg(BOSS_FLOOR).border_b(1).border_color(this.bk.edge)
+      .child(div().absolute().top(0).left(0).w(900).h(BAND_H).child(bossOffice("boss-room", 900, BAND_H, WALL_H)))
       .child(div().absolute().top(12).right(10).child(fold))
       .child(div().id("boss").absolute().left(12).top(BAND_H - 98).w(64).h(88).cursor_pointer().tooltip(tip).on_click(onBoss)
-        .child(image(`${BOSS_DIR}/${["working", "blocked", "done"].includes(state) ? state : "idle"}.gif`).w(64).h(88)))
+        .child(bossFigure("boss-fig", state, 64, 88)))
       .child(v_flex().relative().pl(left).pr(12).pt(9).pb(10).gap(6)
         // On the wall: whose office, its team, how it works, and Stop.
         .child(h_flex().h(22).pr(28).gap(8).items_center().overflow_hidden()
           .child(plaque)
-          .when(Boolean(crewText), (el) => el.child(div().flex_none().px(5).bg("#0d131bcc").text_size(10.5).text_color(over ? t.blocked : "#d8c7a6").child(crewText)))
+          .when(Boolean(crewText), (el) => el.child(div().flex_none().px(5).bg(withAlpha(this.bk.shade, "cc")).text_size(10.5).text_color(over ? t.blocked : "#d8c7a6").child(crewText)))
           .child(div().flex_1())
           .when(Boolean(stopButton), (el) => el.child(stopButton)))
         .child(h_flex().h(22).items_center().overflow_hidden()
@@ -1532,7 +1539,7 @@ export default class Office extends View {
           .when(Boolean(rooms), (el) => el.child(rooms))
           .when(Boolean(agentsPick), (el) => el.child(agentsPick))
           .child(v_flex().flex_1().min_w(120).gap(2)
-            .child(div().id("boss-goal").min_h(28).px(8).py(3).bg("#0b1017e6").border(1)
+            .child(div().id("boss-goal").min_h(28).px(8).py(3).rounded(R.control).bg(withAlpha(this.bk.shade, "e6")).border(1)
               .border_color(withAlpha(t.muted, "77")).cursor_text().on_click(() => this.bossInput.focus())
               .child(Textarea.new(this.bossInput).w_full().text_size(12)))
             // The goal it works on now (its office.goal label); the box empty,
@@ -1547,7 +1554,8 @@ export default class Office extends View {
                   .tooltip("Put your last goal back in the box")
                   .on_click((_e, cx) => { this.bossInput?.set_value(remembered); cx.stop_propagation(); cx.notify(); })
                   .child("Use it")))))
-          .child(div().id("boss-assign").h(28).px(12).flex().flex_none().items_center().bg(this.bossBusy ? t.raised : t.accent)
+          .child(div().id("boss-assign").relative().h(28).px(12).flex().flex_none().items_center().rounded(R.control).bg(this.bossBusy ? t.raised : t.accent)
+            .hover((s) => s.opacity(0.9)).child(dropShadow(R.control))
             .text_size(12).font_bold().text_color(t.accent_foreground ?? "#101820").cursor_pointer()
             .tooltip(bossAddr ? "Send the goal to the boss (Ctrl+Enter)" : `Hire ${pick?.name ?? "an agent"} as the boss with this goal (Ctrl+Enter)`)
             .on_click((_e, cx) => this.assign(cx)).child(bossAddr ? "Tell ⏎" : "Hire ⏎"))));
@@ -1608,9 +1616,9 @@ export default class Office extends View {
     const since = ago(tab?.changed_at, this.now);
     const keys = fresh && ask.options.length ? ask.options.map((o) => [o.key, `${o.key}  ${o.label}`]) : [["enter", "Enter"], ["esc", "Esc"]];
     const question = fresh ? (ask.question.length ? ask.question : ["(no question on its screen: look at it with Details)"]) : ["Reading its question…"];
-    return v_flex().id("needs-you").flex_none().mx(8).mt(8).p(8).gap(6).bg("#2a1f1c").border(2).border_color(t.blocked)
+    return v_flex().id("needs-you").flex_none().mx(8).mt(8).p(8).gap(6).rounded(R.room).bg(this.bk.alert).border(2).border_color(t.blocked)
       .child(h_flex().gap(8).items_center()
-        .child(div().size(30).flex_none().border(1).border_color(t.blocked).bg(t.raised).when(Boolean(src), (el) => el.child(image(src).size(28))))
+        .child(div().size(30).flex_none().rounded(R.card).overflow_hidden().border(1).border_color(t.blocked).bg(t.raised).when(Boolean(src), (el) => el.child(image(src).size(28))))
         .child(v_flex().flex_1().min_w(0)
           .child(div().truncate().text_size(12).font_bold().text_color(t.foreground)
             .child(`Needs you · ${deskLabel({ agent: a }) || "Agent"} · ${a.program?.name ?? "Agent"}`))
@@ -1619,7 +1627,7 @@ export default class Office extends View {
           (_e, cx) => { this.card = (this.card + 1) % waiting.length; cx.notify(); })))
         .child(this.small("ask-details", "Terminal", "Its terminal in a window, to answer there", t, (_e, cx) => this.pick(a.address, cx)))
         .child(this.small("ask-open", "Open ↗", "Its terminal", t, () => run("agent.focus", { terminal: a.address }))))
-      .child(v_flex().px(8).py(4).bg("#11161d")
+      .child(v_flex().px(8).py(4).rounded(R.control).bg(this.bk.panel)
         .children(question.map((q, i) => div().id(`ask-q-${i}`).truncate().font_family(mono).text_size(11.5).text_color(t.foreground).child(q))))
       .child(h_flex().gap(5).flex_wrap().items_center()
         .when(answered, (el) => el.child(div().text_size(11).text_color(t.dim).child("Answered: waiting for it to go on…")))
@@ -1631,6 +1639,7 @@ export default class Office extends View {
   render(cx) {
     if (this.deskHead) return this.deskHead.render(cx);
     const t = theme();
+    this.bk = backings(t);
     const sp = spaces();
     const ps = panes();
     const terms = terminals() ?? [];

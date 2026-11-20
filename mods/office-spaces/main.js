@@ -53,32 +53,32 @@ function hoverSpace(id, on) {
 // (off; breathing while someone works; blinking while someone waits) and a
 // window lit while anyone is in.
 function door(id, number, color, status, occupied, t) {
-  const box = (top, left, w, h, bg) => div().absolute().top(top).left(left).w(w).h(h).bg(bg);
+  const box = (top, left, w, h, bg, r = 0) => div().absolute().top(top).left(left).w(w).h(h).bg(bg).rounded(r);
   const lamp = { working: t.working, blocked: t.blocked }[status] ?? "#3a4250";
   return div().relative().w(26).h(32).flex_none()
-    .when(status === "working", (el) => el.child(box(0, 5, 16, 6, alpha(t.working, "50")).id(`${id}-halo`)
+    .when(status === "working", (el) => el.child(box(0, 5, 16, 6, alpha(t.working, "50"), 3).id(`${id}-halo`)
       .loop("opacity", { from: 0, to: 1, period: 1100 })))
-    .child(box(0, 8, 10, 3, lamp).id(`${id}-lamp`)
+    .child(box(0, 8, 10, 3, lamp, 1.5).id(`${id}-lamp`)
       .when(status === "working", (el) => el.loop("opacity", { from: 0.45, to: 1, period: 1100 }))
       .when(status === "blocked", (el) => el.loop("opacity", { from: 0.2, to: 1, period: 600, easing: "linear" })))
-    .child(box(4, 0, 26, 28, darken(color, 0.45)))
-    .child(box(5, 2, 22, 27, color))
-    .child(box(8, 5, 16, 6, occupied ? "#f0c06ecc" : "#16202b"))
+    .child(box(4, 0, 26, 28, darken(color, 0.45), 0).rounded_t(5).rounded_b(2))
+    .child(box(5, 2, 22, 27, color, 0).rounded_t(4).rounded_b(1))
+    .child(box(8, 5, 16, 6, occupied ? "#f0c06ecc" : "#16202b", 2))
     .child(box(8, 12, 2, 6, darken(color, 0.3)))
-    .child(box(17, 5, 15, 10, "#efe6d2").flex().items_center().justify_center()
+    .child(box(17, 5, 15, 10, "#efe6d2", 3).flex().items_center().justify_center()
       .text_size(8).font_bold().text_color(INK).child(number))
-    .child(box(23, 21, 2, 2, "#e8ba62"));
+    .child(box(23, 21, 3, 3, "#e8ba62", 1.5));
 }
 
 // A sticky note for the git summary.
-const note = (color, text) => div().relative().flex_none().h(13).px(4).flex().items_center().bg(color)
+const note = (color, text) => div().relative().flex_none().h(13).px(4).flex().items_center().rounded(3).overflow_hidden().bg(color)
   .text_size(9.5).font_semibold().text_color(INK).child(text)
   .child(div().absolute().right(0).bottom(0).size(3).bg("#00000030"));
 
 // A row where someone works breathes in the working colour under a steady frame;
 // one where someone waits blinks a thick frame over a red tint (as in the office).
 function activity(id, status, t) {
-  const fill = () => div().absolute().top(0).left(0).right(0).bottom(0);
+  const fill = () => div().absolute().top(0).left(0).right(0).bottom(0).rounded(6);
   if (status === "working") {
     return {
       under: [fill().id(`${id}-glow`).bg(alpha(t.working, "2e")).loop("opacity", { from: 0.15, to: 1, period: 1100 })],
@@ -613,7 +613,7 @@ export default class Spaces extends View {
   face(a, t) {
     const src = portrait(this.faces[a.address]);
     return src
-      ? div().size(14).flex_none().border(1).border_color(t[a.status] ?? t.dim).bg(t.raised).child(image(src).size(12))
+      ? div().size(14).flex_none().rounded(4).overflow_hidden().border(1).border_color(t[a.status] ?? t.dim).bg(t.raised).child(image(src).size(12))
       : div().size(6).flex_none().rounded(3).bg(t[a.status] ?? t.dim);
   }
 
@@ -653,11 +653,12 @@ export default class Spaces extends View {
       .h(collapsed ? 22 : 30)
       .flex_none()
       .when(collapsed, (el) => el.w(RAIL_CELL).self_center().rounded(6))
+      .when(!collapsed, (el) => el.mx(6).rounded(6))
       .px(collapsed ? 0 : 8)
       .justify_center()
       .bg(t.surface)
-      .border_b(1)
-      .border_color(t.border)
+      .border(1)
+      .border_color(alpha(t.border, "55"))
       .when(!collapsed, (el) => el.hover((s) => s.bg(t.hover)))
       .child(h_flex().gap(8).items_center()
         .child(div().id(`group-fold-${id}`).size(14).flex_none().flex().items_center().justify_center()
@@ -669,10 +670,10 @@ export default class Spaces extends View {
             : svg(`mods/office-chrome/chevron-${g.folded ? "right" : "down"}.svg`).size(10).text_color(t.muted)))
         .when(!collapsed, (el) => el
           .child(div().min_w(0).max_w(150).truncate().text_size(12).font_semibold().text_color(t.foreground).child(g.name))
-          .child(div().flex_none().px(4).bg(t.raised).text_size(9.5).text_color(t.muted)
+          .child(div().flex_none().px(6).rounded(5).bg(t.raised).text_size(9.5).text_color(t.muted)
             .child(`${count} space${count === 1 ? "" : "s"}`))
           .child(div().flex_1().min_w(0))
-          .when(status === "blocked", (el) => el.child(div().flex_none().px(4).bg("#c8392f").text_size(10).font_bold()
+          .when(status === "blocked", (el) => el.child(div().flex_none().px(4).rounded(3).bg("#c8392f").text_size(10).font_bold()
             .text_color("#ffffff").child(`! ${waiting}`)))
           .when(status === "working", (el) => el.child(div().flex_none().text_size(10).text_color(t.ansi4)
             .child(`\u25cf ${waiting}`)))
@@ -706,18 +707,20 @@ export default class Spaces extends View {
     return v_flex()
       .relative()
       .id(`space-${w.id}`)
+      .mx(6)
       .px(8)
+      .rounded(6)
       .h(rowHeight({ tree }))
       .flex_none()
       .justify_center()
       .children(shown.under)
       // The room you are in has its lights on.
       .when(on, (el) => el.bg(`${t.surface}c8`)
-        .child(div().absolute().top(0).left(0).right(0).bottom(0).bg(alpha(t.accent, "12")))
-        .child(div().absolute().left(0).top(0).bottom(0).w(2).bg(t.accent)))
+        .child(div().absolute().top(0).left(0).right(0).bottom(0).rounded(6).bg(alpha(t.accent, "12")))
+        .child(div().absolute().left(0).top(8).bottom(8).w(3).rounded(2).bg(t.accent)))
       .when(!on, (el) => el.hover((s) => s.bg(t.hover)))
       .when(hot && !on, (el) => el.bg(t.hover))
-      .when(hot, (el) => el.child(div().absolute().top(0).left(0).right(0).bottom(0).border(1).border_color(alpha(color, "aa"))))
+      .when(hot, (el) => el.child(div().absolute().top(0).left(0).right(0).bottom(0).rounded(6).border(1).border_color(alpha(color, "aa"))))
       .on_hover((hov) => {
         this.hovering = hov ? w.id : this.hovering === w.id ? null : this.hovering;
         hoverSpace(w.id, hov);
@@ -760,7 +763,7 @@ export default class Spaces extends View {
             .child(h_flex().gap(9).items_center()
               .child(div().id(`name-${w.id}`).flex_shrink(1).min_w(0).max_w(150).truncate().text_color(t.foreground)
                 .tooltip(this.short(place(w, panes()), w.machine) || "~").child(w.name))
-              .when(status === "blocked", el => el.child(div().flex_none().px(4).bg("#c8392f").text_size(10).font_bold().text_color("#ffffff").child("!")))
+              .when(status === "blocked", el => el.child(div().flex_none().px(4).rounded(3).bg("#c8392f").text_size(10).font_bold().text_color("#ffffff").child("!")))
               .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())
               .when(this.hovering === w.id && this.pressed === null, (el) => el.child(this.actions(w, t))))
             .when(!tree, el => el.child(this.summary(w, sum, mine, t)))),
@@ -771,7 +774,7 @@ export default class Spaces extends View {
   // On a hovered room: a new tab (the office-add popup), rename, close.
   actions(w, t) {
     const act = (id, label, tip, fn) => div().id(`${id}-${w.id}`).size(20).flex_none().flex().items_center().justify_center()
-      .text_size(12).text_color(t.muted).bg(t.raised).border(1).border_color(t.border)
+      .text_size(12).text_color(t.muted).rounded(5).bg(t.raised).border(1).border_color(t.border)
       .hover((s) => s.text_color(t.foreground).border_color(t.accent)).tooltip(tip)
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_mouse_up("left", (_e, cx) => { cx.stop_propagation(); fn(); });
@@ -806,14 +809,14 @@ export default class Spaces extends View {
     return [head, ...mine.map((r, n) => {
       const id = `closed-${m ?? "local"}-${n}`;
       const color = darken(t[r.color] ?? t.muted, 0.35);
-      return h_flex().id(id).h(32).flex_none().pl(12).pr(8).gap(10).items_center().cursor_pointer().opacity(0.8)
+      return h_flex().id(id).h(32).flex_none().mx(6).pl(6).pr(8).gap(10).items_center().rounded(6).cursor_pointer().opacity(0.8)
         .hover((s) => s.bg(t.hover).opacity(1))
         .tooltip(`Open again in ${this.short(r.folder, r.machine)}`)
         .on_click(() => this.reopen(r))
-        .child(div().relative().w(18).h(22).flex_none().bg(darken(color, 0.4))
-          .child(div().absolute().top(1).left(1).w(16).h(21).bg(color))
-          .child(div().absolute().top(4).left(4).w(10).h(4).bg("#16202b"))
-          .child(div().absolute().top(12).left(13).size(2).bg("#8a7a5a")))
+        .child(div().relative().w(18).h(22).flex_none().rounded_t(4).rounded_b(1).overflow_hidden().bg(darken(color, 0.4))
+          .child(div().absolute().top(1).left(1).w(16).h(21).rounded_t(3).bg(color))
+          .child(div().absolute().top(4).left(4).w(10).h(4).rounded(1.5).bg("#16202b"))
+          .child(div().absolute().top(12).left(13).size(2).rounded(1).bg("#8a7a5a")))
         .child(v_flex().flex_1().min_w(0)
           .child(div().truncate().text_size(12.5).text_color(t.muted).child(r.name || base(r.folder)))
           .child(div().truncate().text_size(10.5).text_color(t.dim).child(this.short(r.folder, r.machine))))

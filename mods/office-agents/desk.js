@@ -11,7 +11,7 @@
 import { div, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, appHome, closeOverlay, hc, panes, props, readTextFile, run, spaces, terminals, theme } from "herdr";
-import { DEFAULT_REPLIES, deskLabel, deskState, firstLine, mixHex, parseReplies, portraitPath, shortPath, withAlpha } from "./lib.js";
+import { DEFAULT_REPLIES, backings, deskLabel, deskState, firstLine, mixHex, parseReplies, portraitPath, shortPath, withAlpha } from "./lib.js";
 
 const REPLIES_FILE = `${appHome()}/mods/office-agents/replies.json`;
 
@@ -52,6 +52,7 @@ export class Desk {
 
   render(_cx) {
     const t = theme();
+    const bk = backings(t);
     const { desk: key, job, overlay } = props() ?? {};
     const a = agents().find((x) => x.address === key) ?? null;
     const pane = panes().find((p) => (a ? p.pane === a.pane : p.terminal === key)) ?? null;
@@ -80,8 +81,8 @@ export class Desk {
         run("pane.focus", { pane: pane.pane });
       } else run("terminal.peek", { terminal: key });
     };
-    const button = (id, label, tip, action, color) => div().id(id).h(22).px(8).flex().flex_none().items_center().max_w(220)
-      .text_size(11).text_color(color ?? t.muted).border(1).border_color(withAlpha(t.muted, "55")).bg("#0d131b")
+    const button = (id, label, tip, action, color) => div().id(id).h(22).px(8).flex().flex_none().items_center().max_w(220).rounded(5)
+      .text_size(11).text_color(color ?? t.muted).border(1).border_color(withAlpha(t.muted, "55")).bg(bk.button)
       .cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip(tip)
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_click(action)
@@ -95,10 +96,10 @@ export class Desk {
       try { outcome = JSON.parse(r.stdout)?.outcome ?? outcome; } catch {}
       return `Stop: ${String(outcome).replace(/_/g, " ")}`;
     }, cx);
-    if (!key) return div().size_full().bg("#121a23");
-    return v_flex().id("desk-head").size_full().px(10).py(7).gap(6).bg("#121a23").border_b(1).border_color(t.accent)
+    if (!key) return div().size_full().bg(bk.panel);
+    return v_flex().id("desk-head").size_full().px(10).py(7).gap(6).bg(bk.panel).border_b(1).border_color(t.accent)
       .child(h_flex().gap(8).items_center()
-        .child(div().size(30).flex_none().border(1).border_color(state ? t[state.status] ?? t.dim : t.dim).bg(t.raised)
+        .child(div().size(30).flex_none().rounded(6).overflow_hidden().border(1).border_color(state ? t[state.status] ?? t.dim : t.dim).bg(t.raised)
           .when(Boolean(src), (el) => el.child(image(src).size(28))))
         .child(v_flex().flex_1().min_w(0)
           .child(div().truncate().text_size(12.5).font_semibold().text_color(t.foreground).child(title))

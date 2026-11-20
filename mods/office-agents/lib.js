@@ -17,11 +17,6 @@ export const JOBS = [
 
 const JOB_SET = new Set(JOBS);
 const PORTRAITS_DIR = "mods/office-agents/art";
-const DESKS_DIR = "mods/office-agents/desks";
-const STATES = new Set(["working", "blocked", "done", "idle"]);
-
-export const EMPTY_DESK = `${DESKS_DIR}/empty.png`;
-export const DESK_SHADOW = `${DESKS_DIR}/shadow.png`;
 
 // Tab name to role: exact match only, case-insensitive, whitespace-trimmed.
 // Only own keys are scanned, so constructor/__proto__ cannot match by accident.
@@ -116,12 +111,6 @@ export function deskJobs(spaces, panes, agents, jobs) {
   const own = (s) => `#${s.address}`;
   const assigned = assignJobs([...tabNames(spaces, agents), ...seated.filter((s) => !s.first).map(own)], jobs);
   return new Map(seated.map((s) => [s.address, jobIn(s.first ? s.tab : own(s), assigned)]));
-}
-
-// An agent's desk: its role's animation for its status (anything unknown dozes).
-export function deskPath(job, status) {
-  if (typeof job !== "string" || !JOB_SET.has(job)) return null;
-  return `${DESKS_DIR}/${job}-${STATES.has(status) ? status : "idle"}.gif`;
 }
 
 // A cubicle's columns: up to three desks in a row, four as two by two.
@@ -353,6 +342,21 @@ export function mixHex(a, b, t) {
   if (typeof a !== "string" || !HEX.test(a) || typeof b !== "string" || !HEX.test(b)) return a;
   const ch = (c, i) => parseInt(c.slice(1 + i * 2, 3 + i * 2), 16);
   return `#${[0, 1, 2].map((i) => Math.round(ch(a, i) + (ch(b, i) - ch(a, i)) * t).toString(16).padStart(2, "0")).join("")}`;
+}
+
+// The office's backings, from the theme so a lighter theme lifts them too:
+// shade goes (with an alpha) behind text over the art, panel and button are
+// solid boxes, edge their dark rim, alert the "Needs you" card.
+export function backings(t) {
+  const base = t?.canvas ?? t?.background ?? "#101820";
+  const panel = t?.chrome ?? base;
+  return {
+    shade: mixHex(base, "#000000", 0.4),
+    panel,
+    button: t?.surface ?? panel,
+    edge: mixHex(base, "#000000", 0.3),
+    alert: mixHex(panel, t?.blocked ?? "#e5675c", 0.14),
+  };
 }
 
 // A space's colour: the one the Spaces list gave it (`space.colors`, a theme key

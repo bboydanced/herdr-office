@@ -10,16 +10,12 @@ import { readFileSync } from "node:fs";
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.log("FAIL:", m); } };
 
-// roles and pictures
+// roles and portraits
 ok(A.JOBS.length === 8, "eight roles");
 for (const r of A.JOBS) {
   ok(A.portraitPath(r) === `mods/office-agents/art/${r}.png`, `portrait ${r}`);
-  for (const s of ["working","blocked","done","idle"]) ok(A.deskPath(r, s) === `mods/office-agents/desks/${r}-${s}.gif`, `desk ${r}-${s}`);
 }
-ok(A.deskPath("nope","working") === null, "unknown role -> no desk");
-ok(A.deskPath("manager", null) === "mods/office-agents/desks/manager-idle.gif", "unknown status dozes");
 ok(A.portraitPath("../etc/passwd") === null, "traversal rejected");
-ok(A.EMPTY_DESK === "mods/office-agents/desks/empty.png", "empty desk");
 
 // job assignment
 const jobs = { "Claude Code": "manager", "Bad Role": "wizard" };
@@ -105,6 +101,13 @@ ok(A.mixHex("red", "#ffffff", 0.5) === "red", "mix leaves non-hex");
 ok(A.spaceColor({ ansi6: "#6fb6ad", accent: "#e0a44a" }, { s1: "ansi6" }, "s1") === "#6fb6ad", "space colour");
 ok(A.spaceColor({ muted: "#b0a894", accent: "#e0a44a" }, { s1: "ansi6" }, "s1") === "#b0a894", "unknown key -> muted");
 ok(A.spaceColor({ accent: "#e0a44a" }, null, "s1") === "#e0a44a", "no colours, no muted -> accent");
+{
+  const bk = A.backings({ canvas: "#181a28", chrome: "#24273a", surface: "#2a2e42", blocked: "#f28b7d" });
+  ok(bk.shade === A.mixHex("#181a28", "#000000", 0.4) && bk.panel === "#24273a" && bk.button === "#2a2e42", "backings from the theme");
+  ok(bk.alert === A.mixHex("#24273a", "#f28b7d", 0.14), "alert tinted by blocked");
+  const bare = A.backings({ background: "#1e2030" });
+  ok(bare.panel === "#1e2030" && bare.button === "#1e2030", "backings fall back to the background");
+}
 
 // groups you make yourself
 const G = (id, name, spaces, folded = false) => ({ id, name, spaces, folded });

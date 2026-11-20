@@ -19,8 +19,10 @@ shows its split; others, rows.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
+import subprocess
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -62,12 +64,28 @@ def font(size: float, bold: bool = False):
     return ImageFont.load_default()
 
 
-def load(rel: str, size: tuple[int, int] | None = None, frame: int = 0) -> Image.Image:
-    im = Image.open(os.path.join(ROOT, rel))
-    if getattr(im, "n_frames", 1) > 1:
-        im.seek(frame % im.n_frames)
-    im = im.convert("RGBA")
+def load(rel: str, size: tuple[int, int] | None = None) -> Image.Image:
+    im = Image.open(os.path.join(ROOT, rel)).convert("RGBA")
     return im.resize(size, Image.NEAREST) if size else im
+
+
+_PARTS: dict = {}
+
+
+def part(key: str, size: tuple[int, int] | None = None) -> Image.Image:
+    """A piece the mods draw in blocks (figure.js, room.js, logo.js), painted by
+    tools/preview-figure.py from what tools/preview-figure.mjs --parts records."""
+    if not _PARTS:
+        out = subprocess.run(["node", os.path.join(ROOT, "tools/preview-figure.mjs"), "--parts"],
+                             check=True, capture_output=True, text=True).stdout
+        _PARTS.update(json.loads(out))
+        spec = importlib.util.spec_from_file_location("preview_figure", os.path.join(ROOT, "tools/preview-figure.py"))
+        _PARTS["__painter"] = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(_PARTS["__painter"])
+    it = _PARTS[key]
+    im = Image.new("RGBA", (it["w"], it["h"]), (0, 0, 0, 0))
+    _PARTS["__painter"].paint(im, it["node"], 0, 0, it["w"], it["h"])
+    return im.resize(size, Image.NEAREST) if size and size != im.size else im
 
 
 def fit(d: ImageDraw.ImageDraw, text: str, f, width: int) -> str:
@@ -100,10 +118,10 @@ SPACES = [
      "tabs": [{"name": "docs", "since": "40m", "panes": [("writer", "working", "README"), ("intern", "idle", "Typos")]}]},
 ]
 
-# Desk sizes as office-agents draws them: the sidebar at 2 points an art pixel,
-# the wide panel at 3 with a second line under each desk.
+# Desk sizes as office-agents draws them (SMALL, WIDE): the sidebar's, and the
+# wide panel's with a second line under each desk.
 SMALL = {"dw": 72, "dh": 60, "slot": 80, "label": 13, "text": 10, "gap": 6, "cp": 4, "wide": False}
-LARGE = {"dw": 108, "dh": 90, "slot": 120, "label": 16, "text": 11.5, "gap": 8, "cp": 5, "wide": True}
+WIDE = {"dw": 96, "dh": 80, "slot": 108, "label": 15, "text": 11, "gap": 8, "cp": 5, "wide": True}
 
 
 def slot_h(z) -> int:
@@ -266,13 +284,11 @@ def label(sb, d, cx, ly, z, text, color, back=True, tag=False):
     d.text((tx + (5 if tag else 4), ly + (h - f.size) / 2 - 1), text, font=f, fill=color)
 
 
-def draw_desk(sb, d, t, i, cx, cy, z, shadow, frame):
+def draw_desk(sb, d, t, i, cx, cy, z):
     role, st, title = t["panes"][i]
     busy_marks(sb, d, [cx, cy, cx + z["slot"] - 1, cy + slot_h(z) - 1], st, True)
     dx = cx + (z["slot"] - z["dw"]) // 2
-    sb.alpha_composite(shadow, (dx, cy))
-    art = f"mods/office-agents/desks/{role}-{st}.gif" if role else "mods/office-agents/desks/empty.png"
-    sb.alpha_composite(load(art, (z["dw"], z["dh"]), frame), (dx, cy))
+    sb.alpha_composite(part(f"desk-{role}-{st}-{z['dw']}" if role else f"desk-empty-{z['dw']}", (z["dw"], z["dh"])), (dx, cy))
     ly = cy + z["dh"] + 1
     paper = (255, 240, 230, 255)
     if not z["wide"]:
@@ -295,27 +311,27 @@ def draw_desk(sb, d, t, i, cx, cy, z, shadow, frame):
 
 
 def draw_ghost(sb, d, cx, cy, z):
-    """The faded Add desk place of a wide cubicle."""
+    """The Add desk place of a wide cubicle: an empty spot, a "+" in a round button."""
     dx = cx + (z["slot"] - z["dw"]) // 2
-    d.rectangle([dx, cy, dx + z["dw"] - 1, cy + z["dh"] - 1], outline=mix("muted", "#1e2634", 0.72))
-    empty = load("mods/office-agents/desks/empty.png", (z["dw"], z["dh"]))
-    empty.putalpha(empty.getchannel("A").point(lambda a: round(a * 0.25)))
-    sb.alpha_composite(empty, (dx, cy))
-    f = font(round(z["dh"] * 0.4))
-    d.text((dx + z["dw"] / 2 - d.textlength("+", font=f) / 2, cy + z["dh"] / 2 - f.size * 0.62), "+", font=f, fill=hexa("muted"))
+    d.rounded_rectangle([dx, cy, dx + z["dw"] - 1, cy + z["dh"] - 1], radius=8, fill=(0, 0, 0, 0x40),
+                        outline=hexa("muted", 0x33))
+    mx, my = dx + z["dw"] // 2, cy + z["dh"] // 2
+    d.ellipse([mx - 17, my - 17, mx + 16, my + 16], fill=hexa("muted", 0x22))
+    f = font(20)
+    d.text((mx - d.textlength("+", font=f) / 2, my - f.size * 0.62), "+", font=f, fill=hexa("muted"))
     label(sb, d, cx, cy + z["dh"] + 1, z, "Add desk", hexa("dim"), back=False)
 
 
-def draw_node(sb, d, t, node, x, y, z, shadow, frame):
+def draw_node(sb, d, t, node, x, y, z):
     if node == "g":
         draw_ghost(sb, d, x, y, z)
         return
     if isinstance(node, int):
-        draw_desk(sb, d, t, node, x, y, z, shadow, frame)
+        draw_desk(sb, d, t, node, x, y, z)
         return
     kind, children = node
     for c in children:
-        draw_node(sb, d, t, c, x, y, z, shadow, frame)
+        draw_node(sb, d, t, c, x, y, z)
         w, h = tree_size(c, z)
         if kind == "across":
             x += w + z["gap"]
@@ -332,9 +348,8 @@ def button(d, x, y, text, color="muted") -> int:
     return w
 
 
-def draw_floor(sb, d, x0, y, width, z, most, frame) -> int:
+def draw_floor(sb, d, x0, y, width, z, most) -> int:
     """The rugs, from `y`, within `width` points from `x0`; returns where they end."""
-    shadow = load("mods/office-agents/desks/shadow.png", (z["dw"], z["dh"]))
     wide = z["wide"]
     rp, hdr, cgap = (8, 18, 8) if wide else (6, 15, 6)
     th_h = round(z["text"] + 4)
@@ -388,7 +403,7 @@ def draw_floor(sb, d, x0, y, width, z, most, frame) -> int:
                 d.rectangle([px, py, px + w - 1, py + h - 1], outline=hexa("accent") if here else color[:3] + (0x88,))
                 d.text((px + z["cp"] + 1, py + 2), fit(d, t["name"], font(z["text"]), w - 12), font=font(z["text"]),
                        fill=hexa("accent" if here else "muted"))
-                draw_node(sb, d, t, node, px + z["cp"] + 1, py + 1 + th_h + z["gap"], z, shadow, frame)
+                draw_node(sb, d, t, node, px + z["cp"] + 1, py + 1 + th_h + z["gap"], z)
                 px += w + cgap
             py += max(h for *_, h in r) + cgap
         y += rug_h + (10 if wide else 8)
@@ -446,7 +461,7 @@ def draw_agents(sb: Image.Image, top: int, bottom: int) -> None:
         d.text((right - 8 - d.textlength(info, font=font(10.5)) - d.textlength(need, font=font(11.5)), top + 7),
                need, font=font(11.5), fill=hexa("blocked"))
 
-    sb.alpha_composite(load("mods/office-agents/room/wall.png", (SIDEBAR, 44)), (0, top + 28))
+    sb.alpha_composite(part("wall"), (0, top + 28))
     tint(sb, [0, top + 72, SIDEBAR, bottom], hexa("canvas", 0xD9))
 
     owner = {name: band for band, names in GROUPS for name in names}
@@ -504,13 +519,13 @@ def flow(d, x, y, step, hired) -> None:
         nx += nw + 3
 
 
-def draw_panel(im: Image.Image, box, frame: int) -> None:
+def draw_panel(im: Image.Image, box) -> None:
     """The side panel on its Office tab: header, the boss, Needs you, the floor
     (desks at sidebar size, two lines under each) and the inspector."""
     x0, y0, x1, y1 = box
     pw, ph = x1 - x0, y1 - y0
     p = Image.new("RGBA", (pw, ph), hexa("#1b1e25"))
-    floor = load("mods/office-agents/room/floor.png")
+    floor = load("mods/office-agents/room/floor-tiles.png")
     floor = floor.resize((floor.width // 2, floor.height // 2), Image.NEAREST)
     p.paste(floor.crop((0, 0, pw, min(ph, floor.height))), (0, 0))
     d = ImageDraw.Draw(p, "RGBA")
@@ -537,12 +552,12 @@ def draw_panel(im: Image.Image, box, frame: int) -> None:
         x += w + 5
     d.text((pw - 44, 10), "21:40", font=font(11), fill=hexa("dim"))
 
-    # The boss's office (BAND_H 136, room/boss-office.png): the plaque and the
+    # The boss's office (BAND_H 136, room.js): the plaque and the
     # four steps on its wall, the boss on the rug by the window; on the floor its
     # line, then the space picker (it has a boss: no orchestrator picker) and
     # the goal box.
     by, band, left = 34, 136, 88
-    p.alpha_composite(load("mods/office-agents/room/boss-office.png", (900, band)).crop((0, 0, pw, band)), (0, by))
+    p.alpha_composite(part("boss-office").crop((0, 0, pw, band)), (0, by))
     d.line([0, by + band - 1, pw, by + band - 1], fill=hexa("#11161f"))
     px, py = left, by + 9
     pf = font(11, bold=True)
@@ -564,7 +579,7 @@ def draw_panel(im: Image.Image, box, frame: int) -> None:
     flow(d, left, by + 37, 1, "Hired 2 agents · 2 at work")
     d.rectangle([pw - 30, by + 12, pw - 11, by + 31], fill=hexa("#0d131b", 204))
     d.text((pw - 25, by + 14), "▴", font=font(11), fill=hexa("dim"))
-    p.alpha_composite(load("mods/office-agents/boss/working.gif", (64, 88), frame), (12, by + band - 98))
+    p.alpha_composite(part("boss-working"), (12, by + band - 98))
     say = "Hired frontend-nav and design-login"
     d.text((left, by + 72), fit(d, say, font(11.5), pw - left - 12), font=font(11.5), fill=hexa("foreground"))
     iy0 = by + 96
@@ -605,14 +620,14 @@ def draw_panel(im: Image.Image, box, frame: int) -> None:
     for label in ("1  Yes", "2  Yes, and don't ask again for git push", "3  No, and tell Claude what…"):
         x += chip(d, x, qy + 60, label) + 5
 
-    # The floor, at sidebar size with two lines under each desk.
+    # The floor: the panel's desks with two lines under each.
     fy = cy + ch + 1 + 10
-    z = {**SMALL, "slot": 92, "wide": True}
+    z = WIDE
     most = max(1, min(6, (pw - 40 + z["gap"]) // (z["slot"] + z["gap"])))
     inspect = 56
     floor_img = Image.new("RGBA", (pw, ph), (0, 0, 0, 0))
     fd = ImageDraw.Draw(floor_img, "RGBA")
-    draw_floor(floor_img, fd, 10, fy, pw - 20, z, most, frame)
+    draw_floor(floor_img, fd, 10, fy, pw - 20, z, most)
     p.alpha_composite(floor_img.crop((0, fy, pw, ph - inspect)), (0, fy))
 
     # The inspector, one bar, on the designer the boss hired (a click on a desk
@@ -686,7 +701,9 @@ def main() -> None:
     sb.paste(wallpaper((SIDEBAR, H)), (0, 0))
     sd = ImageDraw.Draw(sb, "RGBA")
     sd.rectangle([0, 0, SIDEBAR, 46], fill=hexa("chrome", 0xC8))
-    sd.text((16, 15), "Herdr", font=font(14, bold=True), fill=hexa("foreground"))
+    sb.alpha_composite(part("logo"), (14, 7))
+    sd.text((56, 6), "Office Agent", font=font(14, bold=True), fill=hexa("foreground"))
+    sd.text((56, 25), "on Herdr", font=font(11), fill=hexa("dim"))
     draw_spaces(sb, sd, 46)
     draw_agents(sb, 46 + SPACES_H, H - 69)
     sd = ImageDraw.Draw(sb, "RGBA")
@@ -717,7 +734,7 @@ def main() -> None:
             td.rectangle([bx + i * 96 - 8, 16, bx + i * 96 + 82, 41], fill=hexa("#3a3527"))
         im.alpha_composite(load(f"mods/office-tabs/art/{kind}.png", (20, 20)), (bx + i * 96, 19))
         td.text((bx + i * 96 + 26, 22), name, font=font(12), fill=hexa("foreground" if on else "muted"))
-    draw_panel(im, panel, frame=0)
+    draw_panel(im, panel)
     td.rectangle([SIDEBAR, H - 28, W, H], fill=hexa("chrome"))
     td.text((SIDEBAR + 14, H - 22), "office · 3 spaces · 8 agents", font=font(11), fill=hexa("dim"))
 

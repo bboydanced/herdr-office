@@ -1,25 +1,29 @@
 # Office art prompts
 
-Art for this layout is **drawn by `tools/build-art.py`**: pixel art placed in
-code on a small grid, outlined and scaled 4x, no image model, no third-party
-assets, so `herdr-app check` and the layout itself work out of the box.
+The desks, the boss, the sidebar's back wall and the boss's office are **drawn
+live in blocks**, not pictures: `mods/office-agents/figure.js` (the people and
+their desks; each role's look is a line of its `LOOKS` table) and `room.js` (the
+walls); the logo by `mods/office-chrome/logo.js`. To check a change without Herdr:
 
-To replace a file with generated art, keep its name and pixel size — the mods
-reference them by name and draw them at half that size in points — and use the
-prompts below. Green screen (`#00FF00`) backgrounds get cut out afterwards.
+    node tools/preview-figure.mjs | python3 tools/preview-figure.py /dev/stdin sheet.png       # every role, every state
+    node tools/preview-figure.mjs --room | python3 tools/preview-figure.py /dev/stdin room.png  # the walls
+    node tools/preview-figure.mjs --busts | python3 tools/preview-figure.py /dev/stdin         # writes the portraits
+
+The portraits (`art/<role>.png`) are written from figure.js that way. The few
+remaining bitmaps are **drawn by `tools/build-art.py`**: pixel art placed in
+code on a small grid, no image model, no third-party assets, so
+`herdr-app check` and the layout itself work out of the box.
+
+To replace one of those files with generated art, keep its name and pixel size —
+the mods reference them by name and draw them at half that size in points — and
+use the prompts below. Green screen (`#00FF00`) backgrounds get cut out afterwards.
 
 ## Sizes
 
 | File | Size | Notes |
 |---|---|---|
 | `mods/office-agents/art/<role>.png` | 88x88 | 8 role busts, transparent, shown at 44 pt |
-| `mods/office-agents/desks/<role>-<state>.gif` | 144x120 | `state` = `working` \| `blocked` \| `done` \| `idle`, transparent, looping, shown at 72x60 pt |
-| `mods/office-agents/desks/empty.png` | 144x120 | a desk with nobody at it, screen off |
-| `mods/office-agents/desks/shadow.png` | 144x120 | soft shadow drawn under every desk |
-| `mods/office-agents/boss/<state>.gif` | 128x176 | the boss standing, `state` = `working` \| `blocked` \| `done` \| `idle`, transparent, looping, shown at 64x88 pt |
-| `mods/office-agents/room/wall.png` | 600x88 | the office's back wall, shown 300x44 pt |
-| `mods/office-agents/room/wall-wide.png` | 1800x88 | the Office panel's back wall, shown 900x44 pt and cut to the panel; its kanban board (x 104-200 pt) keeps three empty columns for the live counts |
-| `mods/office-agents/room/floor.png` | 1824x1600 | dark carpet behind the rugs, shown 912x800 pt; the sidebar shows its left part |
+| `mods/office-agents/room/floor-tiles.png` | 1824x1600 | quiet carpet tiles behind the rugs, shown 912x800 pt |
 | `mods/office-tabs/art/<kind>.png` | 256x256 | `files`, `changes`, `office`, transparent |
 | `mods/office-chrome/wallpaper.png` | 1840x1844 | night windows behind the sidebar, the work column, the side panel and the terminals, `cover`-cropped |
 | `layouts/office.png` | 640x468 | layout picker thumbnail (from `tools/build-preview.py`) |
@@ -29,11 +33,9 @@ Roles: `manager` (Claude Code), `developer`, `designer`, `analyst`, `writer`,
 
 ## People: the style
 
-Staff are drawn as **pastel chibi** characters, after a pastel voxel office:
-big heads, eyes with a white shine, rosy cheeks, soft warm-brown outlines (no
-black), blocky shading (lit top, darker right side). Desks, chairs and screens
-keep the darker office look around them. The tab portrait is the desk's head,
-laughing, over a wider body.
+Staff are drawn as **pastel chibi** characters: big heads, eyes with a white
+shine, rosy cheeks, outlined blocks, every edge on a whole pixel. The portrait
+is the desk's head, smiling, over its shoulders.
 
 ## Portrait: common block
 
@@ -54,28 +56,6 @@ support: long auburn hair, a grey headset with a short mic, coral polo.
 intern: brown hair under a light blue cap, freckles, yellow polo.
 ```
 
-## Desks: one per role per state
-
-Desks are seen from the front and slightly above: the worker, a pastel chibi,
-behind the desk in a high-backed chair, facing you, the monitor on the left also
-facing you so its screen shows the state, the role's things on the right. Keep
-the canvas: 36x30 art pixels, drawn at 4x.
-
-Common block:
-
-```
-Pixel art wooden office desk seen from the front, 36x30 logical pixels scaled up with hard square pixels, dark outlines, limited palette, modern office, a monitor on the left of the desk facing the viewer, a cute pastel chibi worker with a big head seated behind the desk in a dark high-backed office chair facing the viewer, soft warm-brown outlines on the worker, a keyboard in front of them, centered, plain solid pure green background (#00FF00), no text, no border, no floor, no scenery.
-```
-
-Then one line per state:
-
-```
-working: hands on the keyboard, eyes on the screen, green screen with scrolling code, coffee steaming.
-blocked: one arm raised high, mouth open, a speech bubble with a red exclamation mark, the screen flashing red.
-done: stretching with hands behind the head, eyes closed and smiling, blue screen with a green check mark.
-idle: head down on folded arms on the desk, dim screensaver on the screen, a small zZz above.
-```
-
 ## Tab icons
 
 ```
@@ -85,22 +65,6 @@ changes: Pixel art game icon of two overlapping sheets of paper with a small cur
 
 office: Pixel art game icon of one computer monitor on a small wooden desk, two lines of amber text on the screen, bold simple silhouette, large and centered, few details, visible square pixels, plain solid pure green background (#00FF00), no text, no border.
 ```
-
-## The boss
-
-```
-Pixel art chibi office boss standing, full body, 32x44 logical pixels scaled up with hard square pixels, big head, short brown hair, navy suit with a white collar and a gold tie, soft warm-brown outlines, pastel palette, four looping states: talking and pointing with a clipboard in the other hand; one hand raised with a white speech bubble holding a red exclamation mark; a clear thumbs up with a small sparkle; arms crossed, blinking. Transparent background, no text, no border, no floor.
-```
-
-## Back wall
-
-```
-Wide strip pixel art, 150x22 logical pixels scaled up with hard square pixels, the back wall of a modern office at night: two windows onto a city skyline with lit windows and a moon, a round wall clock, a kanban board with colourful sticky notes, a wooden door under a green exit sign, a water cooler and a tall potted plant, dark slate-blue wall with a wainscot, no characters, no text, no border.
-```
-
-The panel's wall is the same strip at 450x22: more windows, bookshelves and
-filing cabinets, and a bigger kanban board with three empty columns headed
-blue, orange and green (no sticky notes: the office writes the counts there).
 
 ## Wallpaper
 

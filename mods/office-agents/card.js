@@ -31,15 +31,15 @@ export function ink() {
 export const cardTab = (title) => {
   const c = ink();
   return h_flex().flex_none()
-    .child(h_flex().h(20).max_w(210).px(9).gap(6).items_center().bg(c.tab).border_t(1).border_l(1).border_r(1).border_color(c.edge)
-      .child(div().w(7).h(4).flex_none().bg(LAMP))
+    .child(h_flex().h(20).max_w(210).px(9).gap(6).items_center().rounded_t(6).bg(c.tab).border_t(1).border_l(1).border_r(1).border_color(c.edge)
+      .child(div().w(7).h(4).flex_none().rounded(2).bg(LAMP))
       .child(div().min_w(0).truncate().text_size(9.5).font_bold().text_color(c.muted).child(title)));
 };
 
 // The sheet under the tab: dresses a v_flex.
 export const sheet = (el) => {
   const c = ink();
-  return el.bg(c.sheet).border(1).border_color(c.edge);
+  return el.rounded_b(8).rounded_tr(8).bg(c.sheet).border(1).border_color(c.edge);
 };
 
 // A whole card: tab, then the sheet holding `rows`.
@@ -67,5 +67,5 @@ export const rule = () => div().flex_none().h(3).border_t(1).border_b(1).border_
 // A key or note on a little tag, at a line's right end.
 export const keyTag = (text) => {
   const c = ink();
-  return div().flex_none().max_w(96).truncate().px(4).bg(c.tag).border(1).border_color(c.edge).text_size(9.5).text_color(c.dim).child(text);
+  return div().flex_none().max_w(96).truncate().px(4).rounded(3).bg(c.tag).border(1).border_color(c.edge).text_size(9.5).text_color(c.dim).child(text);
 };

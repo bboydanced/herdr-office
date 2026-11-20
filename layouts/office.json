@@ -18,7 +18,7 @@
             "mod": "office-chrome"
           },
           "size": {
-            "px": 46
+            "px": 54
           },
           "window_drag": true
         },
@@ -69,11 +69,13 @@
       },
       "min": 44,
       "max": 480,
-      "background": {
-        "image": "mods/office-chrome/wallpaper.png",
-        "fit": "cover"
-      },
-      "resizable": false
+      "background": "chrome",
+      "resizable": false,
+      "radius": 10,
+      "border": {
+        "width": 1,
+        "color": "border"
+      }
     },
     {
       "id": "work",
@@ -88,7 +90,13 @@
           "size": {
             "px": 58
           },
-          "window_drag": true
+          "window_drag": true,
+          "background": "chrome",
+          "radius": 10,
+          "border": {
+            "width": 1,
+            "color": "border"
+          }
         },
         {
           "id": "work-body",
@@ -120,7 +128,7 @@
                     "width": 1,
                     "color": "accent"
                   },
-                  "radius": 0,
+                  "radius": 10,
                   "gap": 8,
                   "lone": true
                 }
@@ -168,13 +176,15 @@
               "min": 280,
               "max": 900,
               "hidden": true,
-              "background": {
-                "image": "mods/office-chrome/wallpaper.png",
-                "fit": "cover"
-              }
+              "background": "chrome",
+              "radius": 10,
+              "border": {
+                "width": 1,
+                "color": "border"
+              },
+              "padding": 4
             }
           ],
-          "padding": 8,
           "gap": 8
         },
         {
@@ -189,10 +199,7 @@
         }
       ],
       "resizable": false,
-      "background": {
-        "image": "mods/office-chrome/wallpaper.png",
-        "fit": "cover"
-      }
+      "gap": 8
     }
   ],
   "background": "canvas",
@@ -200,15 +207,13 @@
     14,
     12
   ],
-  "divider": {
-    "width": 1,
-    "color": "border"
-  },
   "titlebar": "none",
   "traffic_lights": [
     12,
     16
   ],
   "theme": "office-night",
-  "terminal_opacity": 0.86
+  "terminal_opacity": 0.86,
+  "padding": 8,
+  "gap": 8
 }

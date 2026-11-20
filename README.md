@@ -61,18 +61,25 @@ Herdr keeps the mod names in its own `seen.json`, which is harmless.
 
 ## What you see
 
-- **Theme `office-night`:** ink blue background `#101820`, panel `#1b252f`,
-  amber accent `#e0a44a`, paper text `#e6dfd2`, muted steel `#5f8fa8`. Square
-  corners with thin steel frames (`border` `#5f8fa84d`); amber is kept for what
-  is yours right now — the focused pane, the tab and room you are in, the picked
-  desk, the primary button — and coral `#e5675c` only for what needs you, so the
-  two never read alike.
-- **One backdrop everywhere:** night office windows, a few lit by a lamp or a
-  screen, `mods/office-chrome/wallpaper.png` (`cover`). It is the `background`
-  of the sidebar, the work column (behind the translucent tab bar and between
-  the panes), the side panel and every pane, where the terminal draws over it at
-  the root `terminal_opacity` of `0.86`, enough to keep the windows out of the text.
-- **Sidebar, 300 px**, two parts (weights 0.62 and 1.38):
+- **Theme `office-night`:** pastel night, slate-indigo background `#1e2030`,
+  panel `#2a2e42`, amber accent `#f5c47a`, text `#e6e9f5`, steel `#8aa0c8`;
+  working `#8aadf4`, done `#a6da95`; the terminals keep the ink-blue palette
+  (`#101820`, amber cursor `#e0a44a`). Rounded corners (3 for tags, 5 for buttons and chips, 6 for cubicles and rows, 8 for rooms and cards, 10 for panes and the layout's cards) with thin steel frames
+  (`border` `#8aa0c84d`); amber is kept for what is yours right now — the
+  focused pane, the tab and room you are in, the picked desk, the primary
+  button — and coral `#f28b7d` only for what needs you, so the two never read
+  alike. The office's own backings (name plates, the boss band, the desk
+  window) come from the theme's `canvas`, `chrome` and `surface`
+  (`backings()` in `mods/office-agents/lib.js`).
+- **Cards on a dark frame:** the window is `canvas` with an 8 px margin; the
+  sidebar, the tab bar and the side panel are `chrome` cards (radius 10, a 1 px
+  `border` frame, 8 px apart), the side panel inset 4 px so its mods stay inside
+  the round corners. Every pane is a card too, over
+  `mods/office-chrome/wallpaper.png`, where the terminal draws at the root
+  `terminal_opacity` of `0.86`.
+- **Sidebar, 300 px:** on top the **Office Agent** logo (`mods/office-chrome/logo.js`,
+  a chibi at a laptop in a night office, drawn in blocks), then two parts
+  (weights 0.62 and 1.38):
   - **Spaces, the room directory:** a 44 px row per space. Its door in the
     space's colour with the room number (`01`, `02`… in Spaces order) on the
     plate, a lamp over it (off; breathing while an agent works; blinking while
@@ -150,15 +157,31 @@ desks fall back to pane order: up to three in a row, four as two by two.
 
 ### At the desk
 
+Every desk, the boss and the portraits are drawn in rounded blocks by
+`mods/office-agents/figure.js`: in the panel 96x80 points a desk (on a 36x30
+grid, every edge rounded to a whole pixel, the big shapes outlined as pixel art
+is; the head at a desk drawn at 0.8 of the portraits', `DESK_HEAD`) on quiet
+floor tiles. Each role's look is a line of `LOOKS`; `tools/preview-figure.mjs`
+draws them all on one sheet without Herdr.
+
 | Status | Screen | Staff |
 |---|---|---|
-| `working` | green, code scrolling fast, LED green | typing fast (a key every 90 ms), eyes on the screen, coffee steaming; the desk breathes: a bright frame, a glow and a wider ring fading in and out |
-| `blocked` | red, blinking `!` | one hand up, mouth open, a `!` bubble; a thick coral frame blinks over a red tint and the label turns into a red `NEEDS YOU` tag |
-| `done` | blue with a check mark | stretching, hands behind the head, smiling |
-| `idle` | screensaver | head down on folded arms, `zZz` |
+| `working` | lines of code fading in and out | typing, a steaming mug; the desk breathes: a bright frame, a glow and a wider ring fading in and out |
+| `blocked` | red, flashing, a white `!` | one hand up, mouth open, a `!` bubble; a thick coral frame blinks over a red tint and the label turns into a red `NEEDS YOU` tag |
+| `done` | green with a check mark | hopping, eyes closed and smiling, sparkles |
+| `idle` | a dim screensaver | head down on folded arms under floating `z`s |
+| no agent | the shell's prompt, its cursor blinking | an empty chair |
 
-Every desk is lit by its screen, and each role keeps its own things on it (a
-plant, a rubber duck, a phone, a chart, a stack of books...). A rug shows its
+The sidebar's back wall and the boss's office are blocks too (`room.js`, 2 points a
+cell), a night office after Pixel HQ: a dark wall, big windows onto a city
+(lit windows and an antenna's light blinking), few things but big ones, flat in
+two tones with a thin dark edge. The sidebar's: a monstera, a clock, a water
+cooler, a server rack with blinking lights, a coffee table, a cactus. The
+boss's: a wide window behind the boss and a rug under it, then (past the
+band's words) a clock, a chart poster, shelves with a trophy, a fig, a second
+window, a lamp and a sofa, on floor tiles like the room's (`--room` previews them).
+
+Every desk is lit by its screen. A rug shows its
 space the same way (breathing or blinking) with `● N working` or
 `! N need you` in its corner. The pulses are native `loop`s on `opacity`/`top`:
 they run without re-rendering the mod. Click a staffed desk for
@@ -475,9 +498,11 @@ its terminal.
   (`office.faces`). Copy the file to every machine to get the same faces everywhere.
 - **Project colours** come from the Spaces list (`space.colors`), so the door
   and the rug of a space always match.
-- **Art:** drawn by `tools/build-art.py`; `tools/build-preview.py` composes the
-  mock `preview.png` and the picker thumbnail from it. Prompts for model-made
-  replacements are in `docs/ART-PROMPTS.md`.
+- **Art:** the people, desks and walls drawn live in blocks (`figure.js`,
+  `room.js`, `logo.js`); the few bitmaps (floor tiles, tab icons, wallpaper) by
+  `tools/build-art.py`; `tools/build-preview.py` composes the mock `preview.png`
+  and the picker thumbnail from both. Prompts for model-made replacements are in
+  `docs/ART-PROMPTS.md`.
 - **Sounds:** none included. Put MP3s in `~/.config/herdr-app/sounds/` and add
   `"sounds": { "enabled": true, "done": "sounds/done.mp3", "blocked": "sounds/blocked.mp3" }`
   to `settings.json`.
@@ -540,7 +565,7 @@ inspired by [herdr-office-layout](https://github.com/zuccs/herdr-office-layout)
 and [Sit & Watch](https://github.com/funny-it-worked-last-time-gsv/herdr-sit-and-watch-layout)
 (both MIT). No code or art is copied from them.
 
-The images in this repo are **generated by `tools/build-art.py`** — drawn pixel
-by pixel in code, no image model — so they carry the same Apache 2.0 license as
+The art in this repo is **drawn in code** — the blocks of `figure.js`,
+`room.js` and `logo.js`, the bitmaps of `tools/build-art.py`, no image model — so they carry the same Apache 2.0 license as
 the code. Art you generate from `docs/ART-PROMPTS.md` with a hosted model is
 yours to license; the prompts grant nothing and make no warranty.

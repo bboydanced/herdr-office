@@ -117,7 +117,7 @@ export default class OfficeTabs extends View {
       return div().relative().flex_none().w(size + step * (shown.length - 1)).h(size)
         .children(shown.map((a, n) => {
           const src = portraitPath(roles.get(a.address));
-          return div().absolute().top(0).left(n * step).size(size).bg(t.raised).border(1).border_color(t[a.status] ?? t.dim)
+          return div().absolute().top(0).left(n * step).size(size).rounded(5).overflow_hidden().bg(t.raised).border(1).border_color(t[a.status] ?? t.dim)
             .when(Boolean(src), el => el.child(image(src).size(size - 2)));
         }))
         .when(staff.length > 4, el => el.child(div().absolute().right(0).bottom(0).px(3).bg(t.chrome).text_size(10).text_color(t.foreground).child(`+${staff.length - 4}`)));
@@ -129,7 +129,7 @@ export default class OfficeTabs extends View {
       const program = ps.find(p => p.tab === c.id && p.program?.agent)?.program ?? ps.find(p => p.tab === c.id)?.program;
       const name = /^tb\d+$/.test(c.name) ? program?.name ?? "Terminal" : c.name;
       const people = staff.length ? faces(c, staff) : null;
-      return h_flex().id(`tab-${c.id}`).h(48).px(8).gap(7).items_center().flex_none().text_size(12.8)
+      return h_flex().id(`tab-${c.id}`).h(48).px(8).gap(7).items_center().flex_none().rounded(8).text_size(12.8)
         .border(1).border_color(c.active ? `${t.accent}99` : t.chrome).bg(c.active ? t.raised : t.chrome).text_color(c.active ? t.foreground : t.muted)
         .hover(s => s.bg(t.hover))
         .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.pressed = i; if (e.click_count === 2) run("tab.rename", { id: c.id }); })
@@ -168,7 +168,7 @@ export default class OfficeTabs extends View {
           else { run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
         }).child((icon.endsWith(".svg") ? svg(icon).size(20).text_color(on ? t.foreground : t.muted) : image(icon).size(20)).flex_none()).child(label);
     };
-    return h_flex().size_full().min_w(0).px(10).pl(lightsPadding).gap(3).items_center().bg(`${t.chrome}99`).border_b(1).border_color(t.border)
+    return h_flex().size_full().min_w(0).px(10).pl(lightsPadding).gap(3).items_center()
       .on_mouse_up("left", () => { this.pressed = null; })
       .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })
       .child(h_flex().id("tab-scroll").flex_1().min_w(0).h_full().items_center().gap(3).overflow_x_scrollbar().children(shown.map(item)))
