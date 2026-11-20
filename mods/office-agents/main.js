@@ -620,7 +620,7 @@ export default class Office extends View {
         // Spaces; a worktree's room, a branch, as its line in Spaces.
         .child(parent
           ? div().id(`rug-tree-${row.space.id}`).flex_none()
-            .tooltip(`A worktree of ${parent.space.name}'s repo, a space of its own (room ${this.roomNo.get(row.space.id) ?? ""})`)
+            .tooltip(`A worktree of ${parent.space.name}'s repo: a space of its own, with no room number`)
             .child(svg("mods/office-chrome/branch.svg").size(this.wide ? 13 : 11).text_color(neonColor(color)))
           : this.wide
           ? neonSign(`rug-no-${row.space.id}`, this.roomNo.get(row.space.id) ?? "", color).id(`rug-no-${row.space.id}`)

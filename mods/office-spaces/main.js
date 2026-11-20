@@ -508,21 +508,25 @@ export default class Spaces extends View {
       this.treesShared = shareTrees;
       setShared("space.trees", trees);
     }
+    // Herdr's order: the rooms as listed, then the worktrees' rooms (listed
+    // under theirs, with no number), so the rooms' numbers run on (01, 02…)
+    // and Alt+N is the door numbered N.
+    const herdr = [...out.filter((r) => !r.tree), ...out.filter((r) => r.tree)];
     // Simulate the batch so later indexes include earlier moves. An attempted
     // write can lose a sync conflict: allow the echo to settle before retrying.
     const order = sp.map(w => w.id);
-    const target = out.map(r => r.w.id);
+    const target = herdr.map(r => r.w.id);
     const key = JSON.stringify([order, target, machines()]);
     if (order.every((id, i) => id === target[i])) {
       this.ordering = null;
     } else if (this.ordering?.key !== key || this.orderingDue(Date.now())) {
       const moved = new Set();
       this.ordering = { key, at: Date.now(), machines: [] };
-      for (let i = 0; i < out.length; i++) {
-        const from = order.indexOf(out[i].w.id);
+      for (let i = 0; i < herdr.length; i++) {
+        const from = order.indexOf(herdr[i].w.id);
         if (from === i) continue;
-        run("space.move", { id: out[i].w.id, index: i + 1 });
-        moved.add(out[i].w.machine ?? null);
+        run("space.move", { id: herdr[i].w.id, index: i + 1 });
+        moved.add(herdr[i].w.machine ?? null);
         order.splice(i, 0, order.splice(from, 1)[0]);
       }
       this.ordering.machines = [...moved];
@@ -720,9 +724,10 @@ export default class Spaces extends View {
             ? div().text_size(11).text_color(t.muted).child(String(count))
             : svg(`mods/office-chrome/chevron-${g.folded ? "right" : "down"}.svg`).size(10).text_color(t.muted)))
         .when(!collapsed, (el) => el
-          .child(div().min_w(0).max_w(150).truncate().text_size(12).font_semibold().text_color(t.foreground).child(g.name))
-          .child(div().flex_none().px(6).rounded(5).bg(t.raised).text_size(9.5).text_color(t.muted)
-            .child(roomCount(count, trees)))
+          // The name first; the count gives way (truncated) when the band is short of room.
+          .child(div().flex_none().max_w(120).truncate().text_size(12).font_semibold().text_color(t.foreground).child(g.name))
+          .child(div().id(`${id}-count`).min_w(0).px(6).rounded(5).bg(t.raised).text_size(9.5).text_color(t.muted).truncate()
+            .tooltip(roomCount(count, trees)).child(roomCount(count, trees)))
           .child(div().flex_1().min_w(0))
           .when(status === "blocked", (el) => el.child(div().flex_none().px(4).rounded(3).bg("#c8392f").text_size(10).font_bold()
             .text_color("#ffffff").child(`! ${waiting}`)))
@@ -898,8 +903,7 @@ export default class Spaces extends View {
       .on_hover((hov) => hoverSpace(w.id, hov))
       .on_click(() => run("space.select", { id: w.id }))
       .child(tree
-        ? h_flex().gap(2).items_center().text_size(10).text_color(w.active ? t.foreground : t.dim)
-          .child(svg("mods/office-chrome/branch.svg").size(11).text_color(t.dim)).child(String(i + 1))
+        ? svg("mods/office-chrome/branch.svg").size(12).text_color(w.active ? t.foreground : t.dim)
         : door(`rail-door-${w.id}`, String(i + 1).padStart(2, "0"), color, urgent(mine), mine.length > 0, t))
       .when(glyph(w.status) === "●", (el) => el.child(div().absolute().top(2).right(2).size(6).rounded(3).bg(tone(t, w.status)))));
   }

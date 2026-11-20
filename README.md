@@ -82,7 +82,9 @@ Herdr keeps the mod names in its own `seen.json`, which is harmless.
   a chibi at a laptop in a night office, drawn in blocks), then two parts
   (weights 0.62 and 1.38):
   - **Spaces, the room directory:** a 44 px row per space. Its door in the
-    space's colour with the room number (`01`, `02`… in Spaces order) in neon
+    space's colour with the room number (`01`, `02`… in Spaces order; a
+    worktree's room has none, and Spaces keeps those last in Herdr's order so
+    the numbers run on and `Alt+N` is the door numbered N) in neon
     across its top, lit while any agent is in and off when the room is empty,
     and a lamp over it (off; breathing while an agent works; blinking while
     one waits for you). Then the name,
@@ -232,8 +234,7 @@ status in Spaces and in the Office Agent list: bobbing at work, shaking while
 they wait for you.
 
 A worktree's rug sits right under its repo's room on a line from it, as in
-Spaces: in that room's colour, fainter, a branch where the number goes (the
-number in its tooltip). In a room on several branches each desk says its own
+Spaces: in that room's colour, fainter, a branch where the number goes (it has none). In a room on several branches each desk says its own
 under its name (the last part, `xaa-usage` for `office/xaa-usage`; all of it
 in the tooltip).
 
